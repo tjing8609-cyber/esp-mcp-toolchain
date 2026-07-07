@@ -1,0 +1,4 @@
+pyserial>=3.5
+pytest>=8.0
+mcp>=1.0.0
+

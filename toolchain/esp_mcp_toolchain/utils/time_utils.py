@@ -1,0 +1,12 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def now_compact() -> str:
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+

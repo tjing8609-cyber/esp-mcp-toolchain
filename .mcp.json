@@ -1,0 +1,7 @@
+{
+  "esp_mcp_toolchain": {
+    "command": "python",
+    "args": ["./toolchain/mcp_server.py"]
+  }
+}
+

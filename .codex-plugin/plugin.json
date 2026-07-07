@@ -1,0 +1,8 @@
+{
+  "name": "esp-mcp-toolchain",
+  "version": "0.1.0",
+  "description": "A generic stdio MCP toolchain for ESP development.",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}
+

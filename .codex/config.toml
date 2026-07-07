@@ -1,0 +1,9 @@
+[mcp_servers.esp_mcp_toolchain]
+command = "python"
+args = ["toolchain/mcp_server.py"]
+cwd = "."
+startup_timeout_sec = 10
+tool_timeout_sec = 60
+enabled = true
+default_tools_approval_mode = "prompt"
+

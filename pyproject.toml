@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "esp-mcp-toolchain"
+version = "0.1.0"
+description = "A generic stdio MCP toolchain for ESP development."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+  "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+mcp = [
+  "mcp>=1.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["toolchain"]
+
+[tool.pytest.ini_options]
+testpaths = ["toolchain/tests"]
+pythonpath = ["toolchain"]
+
