@@ -260,34 +260,38 @@ python -m pytest
 31 passed
 ```
 
-2026-07-09 wrapper update:
+开发日志（同一天按提交时间分开）：
 
-- Implemented `esp_exec_code` through MicroPython raw REPL and smoke-tested it on `COM3`.
-- Implemented raw REPL MicroPython file operations for `esp_file_list`, `esp_file_read`,
-  `esp_file_upload`, and `esp_file_download`; real-board smoke tests passed with a small probe file.
-- Implemented `esp_reset` soft reset through MicroPython Ctrl-C/Ctrl-D; real-board smoke test
-  captured `MPY: soft reboot` and the MicroPython banner.
-- Implemented ESP-IDF `esp_project_build` using the local ESP-IDF 5.2.1 environment; the
-  `examples/esp_idf_key_led_buzzer` project builds successfully in the ASCII workspace path.
-- Added explicit confirmation gates for high-risk tools: `esp_flash_firmware`, `esp_project_clean`,
-  `esp_file_delete`, and `esp_erase_flash`. Non-confirmed smoke tests verify these tools refuse to
-  run destructive actions.
-- Current real board facts used in tests: `COM3` enumerates as `USB-Enhanced-SERIAL CH9102`,
-  MicroPython v1.18 is restored and booting, GPIO32 LED is active-low, GPIO25 buzzer works with PWM,
-  and GPIO0 is the BOOT button.
+### 2026-07-09 12:16 - 接入官方 MCP SDK
 
-2026-07-09 log query and high-risk validation:
+- 将 stdio MCP Server 切换到官方 MCP Python SDK，使用 `FastMCP` 和 stdio transport。
+- 由 SDK 接管 MCP 初始化、能力协商、tools/resources/prompts 路由。
+- 保留入口 `python toolchain/mcp_server.py`，便于 Codex 和本地客户端调用。
 
-- Fixed `esp_logs_query` so multi-word queries are tokenized and matched across event fields.
-  Example: `low_risk_probe COM3 Captured` now matches an event whose `message` contains
-  `Captured ... COM3` and whose `data.raw_path` contains `low_risk_probe`.
-- Verified the fix in the current Codex plugin cache against the real cached log
-  `serial_20260709_162348_dc42db42`.
-- High-risk tool tests completed with MicroPython backup available:
-  `esp_file_delete(confirm=True)`, `esp_project_clean(confirm=True)`,
-  `esp_flash_firmware(confirm=True)`, and `esp_erase_flash(confirm=True)`.
-- After `esp_erase_flash`, restored `data/artifacts/flash/micropython_backup_20260709_151815.bin`
-  and verified MicroPython raw REPL with `restore_probe`.
+### 2026-07-09 14:02 - 补齐 Codex 插件可见性和 MCP 注册
+
+- 补齐 `.codex-plugin/plugin.json` 中的 `name`、`version`、`description`、`author`、`homepage`、`repository`、`license`、`keywords`、`skills`、`apps`、`mcpServers` 和 `interface`。
+- 创建 `hooks.json`，但暂不把 `hooks` 写入 `plugin.json`，因为当前插件验证器会拒绝该字段；优先保证插件可见和可验证。
+- `.mcp.json` 改为 Codex 插件标准的 `mcpServers` 包裹结构。
+- 新增 `esp://tools/directory` 和 `esp://tools/registry`，让 Codex 能读取 tools 目录和注册工具表。
+
+### 2026-07-09 14:14 - 记录个人 marketplace 安装路径
+
+- 本机个人 marketplace 位于 `C:\Users\16224\.agents\plugins\marketplace.json`。
+- 插件源同步到 `C:\Users\16224\plugins\esp-mcp-toolchain`。
+- Codex 安装缓存位于 `C:\Users\16224\.codex\plugins\cache\personal-plugins\esp-mcp-toolchain\...`。
+
+### 2026-07-09 16:36 - 封装 ESP 工具后端并完成真实板卡验证
+
+- `esp_exec_code` 已通过 MicroPython raw REPL 实现，并在 `COM3` 上完成烟测。
+- `esp_file_list`、`esp_file_read`、`esp_file_upload`、`esp_file_download` 已通过 raw REPL 实现，真实板卡小探针文件测试通过。
+- `esp_reset` 已实现 MicroPython 软复位，真实烟测捕捉到 `MPY: soft reboot` 和 MicroPython banner。
+- `esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程，`examples/esp_idf_key_led_buzzer` 可成功构建。
+- `esp_flash_firmware`、`esp_project_clean`、`esp_file_delete`、`esp_erase_flash` 已加入显式 `confirm=True` 高风险确认门。
+- `esp_logs_query` 已修复为多词匹配，可以跨 `message`、`data.raw_path` 等事件字段匹配，例如 `low_risk_probe COM3 Captured`。
+- 已在 MicroPython 备份存在的前提下完成高风险验证：删除板上探针文件、clean 后重建、烧录 ESP-IDF 示例、整片擦除 flash、再恢复 `data/artifacts/flash/micropython_backup_20260709_151815.bin`。
+- 恢复后通过 raw REPL 验证 MicroPython 正常响应 `restore_probe` / `final_restore_probe`。
+- 当前真实板卡事实：`COM3` 枚举为 `USB-Enhanced-SERIAL CH9102`，芯片为 ESP32-D0WD-V3；GPIO32 LED 为低电平点亮，GPIO25 蜂鸣器可用 PWM 驱动，GPIO0 是 BOOT 按键。
 
 暂未完成：
 
