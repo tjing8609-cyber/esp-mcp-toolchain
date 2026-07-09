@@ -44,10 +44,11 @@ git clone https://github.com/tjing8609-cyber/esp-mcp-toolchain.git
 cd esp-mcp-toolchain
 ```
 
-安装依赖：
+创建或更新 conda 环境：
 
 ```powershell
-python -m pip install -r requirements.txt
+.\scripts\setup_env.ps1
+conda activate esp-mcp-toolchain
 ```
 
 运行 CLI：
@@ -78,6 +79,7 @@ python -m pytest
 ```text
 esp-mcp-toolchain/
 ├── README.md
+├── environment.yml
 ├── pyproject.toml
 ├── requirements.txt
 ├── .codex/
@@ -144,7 +146,7 @@ esp-mcp-toolchain/
 - `prompts/get`
 - `shutdown`
 
-当前状态：已完成最小 JSON-RPC stdio 入口，可列出和调用已注册工具。后续可替换为正式 MCP Python SDK transport。
+当前状态：已改用官方 MCP Python SDK 的 `FastMCP` 和 stdio transport。入口仍为 `python toolchain/mcp_server.py`，协议解析、初始化、能力协商、tools/resources/prompts 路由由 SDK 接管。
 
 ### 第 3 阶段：基础 ESP 调试闭环
 
@@ -215,13 +217,15 @@ MicroPython 方向：
 
 ## 当前进度
 
-截至 2026-07-07，已完成：
+截至 2026-07-09，已完成：
 
 - 仓库结构初始化。
 - GitHub 远端同步，主分支为 `main`。
 - Python 包结构和 CLI 入口。
-- stdio MCP Server 最小入口。
+- 官方 MCP Python SDK 接入，使用 `FastMCP` + stdio transport。
 - tools / resources / prompts 注册骨架。
+- 通过官方 MCP client 完成 stdio 连接烟测。
+- 新增 conda 环境文件 `environment.yml`，环境名为 `esp-mcp-toolchain`。
 - 串口枚举、串口选择、串口状态检查。
 - 串口固定时长捕获的基础实现。
 - JSONL 日志写入、读取、检索。
@@ -235,15 +239,17 @@ MicroPython 方向：
 最近一次本地验证：
 
 ```text
-python toolchain/cli.py port-list
-python toolchain/mcp_server.py 处理 tools/list
+conda 环境：esp-mcp-toolchain
+Python：3.12.13
+官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
+MCP 烟测结果：30 tools / 8 resources / 4 prompts
 python -m pytest
 ```
 
 测试结果：
 
 ```text
-10 passed
+12 passed
 ```
 
 暂未完成：
@@ -253,7 +259,6 @@ python -m pytest
 - `mpremote` 文件传输封装。
 - raw REPL 执行封装。
 - 后台串口 monitor。
-- 正式 MCP Python SDK transport 接入。
 - SQLite 仓储层落地。
 - 针对真实 ESP 开发板的端到端验证。
 
@@ -265,6 +270,9 @@ python -m pytest
 - 高风险动作必须保留确认机制，包括烧录、擦除、删除和 full clean。
 - 硬件原始资料放入 `hardwork/raw/`，工具只写 `hardwork/processed/` 和 `hardwork/index/`。
 - 项目稳定事实写入 `memory` 时必须带 `source` 和 `confidence`。
+- 项目环境使用 conda 虚拟环境 `esp-mcp-toolchain`，不在项目根目录创建 `.venv`，也不直接修改全局 Python 环境。
+- 每次代码或文档变更后，都要更新 README 中的开发进程并推送到 GitHub。
+- 提交信息要写明当次提交完成的工作和修改内容。
 - 提交前运行 `python -m pytest`。
 
 ## 相关文档

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import json
-import sys
 from collections.abc import Callable
 from typing import Any
 
+from mcp.server.fastmcp import FastMCP
+
 from . import __version__
 from .errors import execution_error
-from .prompts.prompt_registry import get_prompt, list_prompts
-from .resources.resource_registry import list_resources, read_resource
+from .prompts.prompt_registry import PROMPTS, get_prompt
+from .resources.resource_registry import RESOURCES, read_resource
 from .schemas import ToolSpec
 from .tools import (
     build_tools,
@@ -26,6 +26,13 @@ from .tools import (
 
 
 ToolFunc = Callable[..., dict[str, Any]]
+SERVER_NAME = "esp-mcp-toolchain"
+SERVER_INSTRUCTIONS = (
+    "Generic ESP development MCP toolchain. Use low-risk inspection tools first, "
+    "read hardwork context before hardware decisions, and require explicit user "
+    "confirmation for high-risk operations such as flashing, erasing, deleting, "
+    "or full clean."
+)
 
 
 TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
@@ -176,75 +183,76 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         return execution_error("tool_exception", str(exc), tool=name, recoverable=True)
 
 
-def initialize_result() -> dict[str, Any]:
-    return {
-        "protocolVersion": "2024-11-05",
-        "capabilities": {
-            "tools": {},
-            "resources": {},
-            "prompts": {},
-            "logging": {},
-        },
-        "serverInfo": {
-            "name": "esp-mcp-toolchain",
-            "version": __version__,
-        },
-    }
+def _resource_text(uri: str) -> str:
+    result = read_resource(uri)
+    contents = result.get("contents", [])
+    if not contents:
+        return ""
+    return contents[0].get("text", "")
 
 
-def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
-    method = request.get("method")
-    request_id = request.get("id")
-    params = request.get("params") or {}
+def _prompt_text(name: str) -> str:
+    result = get_prompt(name, {})
+    messages = result.get("messages", [])
+    if not messages:
+        return ""
+    content = messages[0].get("content", {})
+    return content.get("text", "")
 
-    if method == "notifications/initialized":
-        return None
-    if method == "initialize":
-        result = initialize_result()
-    elif method == "tools/list":
-        result = {"tools": list_tool_specs()}
-    elif method == "tools/call":
-        structured = call_tool(params.get("name", ""), params.get("arguments") or {})
-        result = {
-            "content": [{"type": "text", "text": json.dumps(structured, ensure_ascii=False)}],
-            "structuredContent": structured,
-            "isError": structured.get("ok") is False,
-        }
-    elif method == "resources/list":
-        result = {"resources": list_resources()}
-    elif method == "resources/read":
-        result = read_resource(params.get("uri", ""))
-    elif method == "prompts/list":
-        result = {"prompts": list_prompts()}
-    elif method == "prompts/get":
-        result = get_prompt(params.get("name", ""), params.get("arguments") or {})
-    elif method == "shutdown":
-        result = {}
-    else:
-        return {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "error": {"code": -32601, "message": f"Method not found: {method}"},
-        }
 
-    return {"jsonrpc": "2.0", "id": request_id, "result": result}
+def _safe_function_name(prefix: str, value: str) -> str:
+    safe = "".join(ch if ch.isalnum() else "_" for ch in value)
+    return f"{prefix}_{safe}".strip("_")
+
+
+def register_tools(mcp: FastMCP) -> None:
+    for name, (spec, func) in TOOL_REGISTRY.items():
+        mcp.tool(name=name, description=spec.description)(func)
+
+
+def register_resources(mcp: FastMCP) -> None:
+    for resource in RESOURCES:
+        uri = resource["uri"]
+
+        def make_reader(resource_uri: str) -> Callable[[], str]:
+            def reader() -> str:
+                return _resource_text(resource_uri)
+
+            reader.__name__ = _safe_function_name("read", resource_uri)
+            return reader
+
+        mcp.resource(
+            uri,
+            name=resource.get("name"),
+            description=resource.get("name"),
+            mime_type=resource.get("mimeType"),
+        )(make_reader(uri))
+
+
+def register_prompts(mcp: FastMCP) -> None:
+    for prompt_name, description in PROMPTS.items():
+
+        def make_prompt(name: str) -> Callable[[], str]:
+            def prompt() -> str:
+                return _prompt_text(name)
+
+            prompt.__name__ = _safe_function_name("prompt", name)
+            return prompt
+
+        mcp.prompt(name=prompt_name, description=description)(make_prompt(prompt_name))
+
+
+def create_mcp_server() -> FastMCP:
+    mcp = FastMCP(
+        SERVER_NAME,
+        instructions=SERVER_INSTRUCTIONS,
+        log_level="WARNING",
+    )
+    register_tools(mcp)
+    register_resources(mcp)
+    register_prompts(mcp)
+    return mcp
 
 
 def serve_stdio() -> None:
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            request = json.loads(line)
-            response = handle_request(request)
-        except json.JSONDecodeError as exc:
-            response = {
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {"code": -32700, "message": f"Parse error: {exc}"},
-            }
-        if response is not None:
-            sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
-
+    create_mcp_server().run(transport="stdio")

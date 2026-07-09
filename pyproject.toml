@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
   "pyserial>=3.5",
+  "mcp>=1.27,<2",
 ]
 
 [project.optional-dependencies]
@@ -18,7 +19,7 @@ dev = [
   "pytest>=8.0",
 ]
 mcp = [
-  "mcp>=1.0.0",
+  "mcp>=1.27,<2",
 ]
 
 [tool.setuptools.packages.find]
@@ -27,4 +28,3 @@ where = ["toolchain"]
 [tool.pytest.ini_options]
 testpaths = ["toolchain/tests"]
 pythonpath = ["toolchain"]
-

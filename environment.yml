@@ -1,0 +1,10 @@
+name: esp-mcp-toolchain
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - "pyserial>=3.5"
+      - "pytest>=8.0"
+      - "mcp>=1.27,<2"
