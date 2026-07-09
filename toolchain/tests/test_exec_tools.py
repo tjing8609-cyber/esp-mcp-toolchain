@@ -63,3 +63,35 @@ def test_exec_code_returns_tool_metadata(monkeypatch):
     assert result["tool_name"] == "esp_exec_code"
     assert result["tools鍚嶇О"] == "esp_exec_code"
     assert result["port"] == "COM_TEST"
+
+
+def test_run_remote_file_uses_mpremote(monkeypatch):
+    from esp_mcp_toolchain.tools import exec_tools
+
+    def fake_run_remote_file(port: str, remote_path: str, timeout_s: int):
+        return {"ok": True, "stdout": "remote ok\n", "stderr": "", "message": remote_path}
+
+    monkeypatch.setattr(exec_tools.mpremote_backend, "run_remote_file", fake_run_remote_file)
+
+    result = exec_tools.esp_run_file(port="COM_TEST", backend="mpremote", path="/main.py", path_type="remote")
+
+    assert result["ok"] is True
+    assert result["implemented"] is True
+    assert result["tool_name"] == "esp_run_file"
+    assert result["backend"] == "mpremote"
+    assert result["stdout"] == "remote ok\n"
+
+
+def test_run_remote_file_can_use_raw_repl(monkeypatch):
+    from esp_mcp_toolchain.tools import exec_tools
+
+    def fake_exec_code(port: str, backend: str, code: str, capture_ms: int):
+        return {"ok": True, "stdout": code, "stderr": ""}
+
+    monkeypatch.setattr(exec_tools, "esp_exec_code", fake_exec_code)
+
+    result = exec_tools.esp_run_file(port="COM_TEST", backend="raw_repl", path="/main.py", path_type="remote")
+
+    assert result["ok"] is True
+    assert result["tool_name"] == "esp_run_file"
+    assert "open('/main.py')" in result["stdout"]

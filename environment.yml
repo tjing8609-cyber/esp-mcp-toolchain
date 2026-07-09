@@ -8,3 +8,4 @@ dependencies:
       - "pyserial>=3.5"
       - "pytest>=8.0"
       - "mcp>=1.27,<2"
+      - "mpremote>=1.28"

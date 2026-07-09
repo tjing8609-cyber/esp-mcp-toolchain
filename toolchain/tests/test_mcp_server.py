@@ -23,12 +23,12 @@ def test_sdk_prompts_list():
 
 
 def test_unimplemented_tool_returns_name_placeholder():
-    result = call_tool("esp_run_file", {"port": "COM_TEST", "path_type": "remote"})
+    result = call_tool("esp_file_upload", {"port": "COM_TEST", "backend": "unknown"})
 
     assert result["ok"] is True
     assert result["implemented"] is False
-    assert result["tool_name"] == "esp_run_file"
-    assert any(key.startswith("tools") and value == "esp_run_file" for key, value in result.items())
+    assert result["tool_name"] == "esp_file_upload"
+    assert any(key.startswith("tools") and value == "esp_file_upload" for key, value in result.items())
 
 
 def test_tools_resources_describe_directory_and_registry():
@@ -42,3 +42,4 @@ def test_tools_resources_describe_directory_and_registry():
     assert any(file["name"] == "build_tools.py" for file in directory_payload["files"])
     assert registry_payload["ok"] is True
     assert any(tool["name"] == "esp_project_build" for tool in registry_payload["tools"])
+    assert any(tool["name"] == "esp_backup_flash" for tool in registry_payload["tools"])

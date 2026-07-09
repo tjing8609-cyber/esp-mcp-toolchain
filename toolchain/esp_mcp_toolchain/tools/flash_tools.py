@@ -1,9 +1,51 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from ..backends.espidf_backend import run_idf_flash
-from ..backends.esptool_backend import run_erase_flash
+from ..backends.esptool_backend import run_erase_flash, run_read_flash
 from ..errors import execution_error, not_implemented
+from ..paths import data_dir
 from ..paths import safe_project_path
+from ..utils.time_utils import now_compact
+
+
+def _default_backup_path(prefix: str = "flash_backup") -> Path:
+    return data_dir() / "artifacts" / "flash" / f"{prefix}_{now_compact()}.bin"
+
+
+def esp_backup_flash(
+    port: str,
+    chip: str = "esp32",
+    size: int = 0x400000,
+    address: int = 0,
+    baud: int = 460800,
+    output_path: str = "",
+) -> dict:
+    if size <= 0:
+        return execution_error("invalid_size", "Backup size must be greater than zero.", tool="esp_backup_flash")
+    target = Path(output_path) if output_path else _default_backup_path()
+    if not target.is_absolute():
+        target = safe_project_path(target)
+    result = run_read_flash(port=port, chip=chip, address=address, size=size, baud=baud, output_path=target)
+    result.update(
+        {
+            "tool": "esp_backup_flash",
+            "tool_name": "esp_backup_flash",
+            "tools鍚嶇О": "esp_backup_flash",
+            "implemented": True,
+            "port": port,
+            "chip": chip,
+            "address": address,
+            "size": size,
+            "baud": baud,
+            "output_path": str(target),
+        }
+    )
+    if result.get("ok"):
+        result["bytes_read"] = target.stat().st_size if target.exists() else 0
+        result["data"] = {"output_path": str(target), "bytes_read": result["bytes_read"]}
+    return result
 
 
 def esp_flash_firmware(

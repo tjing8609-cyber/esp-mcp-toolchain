@@ -130,6 +130,25 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
         ToolSpec("esp_flash_firmware", "Flash firmware to an ESP board."),
         flash_tools.esp_flash_firmware,
     ),
+    "esp_backup_flash": (
+        ToolSpec(
+            "esp_backup_flash",
+            "Back up ESP flash to a local artifact file.",
+            {
+                "type": "object",
+                "properties": {
+                    "port": {"type": "string"},
+                    "chip": {"type": "string"},
+                    "size": {"type": "integer"},
+                    "address": {"type": "integer"},
+                    "baud": {"type": "integer"},
+                    "output_path": {"type": "string"},
+                },
+                "required": ["port"],
+            },
+        ),
+        flash_tools.esp_backup_flash,
+    ),
     "esp_erase_flash": (
         ToolSpec("esp_erase_flash", "Erase ESP flash."),
         flash_tools.esp_erase_flash,

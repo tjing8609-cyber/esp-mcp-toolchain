@@ -170,7 +170,7 @@ MicroPython 方向：
 - `esp_serial_capture`
 - `esp_error_parse_log`
 
-当前状态：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成真实板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload`、`esp_file_download` 和 `esp_reset` 已通过 MicroPython raw REPL 在 `COM3` 上完成烟测。仍保持占位或待增强的部分包括 `mpremote` 后端、远程文件运行和后台串口 monitor。
+当前状态：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已封装整片 flash 备份；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成真实板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload`、`esp_file_download` 和 `esp_reset` 已通过 MicroPython raw REPL 与 `mpremote` 在 `COM3` 上完成烟测；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。仍保持占位或待增强的部分包括后台串口 monitor 和更多工程化查询能力。
 
 ### 第 4 阶段：hardwork 硬件资料上下文
 
@@ -247,7 +247,7 @@ MicroPython 方向：
 conda 环境：esp-mcp-toolchain
 Python：3.12.13
 官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
-MCP 烟测结果：30 tools / 10 resources / 4 prompts
+MCP 烟测结果：31 tools / 10 resources / 4 prompts
 MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
 插件验证：源码目录和个人插件目录均通过本地 plugin validator
 Codex 插件安装状态：插件源已同步到 `C:\Users\16224\plugins\esp-mcp-toolchain`；当前进程执行 `codex plugin add` 受 WindowsApps 权限限制
@@ -257,7 +257,7 @@ python -m pytest
 测试结果：
 
 ```text
-31 passed
+40 passed
 ```
 
 开发日志（同一天按提交时间分开）：
@@ -293,10 +293,17 @@ python -m pytest
 - 恢复后通过 raw REPL 验证 MicroPython 正常响应 `restore_probe` / `final_restore_probe`。
 - 当前真实板卡事实：`COM3` 枚举为 `USB-Enhanced-SERIAL CH9102`，芯片为 ESP32-D0WD-V3；GPIO32 LED 为低电平点亮，GPIO25 蜂鸣器可用 PWM 驱动，GPIO0 是 BOOT 按键。
 
+### 2026-07-09 17:07 - 增加备份工具和 mpremote 工程化封装
+
+- 新增 `esp_backup_flash`，使用 `esptool read_flash` 将整片 flash 备份到 `data/artifacts/flash/`；真实烟测读取 4MB 成功。
+- 检测到当前项目 Python 环境缺少 `mpremote` 后，已安装 `mpremote 1.28.0`，并写入 `requirements.txt`、`environment.yml` 和 `pyproject.toml`。
+- `esp_file_list`、`esp_file_read`、`esp_file_upload`、`esp_file_download`、`esp_file_delete` 已接入 `mpremote` 后端，raw REPL 后端保留为备用。
+- `mpremote` 首次进入 raw REPL 失败时增加一次自动重试，解决板子刚复位后启动 banner 干扰的问题。
+- `esp_run_file` 的远程文件运行分支已实现，使用 `mpremote exec "exec(open(remote).read())"` 运行设备上已有文件，而不是误用只支持本地脚本的 `mpremote run`。
+- 真实板卡烟测完成：上传 `/codex_mpremote_probe.py`、读取、下载、运行并删除，远程运行输出 `mpremote_remote_probe`。
+
 暂未完成：
 
-- `mpremote` 文件传输后端封装；当前文件 list/read/upload/download 已先通过 raw REPL 跑通。
-- `esp_run_file` 的远程文件运行分支；本地文件通过 raw REPL 执行已可用。
 - 后台串口 monitor。
 - SQLite 仓储层落地。
 - `esp_logs_query` 已支持多词匹配，后续还可以继续扩展时间范围、run_id 前缀、字段过滤等查询能力。

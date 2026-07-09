@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from ..backends import mpremote_backend
 from ..backends.raw_repl_backend import execute_code
 from ..config import get_selected_port
 from ..errors import execution_error, not_implemented
@@ -24,12 +25,62 @@ def _resolve_port(tool: str, port: str | None) -> dict | str:
     return selected_port
 
 
+def _mpremote_metadata(tool: str, result: dict, *, port: str, **extra: object) -> dict:
+    result.update(
+        {
+            "tool": tool,
+            "tool_name": tool,
+            "tools鍚嶇О": tool,
+            "implemented": True,
+            "port": port,
+            "backend": "mpremote",
+            **extra,
+        }
+    )
+    return result
+
+
+def _parse_mpremote_ls(stdout: str) -> list[str]:
+    files: list[str] = []
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if not line or line.endswith(":") or line.startswith("ls "):
+            continue
+        parts = line.split()
+        if parts:
+            files.append(parts[-1].rstrip("/"))
+    return files
+
+
 def esp_file_upload(
     port: str | None = None,
     backend: str = "mpremote",
     local_path: str = "",
     remote_path: str = "",
 ) -> dict:
+    if backend == "mpremote":
+        selected_port = _resolve_port("esp_file_upload", port)
+        if isinstance(selected_port, dict):
+            return selected_port
+        if not local_path:
+            return execution_error("missing_local_path", "No local path was provided.", tool="esp_file_upload")
+        if not remote_path:
+            return execution_error("missing_remote_path", "No remote path was provided.", tool="esp_file_upload")
+        source_path = Path(local_path)
+        if not source_path.exists():
+            return execution_error("path_not_found", f"Local file does not exist: {local_path}", tool="esp_file_upload")
+        result = mpremote_backend.upload_file(port=selected_port, local_path=source_path, remote_path=remote_path)
+        _mpremote_metadata(
+            "esp_file_upload",
+            result,
+            port=selected_port,
+            local_path=str(source_path),
+            remote_path=remote_path,
+            bytes_written=source_path.stat().st_size,
+        )
+        if result.get("ok"):
+            result["data"] = {"bytes_written": source_path.stat().st_size}
+        return result
     if backend != "raw_repl":
         return not_implemented("esp_file_upload")
     if not local_path:
@@ -84,6 +135,35 @@ def esp_file_download(
     remote_path: str = "",
     local_path: str = "",
 ) -> dict:
+    if backend == "mpremote":
+        selected_port = _resolve_port("esp_file_download", port)
+        if isinstance(selected_port, dict):
+            return selected_port
+        if not remote_path:
+            return execution_error("missing_remote_path", "No remote path was provided.", tool="esp_file_download")
+        if not local_path:
+            return execution_error("missing_local_path", "No local path was provided.", tool="esp_file_download")
+        target_path = Path(local_path)
+        if target_path.exists():
+            return execution_error(
+                "local_path_exists",
+                f"Local path already exists: {local_path}",
+                tool="esp_file_download",
+                suggested_next_actions=["Choose a new output path"],
+            )
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        result = mpremote_backend.download_file(port=selected_port, remote_path=remote_path, local_path=target_path)
+        _mpremote_metadata(
+            "esp_file_download",
+            result,
+            port=selected_port,
+            remote_path=remote_path,
+            local_path=str(target_path),
+        )
+        if result.get("ok"):
+            result["bytes_written"] = target_path.stat().st_size if target_path.exists() else 0
+            result["data"] = {"local_path": str(target_path), "bytes_written": result["bytes_written"]}
+        return result
     if backend != "raw_repl":
         return not_implemented("esp_file_download")
     if not local_path:
@@ -124,6 +204,17 @@ def esp_file_download(
 
 
 def esp_file_list(port: str | None = None, backend: str = "mpremote", remote_dir: str = "/") -> dict:
+    if backend == "mpremote":
+        selected_port = _resolve_port("esp_file_list", port)
+        if isinstance(selected_port, dict):
+            return selected_port
+        result = mpremote_backend.list_files(port=selected_port, remote_dir=remote_dir)
+        _mpremote_metadata("esp_file_list", result, port=selected_port, remote_dir=remote_dir)
+        if result.get("ok"):
+            files = _parse_mpremote_ls(result.get("stdout", ""))
+            result["files"] = files
+            result["data"] = {"files": files}
+        return result
     if backend != "raw_repl":
         return not_implemented("esp_file_list")
     selected_port = _resolve_port("esp_file_list", port)
@@ -167,6 +258,31 @@ def esp_file_read(
     remote_path: str = "",
     max_bytes: int = 20000,
 ) -> dict:
+    if backend == "mpremote":
+        selected_port = _resolve_port("esp_file_read", port)
+        if isinstance(selected_port, dict):
+            return selected_port
+        if not remote_path:
+            return execution_error("missing_remote_path", "No remote path was provided.", tool="esp_file_read")
+        limit = max(0, int(max_bytes))
+        result = mpremote_backend.read_file(port=selected_port, remote_path=remote_path)
+        _mpremote_metadata(
+            "esp_file_read",
+            result,
+            port=selected_port,
+            remote_path=remote_path,
+            max_bytes=limit,
+        )
+        if result.get("ok"):
+            content = result.get("stdout", "")
+            truncated = len(content.encode("utf-8")) > limit if limit else False
+            if truncated:
+                content = content.encode("utf-8")[:limit].decode("utf-8", errors="replace")
+            result["content"] = content
+            result["bytes_read"] = len(content.encode("utf-8"))
+            result["truncated"] = truncated
+            result["data"] = {"content": content, "bytes_read": result["bytes_read"], "truncated": truncated}
+        return result
     if backend != "raw_repl":
         return not_implemented("esp_file_read")
     if not remote_path:
@@ -238,6 +354,14 @@ def esp_file_delete(
             recoverable=True,
             suggested_next_actions=["Review remote_path", "Call again with confirm=True only after user approval"],
         )
+    if backend == "mpremote":
+        selected_port = _resolve_port("esp_file_delete", port)
+        if isinstance(selected_port, dict):
+            return selected_port
+        if not remote_path:
+            return execution_error("missing_remote_path", "No remote path was provided.", tool="esp_file_delete")
+        result = mpremote_backend.run_mpremote(["fs", "rm", remote_path], port=selected_port)
+        return _mpremote_metadata("esp_file_delete", result, port=selected_port, remote_path=remote_path)
     if backend != "raw_repl":
         return not_implemented("esp_file_delete")
     if not remote_path:

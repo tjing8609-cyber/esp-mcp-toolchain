@@ -12,6 +12,7 @@ license = { text = "MIT" }
 dependencies = [
   "pyserial>=3.5",
   "mcp>=1.27,<2",
+  "mpremote>=1.28",
 ]
 
 [project.optional-dependencies]
