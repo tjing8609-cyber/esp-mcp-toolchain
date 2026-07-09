@@ -74,6 +74,19 @@ python toolchain/mcp_server.py
 python -m pytest
 ```
 
+## 测试与合入规则
+
+- 测试文件统一维护在 `toolchain/tests/`，并由 `pyproject.toml` 中的 `testpaths` 自动发现。
+- `test` 分支用于沉淀测试文件、测试目录和验证规则；新增功能进入主项目之前，必须先在 `test` 分支补齐或更新对应测试。
+- 新增功能、修复和文档规则变更都必须通过全量测试：
+
+```powershell
+python -m pytest
+```
+
+- 全量测试未通过时，不得将新增功能合入主分支或发布到插件缓存。
+- 涉及串口、GPIO、烧录、擦除、删除、full clean 等硬件或高风险动作时，必须先确认资料、端口和风险边界，再执行测试。
+
 ## 仓库结构
 
 ```text
@@ -240,12 +253,13 @@ MicroPython 方向：
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
 - 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源已复制到 `C:\Users\16224\plugins\esp-mcp-toolchain`，并通过 `codex plugin add esp-mcp-toolchain@personal-plugins` 安装启用。Codex 安装缓存位于 `C:\Users\16224\.codex\plugins\cache\personal-plugins\esp-mcp-toolchain\0.1.0`。
 - 初始测试集。
+- 已创建 `test` 分支用于维护测试文件、测试目录和合入前验证规则；当前测试入口为 `toolchain/tests/`。
 
 最近一次本地验证：
 
 ```text
 conda 环境：esp-mcp-toolchain
-Python：3.12.13
+Python：3.12.10
 官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
 MCP 烟测结果：31 tools / 10 resources / 4 prompts
 MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
@@ -302,6 +316,12 @@ python -m pytest
 - `esp_run_file` 的远程文件运行分支已实现，使用 `mpremote exec "exec(open(remote).read())"` 运行设备上已有文件，而不是误用只支持本地脚本的 `mpremote run`。
 - 真实板卡烟测完成：上传 `/codex_mpremote_probe.py`、读取、下载、运行并删除，远程运行输出 `mpremote_remote_probe`。
 
+### 2026-07-09 21:25 - 建立 test 分支开发规范
+
+- 从 `main` 创建 `test` 分支，用于维护测试文件、测试目录和合入前验证规则。
+- 明确 `toolchain/tests/` 是当前全量测试目录，新增功能必须先补齐或更新测试。
+- 新增 `docs/11-development-rules.md`，规定新增功能只有通过 `python -m pytest` 全量测试后，才可以合入主项目。
+
 暂未完成：
 
 - 后台串口 monitor。
@@ -318,6 +338,8 @@ python -m pytest
 - 硬件原始资料放入 `hardwork/raw/`，工具只写 `hardwork/processed/` 和 `hardwork/index/`。
 - 项目稳定事实写入 `memory` 时必须带 `source` 和 `confidence`。
 - 项目环境使用 conda 虚拟环境 `esp-mcp-toolchain`，不在项目根目录创建 `.venv`，也不直接修改全局 Python 环境。
+- 新增功能必须先在 `test` 分支补齐或更新测试，再进入主项目开发流。
+- 功能合入前必须运行 `python -m pytest` 全量测试；未通过时不得合入主分支。
 - 每次代码或文档变更后，都要更新 README 中的开发进程并推送到 GitHub。
 - 提交信息要写明当次提交完成的工作和修改内容。
 - 提交前运行 `python -m pytest`。
@@ -331,3 +353,4 @@ python -m pytest
 - `docs/06-memory-module.md`
 - `docs/07-database-design.md`
 - `docs/10-development-roadmap.md`
+- `docs/11-development-rules.md`
