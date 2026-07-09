@@ -2,7 +2,44 @@
   "name": "esp-mcp-toolchain",
   "version": "0.1.0",
   "description": "A generic stdio MCP toolchain for ESP development.",
+  "author": {
+    "name": "tjing8609-cyber",
+    "email": "tjing8609-cyber@example.com",
+    "url": "https://github.com/tjing8609-cyber"
+  },
+  "homepage": "https://github.com/tjing8609-cyber/esp-mcp-toolchain",
+  "repository": "https://github.com/tjing8609-cyber/esp-mcp-toolchain",
+  "license": "MIT",
+  "keywords": [
+    "esp32",
+    "mcp",
+    "codex",
+    "micropython",
+    "esp-idf",
+    "serial"
+  ],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json"
+  "apps": "./.app.json",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "ESP MCP Toolchain",
+    "shortDescription": "Inspect ESP ports, logs, hardware context, and project memory.",
+    "longDescription": "Use a local stdio MCP server to expose ESP development tools, resources, prompts, hardware context, logs, and project memory to Codex. High-risk actions remain gated by explicit confirmation.",
+    "developerName": "tjing8609-cyber",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/tjing8609-cyber/esp-mcp-toolchain",
+    "privacyPolicyURL": "https://github.com/tjing8609-cyber/esp-mcp-toolchain",
+    "termsOfServiceURL": "https://github.com/tjing8609-cyber/esp-mcp-toolchain",
+    "defaultPrompt": [
+      "List ESP MCP tools and read the hardware context.",
+      "Check the selected ESP serial port and latest logs.",
+      "Search project memory before debugging an ESP issue."
+    ],
+    "brandColor": "#2563EB",
+    "screenshots": []
+  }
 }
-

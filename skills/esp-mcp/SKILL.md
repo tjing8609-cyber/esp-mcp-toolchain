@@ -1,6 +1,6 @@
 ---
 name: esp-mcp
-description: Use the local ESP MCP toolchain for serial ports, logs, hardwork context, project memory, and safe ESP development workflows.
+description: Use the local ESP MCP toolchain plugin for Codex-visible MCP tools, serial ports, logs, hardwork context, project memory, and safe ESP development workflows.
 ---
 
 # ESP MCP Skill
@@ -22,4 +22,3 @@ Use this skill when working with the ESP MCP toolchain in this repository.
 3. Run build or upload only through declared tools.
 4. Capture serial logs.
 5. Parse errors and store stable learnings in project memory.
-

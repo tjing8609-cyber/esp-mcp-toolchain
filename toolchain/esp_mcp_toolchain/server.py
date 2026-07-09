@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import wraps
+import inspect
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -167,6 +169,18 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
 }
 
 
+def normalize_tool_result(name: str, result: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(result)
+    normalized.setdefault("tool", name)
+    normalized.setdefault("tool_name", name)
+    normalized.setdefault("tools名称", name)
+    normalized.setdefault("implemented", normalized.get("error_kind") != "not_implemented")
+    normalized.setdefault("data", {})
+    normalized.setdefault("message", "")
+    normalized.setdefault("suggested_next_actions", [])
+    return normalized
+
+
 def list_tool_specs() -> list[dict[str, Any]]:
     return [spec.to_mcp() for spec, _func in TOOL_REGISTRY.values()]
 
@@ -176,11 +190,11 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         return execution_error("unknown_tool", f"Unknown tool: {name}", recoverable=False)
     _spec, func = TOOL_REGISTRY[name]
     try:
-        return func(**(arguments or {}))
+        return normalize_tool_result(name, func(**(arguments or {})))
     except TypeError as exc:
-        return execution_error("invalid_arguments", str(exc), tool=name, recoverable=True)
+        return normalize_tool_result(name, execution_error("invalid_arguments", str(exc), tool=name, recoverable=True))
     except Exception as exc:  # pragma: no cover - last-resort tool boundary
-        return execution_error("tool_exception", str(exc), tool=name, recoverable=True)
+        return normalize_tool_result(name, execution_error("tool_exception", str(exc), tool=name, recoverable=True))
 
 
 def _resource_text(uri: str) -> str:
@@ -207,7 +221,15 @@ def _safe_function_name(prefix: str, value: str) -> str:
 
 def register_tools(mcp: FastMCP) -> None:
     for name, (spec, func) in TOOL_REGISTRY.items():
-        mcp.tool(name=name, description=spec.description)(func)
+        def make_tool(tool_name: str, tool_func: ToolFunc) -> ToolFunc:
+            @wraps(tool_func)
+            def wrapper(*args: Any, **kwargs: Any) -> dict[str, Any]:
+                return normalize_tool_result(tool_name, tool_func(*args, **kwargs))
+
+            wrapper.__signature__ = inspect.signature(tool_func)  # type: ignore[attr-defined]
+            return wrapper
+
+        mcp.tool(name=name, description=spec.description)(make_tool(name, func))
 
 
 def register_resources(mcp: FastMCP) -> None:

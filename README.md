@@ -146,7 +146,7 @@ esp-mcp-toolchain/
 - `prompts/get`
 - `shutdown`
 
-当前状态：已改用官方 MCP Python SDK 的 `FastMCP` 和 stdio transport。入口仍为 `python toolchain/mcp_server.py`，协议解析、初始化、能力协商、tools/resources/prompts 路由由 SDK 接管。
+当前状态：已改用官方 MCP Python SDK 的 `FastMCP` 和 stdio transport。入口仍为 `python toolchain/mcp_server.py`，协议解析、初始化、能力协商、tools/resources/prompts 路由由 SDK 接管。Codex 插件 manifest 已补齐展示元数据，并通过个人 marketplace 加载到本机 Codex 插件目录。
 
 ### 第 3 阶段：基础 ESP 调试闭环
 
@@ -170,7 +170,7 @@ MicroPython 方向：
 - `esp_serial_capture`
 - `esp_error_parse_log`
 
-当前状态：相关工具接口已注册，后端实现仍是占位，暂不执行真实编译、烧录、文件传输或复位动作。
+当前状态：相关工具接口已注册，后端实现仍是占位，暂不执行真实编译、烧录、文件传输或复位动作。占位工具可以被 MCP 调用，并返回 `tool_name`、`tools名称`、`implemented: false` 等字段，便于 Codex 识别已命中的工具。
 
 ### 第 4 阶段：hardwork 硬件资料上下文
 
@@ -234,6 +234,11 @@ MicroPython 方向：
 - memory JSONL 存储和 audit 基础实现。
 - SQLite schema 初稿。
 - Codex skill 文件和示例工作流。
+- Codex 插件 manifest 补齐 `name`、`version`、`description`、`author`、`homepage`、`repository`、`license`、`keywords`、`skills`、`apps`、`mcpServers` 和 `interface`。`hooks.json` 已创建；`hooks` 未写入 `plugin.json`，因为当前插件验证器会拒绝该字段，优先保证插件可见和可验证。
+- `.mcp.json` 改为 Codex 插件标准的 `mcpServers` 包裹结构。
+- MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
+- 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`。
+- 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件已复制到 `C:\Users\16224\.codex\plugins\esp-mcp-toolchain`。
 - 初始测试集。
 
 最近一次本地验证：
@@ -242,14 +247,16 @@ MicroPython 方向：
 conda 环境：esp-mcp-toolchain
 Python：3.12.13
 官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
-MCP 烟测结果：30 tools / 8 resources / 4 prompts
+MCP 烟测结果：30 tools / 10 resources / 4 prompts
+MCP tools/call 烟测：`esp_project_build` 返回 `tool_name=esp_project_build`、`tools名称=esp_project_build`、`implemented=false`
+插件验证：源码目录和个人插件目录均通过本地 plugin validator
 python -m pytest
 ```
 
 测试结果：
 
 ```text
-12 passed
+14 passed
 ```
 
 暂未完成：

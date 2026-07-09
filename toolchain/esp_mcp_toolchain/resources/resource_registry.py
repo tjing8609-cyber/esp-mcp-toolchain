@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from ..config import get_selected_port
+from ..paths import project_root
 from ..tools.hardwork_tools import hardwork_get
 from ..tools.log_tools import esp_logs_latest
 from ..tools.memory_tools import memory_search
@@ -17,6 +18,8 @@ RESOURCES = [
     {"uri": "esp://hardwork/gpio-map", "name": "GPIO map", "mimeType": "text/markdown"},
     {"uri": "esp://hardwork/serial-interface", "name": "Serial interface", "mimeType": "text/markdown"},
     {"uri": "esp://memory/recent", "name": "Recent memory", "mimeType": "application/json"},
+    {"uri": "esp://tools/directory", "name": "Tools directory", "mimeType": "application/json"},
+    {"uri": "esp://tools/registry", "name": "Registered tools", "mimeType": "application/json"},
 ]
 
 
@@ -26,6 +29,25 @@ def list_resources() -> list[dict]:
 
 def text_result(uri: str, text: str, mime_type: str = "text/plain") -> dict:
     return {"contents": [{"uri": uri, "mimeType": mime_type, "text": text}]}
+
+
+def tools_directory_manifest() -> dict:
+    tools_dir = project_root() / "toolchain" / "esp_mcp_toolchain" / "tools"
+    files = []
+    for path in sorted(tools_dir.glob("*.py")):
+        if path.name == "__init__.py":
+            continue
+        files.append({"name": path.name, "path": str(path.relative_to(project_root())).replace("\\", "/")})
+    return {"ok": True, "tools_dir": str(tools_dir.relative_to(project_root())).replace("\\", "/"), "files": files}
+
+
+def registered_tools_manifest() -> dict:
+    from ..server import TOOL_REGISTRY
+
+    tools = []
+    for name, (spec, _func) in sorted(TOOL_REGISTRY.items()):
+        tools.append({"name": name, "description": spec.description, "inputSchema": spec.input_schema})
+    return {"ok": True, "count": len(tools), "tools": tools}
 
 
 def read_resource(uri: str) -> dict:
@@ -47,5 +69,8 @@ def read_resource(uri: str) -> dict:
         return text_result(uri, json.dumps({"ok": True, "phase": "initialization"}, ensure_ascii=False), "application/json")
     if uri == "esp://hardwork/index":
         return text_result(uri, json.dumps(hardwork_get("index"), ensure_ascii=False), "application/json")
+    if uri == "esp://tools/directory":
+        return text_result(uri, json.dumps(tools_directory_manifest(), ensure_ascii=False), "application/json")
+    if uri == "esp://tools/registry":
+        return text_result(uri, json.dumps(registered_tools_manifest(), ensure_ascii=False), "application/json")
     return text_result(uri, json.dumps({"ok": False, "error_kind": "resource_not_found"}, ensure_ascii=False), "application/json")
-

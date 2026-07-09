@@ -26,10 +26,15 @@ def execution_error(
 
 
 def not_implemented(tool: str) -> dict[str, Any]:
-    return execution_error(
-        "not_implemented",
-        f"{tool} is declared but not implemented in the current phase.",
-        tool=tool,
-        suggested_next_actions=["Implement the backend adapter", "Add a focused test", "Re-run the CLI command"],
-    )
-
+    return {
+        "ok": True,
+        "tool": tool,
+        "tool_name": tool,
+        "tools名称": tool,
+        "implemented": False,
+        "error_kind": "not_implemented",
+        "recoverable": True,
+        "message": f"{tool} is declared and callable, but its backend is not implemented in the current phase.",
+        "data": {"tool_name": tool},
+        "suggested_next_actions": ["Implement the backend adapter", "Add a focused test", "Re-run the CLI command"],
+    }
