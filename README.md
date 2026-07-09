@@ -238,7 +238,7 @@ MicroPython 方向：
 - `.mcp.json` 改为 Codex 插件标准的 `mcpServers` 包裹结构。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`。
-- 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件已复制到 `C:\Users\16224\.codex\plugins\esp-mcp-toolchain`。
+- 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源已复制到 `C:\Users\16224\plugins\esp-mcp-toolchain`，并通过 `codex plugin add esp-mcp-toolchain@personal-plugins` 安装启用。Codex 安装缓存位于 `C:\Users\16224\.codex\plugins\cache\personal-plugins\esp-mcp-toolchain\0.1.0`。
 - 初始测试集。
 
 最近一次本地验证：
@@ -250,6 +250,7 @@ Python：3.12.13
 MCP 烟测结果：30 tools / 10 resources / 4 prompts
 MCP tools/call 烟测：`esp_project_build` 返回 `tool_name=esp_project_build`、`tools名称=esp_project_build`、`implemented=false`
 插件验证：源码目录和个人插件目录均通过本地 plugin validator
+Codex 插件安装状态：`esp-mcp-toolchain@personal-plugins` 为 `installed, enabled`
 python -m pytest
 ```
 
