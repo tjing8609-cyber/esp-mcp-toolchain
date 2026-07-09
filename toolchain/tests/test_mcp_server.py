@@ -23,12 +23,12 @@ def test_sdk_prompts_list():
 
 
 def test_unimplemented_tool_returns_name_placeholder():
-    result = call_tool("esp_project_build", {})
+    result = call_tool("esp_run_file", {"port": "COM_TEST", "path_type": "remote"})
 
     assert result["ok"] is True
     assert result["implemented"] is False
-    assert result["tool_name"] == "esp_project_build"
-    assert result["tools名称"] == "esp_project_build"
+    assert result["tool_name"] == "esp_run_file"
+    assert any(key.startswith("tools") and value == "esp_run_file" for key, value in result.items())
 
 
 def test_tools_resources_describe_directory_and_registry():

@@ -170,7 +170,7 @@ MicroPython 方向：
 - `esp_serial_capture`
 - `esp_error_parse_log`
 
-当前状态：相关工具接口已注册，后端实现仍是占位，暂不执行真实编译、烧录、文件传输或复位动作。占位工具可以被 MCP 调用，并返回 `tool_name`、`tools名称`、`implemented: false` 等字段，便于 Codex 识别已命中的工具。
+当前状态：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成真实板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload`、`esp_file_download` 和 `esp_reset` 已通过 MicroPython raw REPL 在 `COM3` 上完成烟测。仍保持占位或待增强的部分包括 `mpremote` 后端、远程文件运行和后台串口 monitor。
 
 ### 第 4 阶段：hardwork 硬件资料上下文
 
@@ -237,7 +237,7 @@ MicroPython 方向：
 - Codex 插件 manifest 补齐 `name`、`version`、`description`、`author`、`homepage`、`repository`、`license`、`keywords`、`skills`、`apps`、`mcpServers` 和 `interface`。`hooks.json` 已创建；`hooks` 未写入 `plugin.json`，因为当前插件验证器会拒绝该字段，优先保证插件可见和可验证。
 - `.mcp.json` 改为 Codex 插件标准的 `mcpServers` 包裹结构。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
-- 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`。
+- 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
 - 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源已复制到 `C:\Users\16224\plugins\esp-mcp-toolchain`，并通过 `codex plugin add esp-mcp-toolchain@personal-plugins` 安装启用。Codex 安装缓存位于 `C:\Users\16224\.codex\plugins\cache\personal-plugins\esp-mcp-toolchain\0.1.0`。
 - 初始测试集。
 
@@ -248,27 +248,55 @@ conda 环境：esp-mcp-toolchain
 Python：3.12.13
 官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
 MCP 烟测结果：30 tools / 10 resources / 4 prompts
-MCP tools/call 烟测：`esp_project_build` 返回 `tool_name=esp_project_build`、`tools名称=esp_project_build`、`implemented=false`
+MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
 插件验证：源码目录和个人插件目录均通过本地 plugin validator
-Codex 插件安装状态：`esp-mcp-toolchain@personal-plugins` 为 `installed, enabled`
+Codex 插件安装状态：插件源已同步到 `C:\Users\16224\plugins\esp-mcp-toolchain`；当前进程执行 `codex plugin add` 受 WindowsApps 权限限制
 python -m pytest
 ```
 
 测试结果：
 
 ```text
-14 passed
+31 passed
 ```
+
+2026-07-09 wrapper update:
+
+- Implemented `esp_exec_code` through MicroPython raw REPL and smoke-tested it on `COM3`.
+- Implemented raw REPL MicroPython file operations for `esp_file_list`, `esp_file_read`,
+  `esp_file_upload`, and `esp_file_download`; real-board smoke tests passed with a small probe file.
+- Implemented `esp_reset` soft reset through MicroPython Ctrl-C/Ctrl-D; real-board smoke test
+  captured `MPY: soft reboot` and the MicroPython banner.
+- Implemented ESP-IDF `esp_project_build` using the local ESP-IDF 5.2.1 environment; the
+  `examples/esp_idf_key_led_buzzer` project builds successfully in the ASCII workspace path.
+- Added explicit confirmation gates for high-risk tools: `esp_flash_firmware`, `esp_project_clean`,
+  `esp_file_delete`, and `esp_erase_flash`. Non-confirmed smoke tests verify these tools refuse to
+  run destructive actions.
+- Current real board facts used in tests: `COM3` enumerates as `USB-Enhanced-SERIAL CH9102`,
+  MicroPython v1.18 is restored and booting, GPIO32 LED is active-low, GPIO25 buzzer works with PWM,
+  and GPIO0 is the BOOT button.
+
+2026-07-09 log query and high-risk validation:
+
+- Fixed `esp_logs_query` so multi-word queries are tokenized and matched across event fields.
+  Example: `low_risk_probe COM3 Captured` now matches an event whose `message` contains
+  `Captured ... COM3` and whose `data.raw_path` contains `low_risk_probe`.
+- Verified the fix in the current Codex plugin cache against the real cached log
+  `serial_20260709_162348_dc42db42`.
+- High-risk tool tests completed with MicroPython backup available:
+  `esp_file_delete(confirm=True)`, `esp_project_clean(confirm=True)`,
+  `esp_flash_firmware(confirm=True)`, and `esp_erase_flash(confirm=True)`.
+- After `esp_erase_flash`, restored `data/artifacts/flash/micropython_backup_20260709_151815.bin`
+  and verified MicroPython raw REPL with `restore_probe`.
 
 暂未完成：
 
-- ESP-IDF `idf.py` 后端封装。
-- `esptool.py` 烧录和擦除封装。
-- `mpremote` 文件传输封装。
-- raw REPL 执行封装。
+- `mpremote` 文件传输后端封装；当前文件 list/read/upload/download 已先通过 raw REPL 跑通。
+- `esp_run_file` 的远程文件运行分支；本地文件通过 raw REPL 执行已可用。
 - 后台串口 monitor。
 - SQLite 仓储层落地。
-- 针对真实 ESP 开发板的端到端验证。
+- `esp_logs_query` 已支持多词匹配，后续还可以继续扩展时间范围、run_id 前缀、字段过滤等查询能力。
+- 更多板卡和更多固件项目的端到端验证；当前真实验证覆盖 `COM3` 上的 ESP32-D0WD-V3 板、MicroPython 备份/恢复、ESP-IDF 示例 build/flash、整片擦除后恢复。
 
 ## 协作约定
 

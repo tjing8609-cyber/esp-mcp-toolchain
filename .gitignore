@@ -30,7 +30,12 @@ data/artifacts/flash/*
 data/artifacts/exports/*
 !data/artifacts/exports/.gitkeep
 
+examples/esp_idf_key_led_buzzer/build/
+examples/esp_idf_key_led_buzzer/sdkconfig
+examples/esp_idf_key_led_buzzer/sdkconfig.old
+examples/esp_idf_key_led_buzzer/dependencies.lock
+examples/esp_idf_key_led_buzzer/managed_components/
+
 *.log
 .DS_Store
 Thumbs.db
-

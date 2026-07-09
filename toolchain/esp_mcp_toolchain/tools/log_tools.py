@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 from uuid import uuid4
 
@@ -72,15 +73,21 @@ def esp_logs_get(run_id: str, tail: int = 80) -> dict:
 
 def esp_logs_query(query: str, limit: int = 20, level: str | None = None) -> dict:
     ensure_runtime_dirs()
+    try:
+        terms = shlex.split(query)
+    except ValueError:
+        terms = query.split()
+    if not terms and query.strip():
+        terms = [query.strip()]
+    normalized_terms = [term.lower() for term in terms]
     matches: list[dict] = []
     for path in sorted((logs_dir() / "sessions").glob("*.jsonl"), reverse=True):
         for event in reversed(read_jsonl(path)):
             if level and event.get("level") != level:
                 continue
-            haystack = json.dumps(event, ensure_ascii=False)
-            if query.lower() in haystack.lower():
+            haystack = json.dumps(event, ensure_ascii=False).lower()
+            if all(term in haystack for term in normalized_terms):
                 matches.append(event)
                 if len(matches) >= limit:
-                    return {"ok": True, "matches": matches}
-    return {"ok": True, "matches": matches}
-
+                    return {"ok": True, "query": query, "terms": terms, "matches": matches}
+    return {"ok": True, "query": query, "terms": terms, "matches": matches}

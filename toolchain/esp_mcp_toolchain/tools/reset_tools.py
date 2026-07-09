@@ -1,8 +1,67 @@
 from __future__ import annotations
 
-from ..errors import not_implemented
+import time
+
+from ..backends.pyserial_backend import get_serial_module
+from ..config import get_selected_port
+from ..errors import execution_error, not_implemented
 
 
-def esp_reset(port: str, mode: str = "soft") -> dict:
-    return not_implemented("esp_reset")
+def esp_reset(port: str | None = None, mode: str = "soft") -> dict:
+    if mode != "soft":
+        return not_implemented("esp_reset")
 
+    serial_mod = get_serial_module()
+    if serial_mod is None:
+        return execution_error(
+            "pyserial_missing",
+            "pyserial is not installed.",
+            tool="esp_reset",
+            suggested_next_actions=["Install requirements.txt", "Run python -m pip install pyserial"],
+        )
+
+    selected_port = port or get_selected_port()
+    if not selected_port:
+        return execution_error(
+            "serial_port_not_selected",
+            "No serial port was provided or selected.",
+            tool="esp_reset",
+            suggested_next_actions=["Run esp_port_list", "Run esp_port_select with the confirmed board port"],
+        )
+
+    chunks: list[str] = []
+    try:
+        with serial_mod.Serial(selected_port, baudrate=115200, timeout=0.1) as ser:
+            ser.dtr = False
+            ser.rts = False
+            ser.write(b"\x03")
+            time.sleep(0.1)
+            ser.write(b"\x04")
+            end_at = time.monotonic() + 2.0
+            while time.monotonic() < end_at:
+                data = ser.read(4096)
+                if data:
+                    chunks.append(data.decode("utf-8", errors="replace"))
+    except Exception as exc:
+        return execution_error(
+            "reset_failed",
+            str(exc),
+            tool="esp_reset",
+            port=selected_port,
+            mode=mode,
+            suggested_next_actions=["Check port name", "Close other serial monitors", "Run esp_port_status"],
+        )
+
+    text = "".join(chunks)
+    return {
+        "ok": True,
+        "tool": "esp_reset",
+        "tool_name": "esp_reset",
+        "tools鍚嶇О": "esp_reset",
+        "implemented": True,
+        "port": selected_port,
+        "mode": mode,
+        "text": text,
+        "message": "Sent MicroPython soft reset over serial.",
+        "data": {"text": text},
+    }
