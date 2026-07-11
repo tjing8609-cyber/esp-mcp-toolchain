@@ -11,6 +11,7 @@ esp://hardwork/index
 esp://hardwork/gpio-map
 esp://hardwork/serial-interface
 esp://hardwork/attachments
+esp://hardwork/mapping
 esp://memory/recent
 ```
 

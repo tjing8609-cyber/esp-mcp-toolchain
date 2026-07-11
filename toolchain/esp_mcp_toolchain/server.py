@@ -202,6 +202,23 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
         ),
         hardwork_tools.hardwork_commit_mapping,
     ),
+    "hardwork_mapping_patch": (
+        ToolSpec(
+            "hardwork_mapping_patch",
+            "Incrementally persist hardware facts discovered during later document review or real-board operations.",
+            {
+                "type": "object",
+                "properties": {
+                    "gpio_entries": {"type": "array", "items": {"type": "object"}},
+                    "serial_interfaces": {"type": "array", "items": {"type": "object"}},
+                    "source_attachment_ids": {"type": "array", "items": {"type": "string"}},
+                    "unresolved_items": {"type": "array", "items": {"type": "string"}},
+                    "observation_source": {"type": "string"},
+                },
+            },
+        ),
+        hardwork_tools.hardwork_mapping_patch,
+    ),
     "memory_write": (
         ToolSpec("memory_write", "Write a stable project-scoped memory item."),
         memory_tools.memory_write,

@@ -7,6 +7,7 @@ from ..paths import project_root
 from ..project_context import get_project_context, project_context_status
 from ..hardwork.attachment_store import load_attachment_manifest
 from ..hardwork.review_state import load_review_state
+from ..hardwork.mapping_writer import load_mapping
 from ..tools.hardwork_tools import hardwork_get
 from ..tools.log_tools import esp_logs_latest
 from ..tools.memory_tools import memory_search
@@ -21,6 +22,7 @@ RESOURCES = [
     {"uri": "esp://hardwork/gpio-map", "name": "GPIO map", "mimeType": "text/markdown"},
     {"uri": "esp://hardwork/serial-interface", "name": "Serial interface", "mimeType": "text/markdown"},
     {"uri": "esp://hardwork/attachments", "name": "Hardware attachments", "mimeType": "application/json"},
+    {"uri": "esp://hardwork/mapping", "name": "Structured hardware mapping", "mimeType": "application/json"},
     {"uri": "esp://memory/recent", "name": "Recent memory", "mimeType": "application/json"},
     {"uri": "esp://tools/directory", "name": "Tools directory", "mimeType": "application/json"},
     {"uri": "esp://tools/registry", "name": "Registered tools", "mimeType": "application/json"},
@@ -90,6 +92,8 @@ def read_resource(uri: str) -> dict:
         return text_result(uri, json.dumps(status, ensure_ascii=False), "application/json")
     if uri == "esp://hardwork/attachments":
         return text_result(uri, json.dumps(load_attachment_manifest(), ensure_ascii=False), "application/json")
+    if uri == "esp://hardwork/mapping":
+        return text_result(uri, json.dumps(load_mapping() or {}, ensure_ascii=False), "application/json")
     if uri == "esp://hardwork/index":
         return text_result(uri, json.dumps(hardwork_get("index"), ensure_ascii=False), "application/json")
     if uri == "esp://tools/directory":

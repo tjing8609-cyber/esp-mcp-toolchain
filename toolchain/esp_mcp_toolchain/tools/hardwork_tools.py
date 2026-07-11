@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ..hardwork.hardwork_store import get_item, list_items, search_items, set_item
 from ..hardwork.attachment_store import AttachmentError, load_attachment_manifest, store_attachment
-from ..hardwork.mapping_writer import commit_mapping
+from ..hardwork.mapping_writer import commit_mapping, patch_mapping
 from ..errors import execution_error
 
 
@@ -63,3 +63,25 @@ def hardwork_commit_mapping(
     except (TypeError, ValueError) as exc:
         return execution_error("invalid_hardware_mapping", str(exc), tool="hardwork_commit_mapping")
     return {"ok": True, **result, "message": "Hardware mapping committed and hardware tools unlocked."}
+
+
+def hardwork_mapping_patch(
+    gpio_entries: list[dict] | None = None,
+    serial_interfaces: list[dict] | None = None,
+    source_attachment_ids: list[str] | None = None,
+    unresolved_items: list[str] | None = None,
+    observation_source: str = "",
+) -> dict:
+    try:
+        result = patch_mapping(
+            gpio_entries=gpio_entries,
+            serial_interfaces=serial_interfaces,
+            source_attachment_ids=source_attachment_ids,
+            unresolved_items=unresolved_items,
+            observation_source=observation_source,
+        )
+    except (TypeError, ValueError) as exc:
+        return execution_error("invalid_hardware_mapping_patch", str(exc), tool="hardwork_mapping_patch")
+    if not result.get("ok"):
+        return result
+    return {**result, "message": "Hardware mapping updated incrementally without replacing unrelated facts."}

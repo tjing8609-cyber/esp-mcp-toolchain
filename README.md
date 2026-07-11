@@ -213,6 +213,9 @@ MicroPython 方向：
 - 第一次上传硬件资料后将当前工程标记为 `hardware_review_status=pending`，工具返回 `review_required=true`、附件路径、资料资源标识和必须完成的映射字段。
 - 更新 MCP server instructions 和硬件审查 prompt，要求模型读取附件后调用 `hardwork_commit_mapping`。MCP 不能控制模型内部思考，但服务端状态机必须强制执行“上传 -> 阅读 -> 提交映射 -> 解锁硬件工具”的调用顺序。
 - 新增 `hardwork_commit_mapping`：接收模型从附件中提取的结构化 GPIO、串口、板载外设、启动限制、复用功能、来源位置、置信度和待确认项。
+- 首次映射只要求完成安全开发所需的基础初始化，不要求对大型原理图、PCB、BOM 和 datasheet 做一次性全量建档。
+- 新增 `hardwork_mapping_patch`：模型在后续问答、查图或实板操作中发现新的稳定硬件事实后，必须在任务结束前增量回写；已有的无关映射不得被局部更新覆盖。
+- GPIO 增量记录按 `gpio + function` 合并，串口按 `interface` 合并；相同事实可以补充来源或升级证据，关键字段冲突必须返回冲突列表并原子拒绝写入。
 - 自动生成或更新 `gpio_map.md`、`serial_interface.md` 和 `hardware_mapping.json`，并同步 hardwork index/manifest。每条结论必须区分“原图确认”“实板测试确认”“模型推断”和“待确认”，不得把推断写成已确认事实。
 - 增加硬件上下文门禁：映射未提交时，串口选择与串口操作、GPIO/板载外设操作、烧录、擦除和其他依赖芯片或 flash 参数的工具返回 `hardware_context_required`；hardwork 读取、附件读取和映射提交保持可用。
 - SQLite 仓储层落地时，项目数据表必须包含 `project_id`，仓储查询强制按当前项目过滤，禁止无项目范围的全表读取。
@@ -234,7 +237,7 @@ MicroPython 方向：
 - 覆盖旧数据迁移 dry-run、显式确认、冲突、回滚记录、工程改名重绑定、导入导出校验和跨项目合并预览。
 - FastMCP 工具 schema、资源、prompt 和 stdio 握手必须通过测试；最终执行 `python -m pytest` 全量测试，通过后才允许合入主分支或更新个人插件缓存。
 
-当前状态：项目上下文、项目级目录隔离、对话附件归档、首次上传审查状态、GPIO/串口映射生成和硬件工具门禁已经实现。Codex 必须先调用 `project_context_select(workspace_root)`；插件启动目录不能替代用户工程目录。hardwork、memory、日志、产物、SQLite 路径和串口配置均按 `project_id` 隔离。旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移校验工具仍属于后续阶段。
+当前状态：项目上下文、项目级目录隔离、对话附件归档、首次基础映射、GPIO/串口增量回写和硬件工具门禁已经实现。Codex 必须先调用 `project_context_select(workspace_root)`；插件启动目录不能替代用户工程目录。hardwork、memory、日志、产物、SQLite 路径和串口配置均按 `project_id` 隔离。后续任务发现的新硬件事实通过 `hardwork_mapping_patch` 合并，旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移校验工具仍属于后续阶段。
 
 ### 第 5 阶段：项目内 memory
 
@@ -369,6 +372,14 @@ python -m pytest
 - 后续新增硬件附件只标记建议复核，不会错误清空已经确认的映射状态。
 - `python -m pytest` 全量测试通过，共 `47 passed`；官方 MCP 客户端 stdio 烟测完成 initialize、36 个工具枚举、项目上下文选择和状态读取。
 
+### 2026-07-11 22:37 - 增加硬件映射增量回写
+
+- 保留首次上传后的有限基础初始化，不要求大型硬件资料一次性全量建档。
+- 新增 `hardwork_mapping_patch` 和 `esp://hardwork/mapping`；后续问答、原理图复查或实板操作发现新事实时，模型必须先读取已有结构化映射，再增量回写缺失事实或更强证据。
+- GPIO 以 `gpio + function`、串口以 `interface` 为稳定键合并，局部补充 LED、按键或蜂鸣器时保留已有 UART 等无关事实。
+- 支持将 `schematic_confirmed` 升级为 `board_test_confirmed`；关键字段冲突返回 `hardware_mapping_conflict`，整次更新不写盘。
+- `python -m pytest` 全量验证通过，共 `50 passed`。
+
 暂未完成：
 
 - 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。
@@ -387,6 +398,7 @@ python -m pytest
 - 项目级数据必须绑定明确的 `workspace_root` 和 `project_id`；缺少项目上下文时不得写入共享目录，也不得猜测项目归属。
 - Codex 对话附件由模型把临时本地路径传给 `hardwork_upload_attachment`，工具负责校验并复制到当前项目，用户不需要手动整理插件目录。
 - 硬件资料首次上传后，必须完成附件阅读和 GPIO/串口映射提交，才能解除硬件相关工具门禁。
+- 后续任务从资料或实板操作中获得新的稳定硬件事实时，必须调用 `hardwork_mapping_patch` 增量回写；不能只在回答中展示而不更新映射。
 - 工程迁移、合并、覆盖和重绑定属于高风险数据操作，默认只做预览，实际执行必须保留显式确认和审计记录。
 - 项目稳定事实写入 `memory` 时必须带 `source` 和 `confidence`。
 - 项目环境使用 conda 虚拟环境 `esp-mcp-toolchain`，不在项目根目录创建 `.venv`，也不直接修改全局 Python 环境。
