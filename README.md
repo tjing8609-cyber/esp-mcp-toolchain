@@ -380,6 +380,12 @@ python -m pytest
 - 支持将 `schematic_confirmed` 升级为 `board_test_confirmed`；关键字段冲突返回 `hardware_mapping_conflict`，整次更新不写盘。
 - `python -m pytest` 全量验证通过，共 `50 passed`。
 
+### 2026-07-11 23:17 - 修复项目上下文跨 MCP 调用丢失
+
+- 实机工具链验证发现 `project_context_select` 在单次调用中成功，但后续 MCP 请求因异步上下文隔离重新返回 `project_context_required`。
+- 将活动项目选择从调用级 `ContextVar` 调整为带锁的 MCP 服务进程级状态，使“选择工程 -> 读取 hardwork -> 操作端口”的连续调用保持同一 `project_id`。
+- 项目数据仍按 `project_id` 分目录隔离；当前版本要求每个工作流开始时重新选择并核验工程。同一 MCP 服务进程并发操作多个工作区尚不支持，后续需要为所有项目级工具增加显式 `project_id` 调用参数。
+
 暂未完成：
 
 - 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。

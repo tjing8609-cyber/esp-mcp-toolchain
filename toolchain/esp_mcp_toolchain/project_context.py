@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from contextvars import ContextVar
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 from typing import Any
+from threading import RLock
 
 from .utils.time_utils import now_iso
 
@@ -15,7 +15,8 @@ class ProjectContextError(RuntimeError):
     pass
 
 
-_ACTIVE_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar("esp_mcp_project_context", default=None)
+_ACTIVE_CONTEXT: dict[str, Any] | None = None
+_CONTEXT_LOCK = RLock()
 
 
 def _slug(value: str) -> str:
@@ -46,7 +47,27 @@ def storage_root() -> Path:
     return Path(__file__).resolve().parents[2] / "data" / "projects"
 
 
+def active_context_path() -> Path:
+    return storage_root() / ".active" / "project.json"
+
+
+def _write_active_context(context: dict[str, Any]) -> None:
+    path = active_context_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(context, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def _read_active_context() -> dict[str, Any] | None:
+    path = active_context_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def select_project_context(workspace_root: str | Path) -> dict[str, Any]:
+    global _ACTIVE_CONTEXT
     root = normalize_workspace_root(workspace_root)
     project_id = project_id_for(root)
     project_dir = storage_root() / project_id
@@ -63,16 +84,23 @@ def select_project_context(workspace_root: str | Path) -> dict[str, Any]:
     }
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     context = {**metadata, "project_dir": str(project_dir)}
-    _ACTIVE_CONTEXT.set(context)
+    with _CONTEXT_LOCK:
+        _ACTIVE_CONTEXT = context
+        _write_active_context(context)
     return context
 
 
 def clear_project_context() -> None:
-    _ACTIVE_CONTEXT.set(None)
+    global _ACTIVE_CONTEXT
+    with _CONTEXT_LOCK:
+        _ACTIVE_CONTEXT = None
+        active_context_path().unlink(missing_ok=True)
 
 
 def get_project_context(*, required: bool = True) -> dict[str, Any] | None:
-    context = _ACTIVE_CONTEXT.get()
+    with _CONTEXT_LOCK:
+        persisted = _read_active_context()
+        context = persisted or (dict(_ACTIVE_CONTEXT) if _ACTIVE_CONTEXT is not None else None)
     if context is None:
         configured = os.environ.get("ESP_MCP_WORKSPACE_ROOT")
         if configured:
