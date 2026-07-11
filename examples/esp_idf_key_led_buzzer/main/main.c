@@ -4,7 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define BOOT_GPIO GPIO_NUM_0
+#define KEY1_GPIO GPIO_NUM_34
 #define LED_GPIO GPIO_NUM_32
 #define BUZZER_GPIO GPIO_NUM_25
 
@@ -27,15 +27,15 @@ static void buzzer_set(bool on)
     ESP_ERROR_CHECK(ledc_update_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL));
 }
 
-static bool boot_is_pressed(void)
+static bool key1_is_pressed(void)
 {
-    return gpio_get_level(BOOT_GPIO) == 0;
+    return gpio_get_level(KEY1_GPIO) == 0;
 }
 
-static void play_three_pulses(void)
+static void play_five_pulses(void)
 {
-    ESP_LOGI(TAG, "BOOT pressed: play three LED/buzzer pulses");
-    for (int i = 0; i < 3; ++i) {
+    ESP_LOGI(TAG, "KEY1 pressed: play five LED/buzzer pulses");
+    for (int i = 0; i < 5; ++i) {
         ESP_LOGI(TAG, "pulse %d on", i + 1);
         gpio_set_level(LED_GPIO, LED_ON_LEVEL);
         buzzer_set(true);
@@ -52,9 +52,9 @@ static void play_three_pulses(void)
 static void configure_gpio(void)
 {
     gpio_config_t key_config = {
-        .pin_bit_mask = 1ULL << BOOT_GPIO,
+        .pin_bit_mask = 1ULL << KEY1_GPIO,
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
@@ -100,25 +100,25 @@ void app_main(void)
     configure_gpio();
     configure_buzzer_pwm();
 
-    ESP_LOGI(TAG, "ready: BOOT=GPIO0 active-low, LED=GPIO32 active-low, buzzer=GPIO25 PWM");
+    ESP_LOGI(TAG, "ready: KEY1=GPIO34 active-low, LED=GPIO32 active-low, buzzer=GPIO25 PWM 2000Hz");
 
     while (true) {
-        if (!boot_is_pressed()) {
+        if (!key1_is_pressed()) {
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
         vTaskDelay(pdMS_TO_TICKS(40));
-        if (!boot_is_pressed()) {
+        if (!key1_is_pressed()) {
             continue;
         }
 
-        play_three_pulses();
+        play_five_pulses();
 
-        while (boot_is_pressed()) {
+        while (key1_is_pressed()) {
             vTaskDelay(pdMS_TO_TICKS(20));
         }
         vTaskDelay(pdMS_TO_TICKS(80));
-        ESP_LOGI(TAG, "BOOT released; ready");
+        ESP_LOGI(TAG, "KEY1 released; ready");
     }
 }

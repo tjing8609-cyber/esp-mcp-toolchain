@@ -386,6 +386,14 @@ python -m pytest
 - 将活动项目选择从调用级 `ContextVar` 调整为带锁的 MCP 服务进程级状态，使“选择工程 -> 读取 hardwork -> 操作端口”的连续调用保持同一 `project_id`。
 - 项目数据仍按 `project_id` 分目录隔离；当前版本要求每个工作流开始时重新选择并核验工程。同一 MCP 服务进程并发操作多个工作区尚不支持，后续需要为所有项目级工具增加显式 `project_id` 调用参数。
 
+### 2026-07-11 23:47 - 修复 ESP-IDF 子进程卡死并更新五次外设示例
+
+- 实际 MCP 构建测试发现 `idf.py` 子进程继承 MCP stdio 后可能长期等待，工具终止后还会遗留子进程；构建、fullclean 和 flash 共用的后端均受影响。
+- ESP-IDF 子进程改为 `stdin=DEVNULL`，超时后终止完整进程树，避免占用构建目录或串口。
+- 已配置目标为 ESP32 时只执行 `idf.py build`，不再每次重复 `set-target esp32 build`。
+- `examples/esp_idf_key_led_buzzer` 更新为 KEY1 GPIO34 触发、GPIO32 LED 低有效、GPIO25 以 2 kHz LEDC PWM 间断鸣叫，共五次并等待按键释放。
+- 修复后的后端在 ASCII 工作区真实构建成功，固件大小 `0x2ee90`，app 分区剩余 82%。
+
 暂未完成：
 
 - 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -45,6 +47,68 @@ def _build_env(idf_path: Path) -> dict[str, str]:
     return env
 
 
+def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def _run_idf_command(command: list[str], project_dir: Path, idf_path: Path, timeout_s: int) -> dict[str, Any]:
+    popen_kwargs: dict[str, Any] = {
+        "cwd": str(project_dir),
+        "env": _build_env(idf_path),
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": True,
+    }
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        popen_kwargs["start_new_session"] = True
+    process = subprocess.Popen(command, **popen_kwargs)
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        _terminate_process_tree(process)
+        stdout, stderr = process.communicate()
+        return {
+            "ok": False,
+            "error_kind": "idf_command_timeout",
+            "message": f"ESP-IDF command timed out after {timeout_s} seconds.",
+            "command": redact_command(command),
+            "stdout": stdout,
+            "stderr": stderr,
+        }
+    return {
+        "ok": process.returncode == 0,
+        "returncode": process.returncode,
+        "command": redact_command(command),
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
+def _configured_target(project_dir: Path) -> str | None:
+    sdkconfig = project_dir / "sdkconfig"
+    if not sdkconfig.exists():
+        return None
+    match = re.search(r'^CONFIG_IDF_TARGET="([^"]+)"$', sdkconfig.read_text(encoding="utf-8"), re.MULTILINE)
+    return match.group(1) if match else None
+
+
 def run_idf_build(project_dir: Path, *, target: str = "esp32", timeout_s: int = 600) -> dict[str, Any]:
     idf_path = _idf_path()
     if idf_path is None:
@@ -63,24 +127,10 @@ def run_idf_build(project_dir: Path, *, target: str = "esp32", timeout_s: int = 
             "message": f"idf.py was not found at {idf_py}.",
         }
 
-    command = [str(_idf_python()), str(idf_py), "-C", str(project_dir), "set-target", target, "build"]
+    actions = ["build"] if _configured_target(project_dir) == target else ["set-target", target, "build"]
+    command = [str(_idf_python()), str(idf_py), "-C", str(project_dir), *actions]
     try:
-        completed = subprocess.run(
-            command,
-            cwd=str(project_dir),
-            env=_build_env(idf_path),
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return {
-            "ok": False,
-            "error_kind": "build_timeout",
-            "message": f"ESP-IDF build timed out after {timeout_s} seconds.",
-            "command": redact_command(command),
-        }
+        result = _run_idf_command(command, project_dir, idf_path, timeout_s)
     except Exception as exc:
         return {
             "ok": False,
@@ -89,14 +139,8 @@ def run_idf_build(project_dir: Path, *, target: str = "esp32", timeout_s: int = 
             "command": redact_command(command),
         }
 
-    return {
-        "ok": completed.returncode == 0,
-        "returncode": completed.returncode,
-        "command": redact_command(command),
-        "stdout": completed.stdout,
-        "stderr": completed.stderr,
-        "message": "ESP-IDF build completed." if completed.returncode == 0 else "ESP-IDF build failed.",
-    }
+    result["message"] = "ESP-IDF build completed." if result.get("ok") else result.get("message", "ESP-IDF build failed.")
+    return result
 
 
 def run_idf_flash(project_dir: Path, *, port: str, baud: int = 460800, timeout_s: int = 300) -> dict[str, Any]:
@@ -119,22 +163,7 @@ def run_idf_flash(project_dir: Path, *, port: str, baud: int = 460800, timeout_s
 
     command = [str(_idf_python()), str(idf_py), "-C", str(project_dir), "-p", port, "-b", str(baud), "flash"]
     try:
-        completed = subprocess.run(
-            command,
-            cwd=str(project_dir),
-            env=_build_env(idf_path),
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return {
-            "ok": False,
-            "error_kind": "flash_timeout",
-            "message": f"ESP-IDF flash timed out after {timeout_s} seconds.",
-            "command": redact_command(command),
-        }
+        result = _run_idf_command(command, project_dir, idf_path, timeout_s)
     except Exception as exc:
         return {
             "ok": False,
@@ -143,14 +172,8 @@ def run_idf_flash(project_dir: Path, *, port: str, baud: int = 460800, timeout_s
             "command": redact_command(command),
         }
 
-    return {
-        "ok": completed.returncode == 0,
-        "returncode": completed.returncode,
-        "command": redact_command(command),
-        "stdout": completed.stdout,
-        "stderr": completed.stderr,
-        "message": "ESP-IDF flash completed." if completed.returncode == 0 else "ESP-IDF flash failed.",
-    }
+    result["message"] = "ESP-IDF flash completed." if result.get("ok") else result.get("message", "ESP-IDF flash failed.")
+    return result
 
 
 def run_idf_clean(project_dir: Path, *, mode: str = "clean", timeout_s: int = 180) -> dict[str, Any]:
@@ -173,22 +196,7 @@ def run_idf_clean(project_dir: Path, *, mode: str = "clean", timeout_s: int = 18
 
     command = [str(_idf_python()), str(idf_py), "-C", str(project_dir), mode]
     try:
-        completed = subprocess.run(
-            command,
-            cwd=str(project_dir),
-            env=_build_env(idf_path),
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return {
-            "ok": False,
-            "error_kind": "clean_timeout",
-            "message": f"ESP-IDF {mode} timed out after {timeout_s} seconds.",
-            "command": redact_command(command),
-        }
+        result = _run_idf_command(command, project_dir, idf_path, timeout_s)
     except Exception as exc:
         return {
             "ok": False,
@@ -197,11 +205,5 @@ def run_idf_clean(project_dir: Path, *, mode: str = "clean", timeout_s: int = 18
             "command": redact_command(command),
         }
 
-    return {
-        "ok": completed.returncode == 0,
-        "returncode": completed.returncode,
-        "command": redact_command(command),
-        "stdout": completed.stdout,
-        "stderr": completed.stderr,
-        "message": f"ESP-IDF {mode} completed." if completed.returncode == 0 else f"ESP-IDF {mode} failed.",
-    }
+    result["message"] = f"ESP-IDF {mode} completed." if result.get("ok") else result.get("message", f"ESP-IDF {mode} failed.")
+    return result
