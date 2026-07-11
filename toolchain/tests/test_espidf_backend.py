@@ -80,3 +80,18 @@ def test_timeout_terminates_process_tree(tmp_path, monkeypatch):
     assert terminated == [1234]
     assert result["stdout"] == "partial stdout"
 
+
+def test_windows_build_env_restores_platform_variables(tmp_path, monkeypatch):
+    if espidf_backend.os.name != "nt":
+        return
+    monkeypatch.delenv("OS", raising=False)
+    monkeypatch.delenv("SYSTEMROOT", raising=False)
+    monkeypatch.delenv("PROCESSOR_ARCHITECTURE", raising=False)
+    monkeypatch.setenv("WINDIR", r"C:\Windows")
+
+    env = espidf_backend._build_env(tmp_path)
+
+    assert env["OS"] == "Windows_NT"
+    assert env["SYSTEMROOT"] == r"C:\Windows"
+    assert env["PROCESSOR_ARCHITECTURE"] in {"AMD64", "x86"}
+
