@@ -4,7 +4,7 @@ from __future__ import annotations
 PROMPTS = {
     "debug_error": "Read latest logs, parse the error, propose a fix, and verify by running again when safe.",
     "build_flash_monitor": "Build the project, flash firmware after confirmation, reset, capture serial output, and parse errors.",
-    "review_hardware_context": "Read hardwork context before judging GPIO, serial, flash, or board settings.",
+    "review_hardware_context": "Archive attached hardware documents, read them, and commit project-scoped GPIO and serial mappings before hardware operations.",
     "write_project_memory": "Write only stable project facts with source and confidence.",
 }
 
@@ -28,4 +28,3 @@ def get_prompt(name: str, arguments: dict | None = None) -> dict:
             }
         ],
     }
-

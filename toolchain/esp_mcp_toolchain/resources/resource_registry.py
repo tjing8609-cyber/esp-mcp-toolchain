@@ -4,6 +4,9 @@ import json
 
 from ..config import get_selected_port
 from ..paths import project_root
+from ..project_context import get_project_context, project_context_status
+from ..hardwork.attachment_store import load_attachment_manifest
+from ..hardwork.review_state import load_review_state
 from ..tools.hardwork_tools import hardwork_get
 from ..tools.log_tools import esp_logs_latest
 from ..tools.memory_tools import memory_search
@@ -17,6 +20,7 @@ RESOURCES = [
     {"uri": "esp://hardwork/index", "name": "Hardware context index", "mimeType": "application/json"},
     {"uri": "esp://hardwork/gpio-map", "name": "GPIO map", "mimeType": "text/markdown"},
     {"uri": "esp://hardwork/serial-interface", "name": "Serial interface", "mimeType": "text/markdown"},
+    {"uri": "esp://hardwork/attachments", "name": "Hardware attachments", "mimeType": "application/json"},
     {"uri": "esp://memory/recent", "name": "Recent memory", "mimeType": "application/json"},
     {"uri": "esp://tools/directory", "name": "Tools directory", "mimeType": "application/json"},
     {"uri": "esp://tools/registry", "name": "Registered tools", "mimeType": "application/json"},
@@ -51,6 +55,20 @@ def registered_tools_manifest() -> dict:
 
 
 def read_resource(uri: str) -> dict:
+    context_free = {"esp://project/status", "esp://tools/directory", "esp://tools/registry"}
+    if uri not in context_free and get_project_context(required=False) is None:
+        return text_result(
+            uri,
+            json.dumps(
+                {
+                    "ok": False,
+                    "error_kind": "project_context_required",
+                    "message": "Call project_context_select with the current Codex workspace root.",
+                },
+                ensure_ascii=False,
+            ),
+            "application/json",
+        )
     if uri == "esp://ports/selected":
         return text_result(uri, json.dumps({"selected_port": get_selected_port()}, ensure_ascii=False), "application/json")
     if uri == "esp://logs/latest":
@@ -66,7 +84,12 @@ def read_resource(uri: str) -> dict:
     if uri == "esp://project/config":
         return text_result(uri, json.dumps({"selected_port": get_selected_port()}, ensure_ascii=False), "application/json")
     if uri == "esp://project/status":
-        return text_result(uri, json.dumps({"ok": True, "phase": "initialization"}, ensure_ascii=False), "application/json")
+        status = project_context_status()
+        if status.get("ok"):
+            status["hardware_review"] = load_review_state()
+        return text_result(uri, json.dumps(status, ensure_ascii=False), "application/json")
+    if uri == "esp://hardwork/attachments":
+        return text_result(uri, json.dumps(load_attachment_manifest(), ensure_ascii=False), "application/json")
     if uri == "esp://hardwork/index":
         return text_result(uri, json.dumps(hardwork_get("index"), ensure_ascii=False), "application/json")
     if uri == "esp://tools/directory":

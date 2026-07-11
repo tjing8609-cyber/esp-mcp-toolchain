@@ -9,6 +9,8 @@ from mcp.server.fastmcp import FastMCP
 
 from . import __version__
 from .errors import execution_error
+from .project_context import ProjectContextError, get_project_context
+from .hardwork.review_state import hardware_review_required
 from .prompts.prompt_registry import PROMPTS, get_prompt
 from .resources.resource_registry import RESOURCES, read_resource
 from .schemas import ToolSpec
@@ -22,6 +24,7 @@ from .tools import (
     log_tools,
     memory_tools,
     port_tools,
+    project_tools,
     reset_tools,
     serial_tools,
 )
@@ -31,13 +34,72 @@ ToolFunc = Callable[..., dict[str, Any]]
 SERVER_NAME = "esp-mcp-toolchain"
 SERVER_INSTRUCTIONS = (
     "Generic ESP development MCP toolchain. Use low-risk inspection tools first, "
+    "select the current Codex workspace with project_context_select before project-scoped operations, "
     "read hardwork context before hardware decisions, and require explicit user "
     "confirmation for high-risk operations such as flashing, erasing, deleting, "
     "or full clean."
 )
 
+CONTEXT_FREE_TOOLS = {"project_context_select", "project_context_status", "esp_port_list"}
+HARDWARE_GATED_TOOLS = {
+    "esp_port_select",
+    "esp_port_status",
+    "esp_serial_capture",
+    "esp_project_build",
+    "esp_project_clean",
+    "esp_flash_firmware",
+    "esp_backup_flash",
+    "esp_erase_flash",
+    "esp_file_upload",
+    "esp_file_download",
+    "esp_file_list",
+    "esp_file_read",
+    "esp_file_delete",
+    "esp_reset",
+    "esp_exec_code",
+    "esp_run_file",
+}
+
+
+def _tool_precondition(name: str) -> dict[str, Any] | None:
+    if name in CONTEXT_FREE_TOOLS:
+        return None
+    try:
+        get_project_context()
+    except ProjectContextError as exc:
+        return execution_error(
+            "project_context_required",
+            str(exc),
+            tool=name,
+            suggested_next_actions=["Call project_context_select with the current Codex workspace root"],
+        )
+    if name in HARDWARE_GATED_TOOLS and hardware_review_required():
+        return execution_error(
+            "hardware_context_required",
+            "Hardware attachments were uploaded, but the GPIO and serial mapping review is incomplete.",
+            tool=name,
+            suggested_next_actions=["Read the uploaded hardware attachments", "Call hardwork_commit_mapping"],
+        )
+    return None
+
 
 TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
+    "project_context_select": (
+        ToolSpec(
+            "project_context_select",
+            "Bind this MCP session to a Codex workspace and isolate all project data.",
+            {
+                "type": "object",
+                "properties": {"workspace_root": {"type": "string"}},
+                "required": ["workspace_root"],
+            },
+        ),
+        project_tools.project_context_select,
+    ),
+    "project_context_status": (
+        ToolSpec("project_context_status", "Read the active isolated project context."),
+        project_tools.project_context_status,
+    ),
     "esp_port_list": (
         ToolSpec("esp_port_list", "List local serial ports."),
         port_tools.esp_port_list,
@@ -97,6 +159,48 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
     "hardwork_search": (
         ToolSpec("hardwork_search", "Search hardware context documents."),
         hardwork_tools.hardwork_search,
+    ),
+    "hardwork_upload_attachment": (
+        ToolSpec(
+            "hardwork_upload_attachment",
+            "Archive a hardware attachment from the Codex conversation into the active project.",
+            {
+                "type": "object",
+                "properties": {
+                    "attachment_path": {"type": "string"},
+                    "document_type": {
+                        "type": "string",
+                        "enum": ["schematic", "pcb", "pinout", "bom", "datasheet", "serial", "other"],
+                    },
+                    "title": {"type": "string"},
+                },
+                "required": ["attachment_path", "document_type"],
+            },
+        ),
+        hardwork_tools.hardwork_upload_attachment,
+    ),
+    "hardwork_attachment_list": (
+        ToolSpec("hardwork_attachment_list", "List archived hardware attachments for the active project."),
+        hardwork_tools.hardwork_attachment_list,
+    ),
+    "hardwork_commit_mapping": (
+        ToolSpec(
+            "hardwork_commit_mapping",
+            "Commit GPIO and serial mappings extracted from uploaded hardware attachments.",
+            {
+                "type": "object",
+                "properties": {
+                    "gpio_entries": {"type": "array", "items": {"type": "object"}},
+                    "serial_interfaces": {"type": "array", "items": {"type": "object"}},
+                    "source_attachment_ids": {"type": "array", "items": {"type": "string"}},
+                    "board_summary": {"type": "string"},
+                    "unresolved_items": {"type": "array", "items": {"type": "string"}},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+                "required": ["gpio_entries", "serial_interfaces", "source_attachment_ids"],
+            },
+        ),
+        hardwork_tools.hardwork_commit_mapping,
     ),
     "memory_write": (
         ToolSpec("memory_write", "Write a stable project-scoped memory item."),
@@ -208,6 +312,9 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if name not in TOOL_REGISTRY:
         return execution_error("unknown_tool", f"Unknown tool: {name}", recoverable=False)
     _spec, func = TOOL_REGISTRY[name]
+    blocked = _tool_precondition(name)
+    if blocked is not None:
+        return normalize_tool_result(name, blocked)
     try:
         return normalize_tool_result(name, func(**(arguments or {})))
     except TypeError as exc:
@@ -243,6 +350,9 @@ def register_tools(mcp: FastMCP) -> None:
         def make_tool(tool_name: str, tool_func: ToolFunc) -> ToolFunc:
             @wraps(tool_func)
             def wrapper(*args: Any, **kwargs: Any) -> dict[str, Any]:
+                blocked = _tool_precondition(tool_name)
+                if blocked is not None:
+                    return normalize_tool_result(tool_name, blocked)
                 return normalize_tool_result(tool_name, tool_func(*args, **kwargs))
 
             wrapper.__signature__ = inspect.signature(tool_func)  # type: ignore[attr-defined]

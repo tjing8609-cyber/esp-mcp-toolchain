@@ -234,7 +234,7 @@ MicroPython 方向：
 - 覆盖旧数据迁移 dry-run、显式确认、冲突、回滚记录、工程改名重绑定、导入导出校验和跨项目合并预览。
 - FastMCP 工具 schema、资源、prompt 和 stdio 握手必须通过测试；最终执行 `python -m pytest` 全量测试，通过后才允许合入主分支或更新个人插件缓存。
 
-当前状态：尚未实现。现有存储根目录仍从插件代码位置推导，多工程共用同一插件实例时存在数据串用风险；必须先完成项目上下文和隔离层，再开发对话附件上传与硬件审查能力。
+当前状态：项目上下文、项目级目录隔离、对话附件归档、首次上传审查状态、GPIO/串口映射生成和硬件工具门禁已经实现。Codex 必须先调用 `project_context_select(workspace_root)`；插件启动目录不能替代用户工程目录。hardwork、memory、日志、产物、SQLite 路径和串口配置均按 `project_id` 隔离。旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移校验工具仍属于后续阶段。
 
 ### 第 5 阶段：项目内 memory
 
@@ -359,10 +359,18 @@ python -m pytest
 - 明确 `toolchain/tests/` 是当前全量测试目录，新增功能必须先补齐或更新测试。
 - 新增 `docs/11-development-rules.md`，规定新增功能只有通过 `python -m pytest` 全量测试后，才可以合入主项目。
 
+### 2026-07-11 22:02 - 实现工程隔离和硬件附件审查闭环
+
+- 新增 `project_context_select` 和 `project_context_status`，使用规范化工作区路径和 SHA-256 生成稳定 `project_id`；未选择工程时，项目级工具和资源返回 `project_context_required`。
+- hardwork、memory、日志、产物、SQLite 路径和串口配置迁入 `data/projects/<project_id>/` 的项目级目录，测试确认两个工程之间不可互读。
+- 新增 `hardwork_upload_attachment` 和 `hardwork_attachment_list`，Codex 可把对话附件临时路径交给工具，由工具校验 PNG/JPEG/PDF 文件头、扩展名、大小和来源路径后归档到当前项目。
+- 新增 `hardwork_commit_mapping`，生成 `gpio_map.md`、`serial_interface.md` 和 `hardware_mapping.json`，并要求每项结论记录证据类型、来源位置和置信度。
+- 首次上传后进入 `hardware_review_status=pending`；映射提交前，依赖串口、GPIO、芯片或 flash 参数的工具返回 `hardware_context_required`，提交后解除门禁。
+- 后续新增硬件附件只标记建议复核，不会错误清空已经确认的映射状态。
+- `python -m pytest` 全量测试通过，共 `47 passed`；官方 MCP 客户端 stdio 烟测完成 initialize、36 个工具枚举、项目上下文选择和状态读取。
+
 暂未完成：
 
-- 多工程项目上下文和数据隔离；当前 hardwork、memory、日志、产物、SQLite 与串口选择仍使用插件根目录下的共享路径。
-- Codex 对话附件自动归档、首次上传后的硬件强制审查、GPIO/串口映射生成和硬件上下文门禁。
 - 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。
 - 后台串口 monitor。
 - SQLite 仓储层落地。

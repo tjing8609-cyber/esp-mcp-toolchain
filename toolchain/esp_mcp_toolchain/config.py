@@ -5,21 +5,24 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .paths import project_root
+from .paths import data_dir
 
 
-CONFIG_PATH = project_root() / ".codex" / "esp_mcp_toolchain.json"
+def config_path() -> Path:
+    return data_dir() / "project_config.json"
 
 
 def load_config() -> dict[str, Any]:
-    if not CONFIG_PATH.exists():
+    path = config_path()
+    if not path.exists():
         return {}
-    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def save_config(config: dict[str, Any]) -> None:
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def get_selected_port() -> str | None:
@@ -40,4 +43,3 @@ def get_default_baudrate() -> int:
         return int(raw)
     except ValueError:
         return 115200
-

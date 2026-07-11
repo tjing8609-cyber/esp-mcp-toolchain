@@ -23,6 +23,9 @@ python -m pytest
 
 ## 硬件操作规则
 
+- MCP 会话必须先通过 `project_context_select` 绑定 Codex 工作区，不得把插件安装目录当作用户工程目录。
+- hardwork、memory、日志、产物、数据库和串口配置必须按 `project_id` 隔离；新增存储功能必须包含跨工程不可见测试。
+- 用户在 Codex 对话框上传硬件资料后，由 `hardwork_upload_attachment` 归档；首次上传必须完成资料阅读和映射提交后才能调用硬件相关工具。
 - 不猜测串口、GPIO、芯片型号、烧录方式和硬件限制。
 - 串口必须通过枚举或已记录的稳定事实确认。
 - GPIO 和板载外设必须先查阅 `hardwork/` 中的板卡资料；资料不足时，先补资料或做低风险探测。

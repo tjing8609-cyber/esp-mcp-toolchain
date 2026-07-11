@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .project_context import get_project_context
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -15,7 +17,8 @@ def toolchain_dir() -> Path:
 
 
 def data_dir() -> Path:
-    return PROJECT_ROOT / "data"
+    context = get_project_context()
+    return Path(context["project_dir"])
 
 
 def logs_dir() -> Path:
@@ -23,7 +26,7 @@ def logs_dir() -> Path:
 
 
 def hardwork_dir() -> Path:
-    return PROJECT_ROOT / "hardwork"
+    return data_dir() / "hardwork"
 
 
 def memory_dir() -> Path:
@@ -38,6 +41,7 @@ def ensure_runtime_dirs() -> None:
         data_dir() / "artifacts" / "build",
         data_dir() / "artifacts" / "flash",
         data_dir() / "artifacts" / "exports",
+        hardwork_dir() / "raw",
         hardwork_dir() / "processed",
         hardwork_dir() / "index",
     ):
@@ -45,9 +49,9 @@ def ensure_runtime_dirs() -> None:
 
 
 def safe_project_path(value: str | Path) -> Path:
-    root = project_root().resolve()
+    context = get_project_context()
+    root = Path(context["workspace_root"]).resolve()
     candidate = (root / value).resolve() if not Path(value).is_absolute() else Path(value).resolve()
     if root not in (candidate, *candidate.parents):
         raise ValueError(f"path is outside project root: {candidate}")
     return candidate
-

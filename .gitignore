@@ -17,6 +17,7 @@ build/
 *.egg-info/
 
 data/esp_mcp.sqlite
+data/projects/
 data/logs/latest.json
 data/logs/sessions/*.jsonl
 data/logs/raw/*

@@ -8,7 +8,7 @@ __all__ = [
     "log_tools",
     "memory_tools",
     "port_tools",
+    "project_tools",
     "reset_tools",
     "serial_tools",
 ]
-
