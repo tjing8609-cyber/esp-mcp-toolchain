@@ -42,6 +42,10 @@ def _idf_python() -> Path:
 def _build_env(idf_path: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["IDF_PATH"] = str(idf_path)
+    if os.name == "nt":
+        env.setdefault("OS", "Windows_NT")
+        env.setdefault("SYSTEMROOT", env.get("WINDIR", r"C:\Windows"))
+        env.setdefault("PROCESSOR_ARCHITECTURE", "AMD64" if sys.maxsize > 2**32 else "x86")
     tool_paths = [str(path) for path in DEFAULT_TOOL_DIRS if path.exists()]
     env["PATH"] = os.pathsep.join([*tool_paths, env.get("PATH", "")])
     return env

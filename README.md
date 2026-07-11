@@ -394,6 +394,12 @@ python -m pytest
 - `examples/esp_idf_key_led_buzzer` 更新为 KEY1 GPIO34 触发、GPIO32 LED 低有效、GPIO25 以 2 kHz LEDC PWM 间断鸣叫，共五次并等待按键释放。
 - 修复后的后端在 ASCII 工作区真实构建成功，固件大小 `0x2ee90`，app 分区剩余 82%。
 
+### 2026-07-12 00:25 - 补齐 Codex MCP 的 ESP-IDF Windows 平台环境
+
+- 新后端不再卡死后，MCP 构建暴露 `idf_tools.py unknown platform`；同一命令在普通 PowerShell 中成功。
+- 根因是 Codex MCP 精简环境缺少 Windows 的 `PROCESSOR_ARCHITECTURE`，导致 ESP-IDF 5.2.1 无法识别下载工具平台。
+- `_build_env` 在 Windows 下补齐 `OS`、`SYSTEMROOT` 和与 Python 位数一致的 `PROCESSOR_ARCHITECTURE`，不修改全局环境。
+
 暂未完成：
 
 - 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。
