@@ -399,6 +399,7 @@ python -m pytest
 - 新后端不再卡死后，MCP 构建暴露 `idf_tools.py unknown platform`；同一命令在普通 PowerShell 中成功。
 - 根因是 Codex MCP 精简环境缺少 Windows 的 `PROCESSOR_ARCHITECTURE`，导致 ESP-IDF 5.2.1 无法识别下载工具平台。
 - `_build_env` 在 Windows 下补齐 `OS`、`SYSTEMROOT` 和与 Python 位数一致的 `PROCESSOR_ARCHITECTURE`，不修改全局环境。
+- 后续 MCP 实测继续暴露精简环境缺少 `IDF_TOOLS_PATH` 和 `IDF_PYTHON_ENV_PATH`，导致 ESP-IDF 错误查找用户目录下不存在的 `.espressif` 环境；后端现根据本机已验证的 IDF 路径和 Python 环境路径为子进程补齐。
 
 暂未完成：
 

@@ -42,6 +42,8 @@ def _idf_python() -> Path:
 def _build_env(idf_path: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["IDF_PATH"] = str(idf_path)
+    env.setdefault("IDF_TOOLS_PATH", str(idf_path.parents[1]))
+    env.setdefault("IDF_PYTHON_ENV_PATH", str(_idf_python().parents[1]))
     if os.name == "nt":
         env.setdefault("OS", "Windows_NT")
         env.setdefault("SYSTEMROOT", env.get("WINDIR", r"C:\Windows"))
