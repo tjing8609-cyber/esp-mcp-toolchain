@@ -11,6 +11,7 @@ def test_sdk_tools_list():
     assert any(tool.name == "project_context_select" for tool in tools)
     assert any(tool.name == "hardwork_upload_attachment" for tool in tools)
     assert any(tool.name == "hardwork_commit_mapping" for tool in tools)
+    assert any(tool.name == "hardwork_mapping_patch" for tool in tools)
 
 
 def test_sdk_resources_list():
@@ -19,6 +20,7 @@ def test_sdk_resources_list():
     assert any(str(resource.uri) == "esp://tools/directory" for resource in resources)
     assert any(str(resource.uri) == "esp://tools/registry" for resource in resources)
     assert any(str(resource.uri) == "esp://hardwork/attachments" for resource in resources)
+    assert any(str(resource.uri) == "esp://hardwork/mapping" for resource in resources)
 
 
 def test_sdk_prompts_list():
