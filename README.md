@@ -199,6 +199,43 @@ MicroPython 方向：
 
 当前状态：已完成 processed 文档、JSON 索引、基础 list/get/set/search。
 
+### 第 4.1 阶段：工程隔离、对话附件上传与硬件审查门禁
+
+目标：让用户直接把原理图、PCB 图、BOM 或硬件说明附件贴入 Codex 对话框，由 Codex 调用 MCP 工具归档和整理；不同 Codex 工程的硬件资料、memory、日志、产物、数据库和串口选择必须隔离，硬件映射未完成前不得继续依赖 GPIO、串口、芯片或 flash 参数的操作。
+
+计划实现：
+
+- 建立项目上下文：以规范化后的 `workspace_root` 计算稳定 `project_id`，所有项目级工具必须显式绑定当前工程；缺少项目上下文时返回 `project_context_required`，不得回退到共享目录。
+- 项目数据布局调整为 `data/projects/<project_id>/`，其下分别保存 `hardwork/raw/`、`hardwork/processed/`、`hardwork/index/`、`memory/`、`logs/`、`artifacts/`、数据库和项目元数据。
+- 将串口选择、默认波特率和硬件审查状态纳入项目配置，避免不同工程互相继承端口或硬件结论。
+- 新增 `hardwork_upload_attachment`：接收 Codex 对话附件对应的临时本地路径，校验路径、真实文件类型、扩展名和大小，计算 SHA-256 后复制到当前工程的 `hardwork/raw/`；用户不需要手动复制文件。
+- 首批支持 PNG、JPEG 和 PDF。原始附件只读保留，不覆盖同名文件；相同内容按 SHA-256 去重，并记录来源、上传时间、资料类型和原始文件名。
+- 第一次上传硬件资料后将当前工程标记为 `hardware_review_status=pending`，工具返回 `review_required=true`、附件路径、资料资源标识和必须完成的映射字段。
+- 更新 MCP server instructions 和硬件审查 prompt，要求模型读取附件后调用 `hardwork_commit_mapping`。MCP 不能控制模型内部思考，但服务端状态机必须强制执行“上传 -> 阅读 -> 提交映射 -> 解锁硬件工具”的调用顺序。
+- 新增 `hardwork_commit_mapping`：接收模型从附件中提取的结构化 GPIO、串口、板载外设、启动限制、复用功能、来源位置、置信度和待确认项。
+- 自动生成或更新 `gpio_map.md`、`serial_interface.md` 和 `hardware_mapping.json`，并同步 hardwork index/manifest。每条结论必须区分“原图确认”“实板测试确认”“模型推断”和“待确认”，不得把推断写成已确认事实。
+- 增加硬件上下文门禁：映射未提交时，串口选择与串口操作、GPIO/板载外设操作、烧录、擦除和其他依赖芯片或 flash 参数的工具返回 `hardware_context_required`；hardwork 读取、附件读取和映射提交保持可用。
+- SQLite 仓储层落地时，项目数据表必须包含 `project_id`，仓储查询强制按当前项目过滤，禁止无项目范围的全表读取。
+
+未来迁移工具：
+
+- `project_context_status`：显示当前 `workspace_root`、`project_id`、数据目录、审查状态和可迁移来源，不修改任何数据。
+- `project_migrate_legacy_data`：把当前旧版共享 `hardwork/`、memory、日志、产物和配置迁入指定项目；默认只生成预览，实际迁移必须显式 `confirm=True`，保留来源清单和审计记录。
+- `project_relocate`：工程目录移动或改名后，将旧 `workspace_root` 对应的数据绑定到新路径；必须验证旧项目标识，不自动猜测两个目录属于同一工程。
+- `project_merge`：在用户明确指定源项目和目标项目后合并硬件资料或 memory；默认只预览冲突，实际合并必须显式确认，冲突项不得静默覆盖。
+- `project_export` / `project_import`：以带 manifest 和 SHA-256 校验的归档包迁移项目上下文；导入前校验格式、版本和目标项目，默认不覆盖已有数据。
+- `project_migration_verify`：迁移后检查文件数量、哈希、索引、SQLite project_id、映射资源和项目配置是否一致，并输出可审计报告。
+
+测试与合入门槛：
+
+- 增加两个或更多临时工程根目录的隔离测试，验证 hardwork、memory、日志、产物、SQLite 和串口配置不会串项目。
+- 覆盖附件复制、临时路径失效、路径越界、伪造扩展名、大小限制、内容去重、同名不同内容和原始文件不覆盖。
+- 覆盖首次上传进入待审查、未提交映射时门禁生效、提交映射后生成 Markdown/JSON 并解除门禁、后续资料上传不错误清空已确认结果。
+- 覆盖旧数据迁移 dry-run、显式确认、冲突、回滚记录、工程改名重绑定、导入导出校验和跨项目合并预览。
+- FastMCP 工具 schema、资源、prompt 和 stdio 握手必须通过测试；最终执行 `python -m pytest` 全量测试，通过后才允许合入主分支或更新个人插件缓存。
+
+当前状态：尚未实现。现有存储根目录仍从插件代码位置推导，多工程共用同一插件实例时存在数据串用风险；必须先完成项目上下文和隔离层，再开发对话附件上传与硬件审查能力。
+
 ### 第 5 阶段：项目内 memory
 
 目标：保存项目内稳定事实，供后续调试复用。
@@ -324,6 +361,9 @@ python -m pytest
 
 暂未完成：
 
+- 多工程项目上下文和数据隔离；当前 hardwork、memory、日志、产物、SQLite 与串口选择仍使用插件根目录下的共享路径。
+- Codex 对话附件自动归档、首次上传后的硬件强制审查、GPIO/串口映射生成和硬件上下文门禁。
+- 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。
 - 后台串口 monitor。
 - SQLite 仓储层落地。
 - `esp_logs_query` 已支持多词匹配，后续还可以继续扩展时间范围、run_id 前缀、字段过滤等查询能力。
@@ -336,6 +376,10 @@ python -m pytest
 - 不要把任意 shell 执行能力暴露成 MCP tool。
 - 高风险动作必须保留确认机制，包括烧录、擦除、删除和 full clean。
 - 硬件原始资料放入 `hardwork/raw/`，工具只写 `hardwork/processed/` 和 `hardwork/index/`。
+- 项目级数据必须绑定明确的 `workspace_root` 和 `project_id`；缺少项目上下文时不得写入共享目录，也不得猜测项目归属。
+- Codex 对话附件由模型把临时本地路径传给 `hardwork_upload_attachment`，工具负责校验并复制到当前项目，用户不需要手动整理插件目录。
+- 硬件资料首次上传后，必须完成附件阅读和 GPIO/串口映射提交，才能解除硬件相关工具门禁。
+- 工程迁移、合并、覆盖和重绑定属于高风险数据操作，默认只做预览，实际执行必须保留显式确认和审计记录。
 - 项目稳定事实写入 `memory` 时必须带 `source` 和 `confidence`。
 - 项目环境使用 conda 虚拟环境 `esp-mcp-toolchain`，不在项目根目录创建 `.venv`，也不直接修改全局 Python 环境。
 - 新增功能必须先在 `test` 分支补齐或更新测试，再进入主项目开发流。
