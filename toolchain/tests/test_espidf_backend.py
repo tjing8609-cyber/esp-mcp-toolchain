@@ -87,6 +87,8 @@ def test_windows_build_env_restores_platform_variables(tmp_path, monkeypatch):
     monkeypatch.delenv("OS", raising=False)
     monkeypatch.delenv("SYSTEMROOT", raising=False)
     monkeypatch.delenv("PROCESSOR_ARCHITECTURE", raising=False)
+    monkeypatch.delenv("IDF_TOOLS_PATH", raising=False)
+    monkeypatch.delenv("IDF_PYTHON_ENV_PATH", raising=False)
     monkeypatch.setenv("WINDIR", r"C:\Windows")
 
     env = espidf_backend._build_env(tmp_path)
@@ -94,4 +96,6 @@ def test_windows_build_env_restores_platform_variables(tmp_path, monkeypatch):
     assert env["OS"] == "Windows_NT"
     assert env["SYSTEMROOT"] == r"C:\Windows"
     assert env["PROCESSOR_ARCHITECTURE"] in {"AMD64", "x86"}
+    assert env["IDF_TOOLS_PATH"] == str(tmp_path.parents[1])
+    assert env["IDF_PYTHON_ENV_PATH"] == str(espidf_backend._idf_python().parents[1])
 
