@@ -1,6 +1,9 @@
 import asyncio
 import json
+from pathlib import Path
 
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 from esp_mcp_toolchain.resources.resource_registry import read_resource
 from esp_mcp_toolchain.server import call_tool, create_mcp_server
 
@@ -49,3 +52,33 @@ def test_tools_resources_describe_directory_and_registry():
     assert registry_payload["ok"] is True
     assert any(tool["name"] == "esp_project_build" for tool in registry_payload["tools"])
     assert any(tool["name"] == "esp_backup_flash" for tool in registry_payload["tools"])
+
+
+def test_stdio_project_context_persists_across_tool_calls(isolated_project_context):
+    async def scenario():
+        repository_root = Path(__file__).resolve().parents[2]
+        parameters = StdioServerParameters(
+            command="python",
+            args=["toolchain/mcp_server.py"],
+            cwd=str(repository_root),
+        )
+        async with stdio_client(parameters) as streams:
+            async with ClientSession(*streams) as session:
+                await session.initialize()
+                selected = await session.call_tool(
+                    "project_context_select",
+                    {"workspace_root": str(isolated_project_context)},
+                )
+                status = await session.call_tool("project_context_status", {})
+                hardwork = await session.call_tool("hardwork_list", {"kind": "all"})
+                return selected, status, hardwork
+
+    selected, status, hardwork = asyncio.run(scenario())
+    selected_payload = json.loads(selected.content[0].text)
+    status_payload = json.loads(status.content[0].text)
+    hardwork_payload = json.loads(hardwork.content[0].text)
+
+    assert selected_payload["ok"] is True
+    assert status_payload["ok"] is True
+    assert hardwork_payload["ok"] is True
+    assert status_payload["project_id"] == selected_payload["project_id"]
