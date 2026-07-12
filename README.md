@@ -408,6 +408,12 @@ python -m pytest
 - 恢复调用复用带 `stdin=DEVNULL` 和超时进程树清理的 esptool 子进程封装，返回输入路径、地址、字节数和 SHA-256。
 - 真实硬件流程已完成 ESP-IDF 五次 KEY1/LED/PWM 蜂鸣器测试，并通过既有 4 MiB 镜像恢复 MicroPython v1.18、板上文件和本地程序运行。
 
+### 2026-07-12 12:55 - 修复插件更新后的项目上下文丢失
+
+- 实测发现默认运行时数据仍位于版本化插件缓存的 `data/projects/`，每次 cachebuster 安装后会造成 hardwork、memory、日志、串口配置和活动项目指针不可见。
+- 默认数据根目录迁移到稳定的 `%USERPROFILE%/.codex/esp-mcp-toolchain/data/projects/`，不再随插件版本缓存变化；`ESP_MCP_DATA_ROOT` 覆盖行为保持不变。
+- 选择项目时扫描源码目录和个人插件历史缓存中的同 `project_id` 数据，按“只复制缺失文件、不覆盖已有目标”规则迁移，并返回迁移来源和复制文件数。
+
 暂未完成：
 
 - 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。

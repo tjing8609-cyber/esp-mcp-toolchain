@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 from typing import Any
 from threading import RLock
 
@@ -44,7 +45,42 @@ def storage_root() -> Path:
     configured = os.environ.get("ESP_MCP_DATA_ROOT")
     if configured:
         return Path(configured).expanduser().resolve()
-    return Path(__file__).resolve().parents[2] / "data" / "projects"
+    return Path.home() / ".codex" / "esp-mcp-toolchain" / "data" / "projects"
+
+
+def legacy_storage_roots() -> list[Path]:
+    roots = [Path(__file__).resolve().parents[2] / "data" / "projects"]
+    cache_root = Path.home() / ".codex" / "plugins" / "cache" / "personal-plugins" / "esp-mcp-toolchain"
+    if cache_root.exists():
+        roots.extend(path / "data" / "projects" for path in cache_root.iterdir() if path.is_dir())
+    stable = storage_root().resolve()
+    unique = []
+    for root in roots:
+        resolved = root.resolve()
+        if resolved != stable and resolved not in unique:
+            unique.append(resolved)
+    return unique
+
+
+def migrate_legacy_project(project_id: str, target: Path) -> dict[str, Any]:
+    copied_files = 0
+    sources = []
+    for root in legacy_storage_roots():
+        source = root / project_id
+        if not source.exists() or not source.is_dir():
+            continue
+        sources.append(str(source))
+        for source_path in source.rglob("*"):
+            if not source_path.is_file():
+                continue
+            relative = source_path.relative_to(source)
+            destination = target / relative
+            if destination.exists():
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, destination)
+            copied_files += 1
+    return {"sources": sources, "copied_files": copied_files}
 
 
 def active_context_path() -> Path:
@@ -71,6 +107,9 @@ def select_project_context(workspace_root: str | Path) -> dict[str, Any]:
     root = normalize_workspace_root(workspace_root)
     project_id = project_id_for(root)
     project_dir = storage_root() / project_id
+    migration = {"sources": [], "copied_files": 0}
+    if not os.environ.get("ESP_MCP_DATA_ROOT"):
+        migration = migrate_legacy_project(project_id, project_dir)
     project_dir.mkdir(parents=True, exist_ok=True)
     metadata_path = project_dir / "project.json"
     existing: dict[str, Any] = {}
@@ -82,8 +121,10 @@ def select_project_context(workspace_root: str | Path) -> dict[str, Any]:
         "created_at": existing.get("created_at") or now_iso(),
         "updated_at": now_iso(),
     }
+    if migration["copied_files"]:
+        metadata["migration"] = migration
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    context = {**metadata, "project_dir": str(project_dir)}
+    context = {**metadata, "project_dir": str(project_dir), "migration": migration}
     with _CONTEXT_LOCK:
         _ACTIVE_CONTEXT = context
         _write_active_context(context)
