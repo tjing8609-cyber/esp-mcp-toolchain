@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from pathlib import Path
 
 from mcp import ClientSession, StdioServerParameters
@@ -62,6 +63,7 @@ def test_stdio_project_context_persists_across_tool_calls(isolated_project_conte
             command="python",
             args=["toolchain/mcp_server.py"],
             cwd=str(repository_root),
+            env={**os.environ, "ESP_MCP_DATA_ROOT": str(isolated_project_context.parent / "stdio-project-data")},
         )
         async with stdio_client(parameters) as streams:
             async with ClientSession(*streams) as session:
