@@ -401,6 +401,13 @@ python -m pytest
 - `_build_env` 在 Windows 下补齐 `OS`、`SYSTEMROOT` 和与 Python 位数一致的 `PROCESSOR_ARCHITECTURE`，不修改全局环境。
 - 后续 MCP 实测继续暴露精简环境缺少 `IDF_TOOLS_PATH` 和 `IDF_PYTHON_ENV_PATH`，导致 ESP-IDF 错误查找用户目录下不存在的 `.espressif` 环境；后端现根据本机已验证的 IDF 路径和 Python 环境路径为子进程补齐。
 
+### 2026-07-12 12:38 - 增加 BIN 镜像恢复工具
+
+- 新增高风险工具 `esp_restore_flash`，用于把本地 `.bin` 备份写回 ESP Flash，补齐 `esp_backup_flash` 只有读取、没有恢复的工具链缺口。
+- 工具要求显式 `confirm=True`，校验输入文件位于当前项目、文件存在且非空，并在写入前计算 SHA-256；可通过 `expected_sha256` 阻止镜像哈希不匹配时写入。
+- 恢复调用复用带 `stdin=DEVNULL` 和超时进程树清理的 esptool 子进程封装，返回输入路径、地址、字节数和 SHA-256。
+- 真实硬件流程已完成 ESP-IDF 五次 KEY1/LED/PWM 蜂鸣器测试，并通过既有 4 MiB 镜像恢复 MicroPython v1.18、板上文件和本地程序运行。
+
 暂未完成：
 
 - 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。

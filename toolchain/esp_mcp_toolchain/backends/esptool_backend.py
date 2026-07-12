@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from .espidf_backend import _idf_python
+from .espidf_backend import _idf_path, _idf_python, _run_idf_command
 from ..utils.subprocess_utils import redact_command
 
 
@@ -102,3 +102,46 @@ def run_erase_flash(*, port: str, chip: str = "esp32", timeout_s: int = 180) -> 
         "stderr": completed.stderr,
         "message": "Flash erase completed." if completed.returncode == 0 else "Flash erase failed.",
     }
+
+
+def run_write_flash(
+    *,
+    port: str,
+    input_path: Path,
+    chip: str = "esp32",
+    address: int = 0,
+    baud: int = 460800,
+    timeout_s: int = 300,
+) -> dict[str, Any]:
+    idf_path = _idf_path()
+    if idf_path is None:
+        return {
+            "ok": False,
+            "error_kind": "idf_path_missing",
+            "message": "ESP-IDF path was not found for esptool.",
+        }
+    command = [
+        str(_idf_python()),
+        "-m",
+        "esptool",
+        "--chip",
+        chip,
+        "-p",
+        port,
+        "-b",
+        str(baud),
+        "write_flash",
+        hex(address),
+        str(input_path),
+    ]
+    try:
+        result = _run_idf_command(command, input_path.parent, idf_path, timeout_s)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error_kind": "restore_spawn_failed",
+            "message": str(exc),
+            "command": redact_command(command),
+        }
+    result["message"] = "Flash image restored." if result.get("ok") else result.get("message", "Flash restore failed.")
+    return result

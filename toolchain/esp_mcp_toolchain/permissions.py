@@ -33,6 +33,7 @@ HIGH_RISK_TOOLS = {
     "esp_project_clean",
     "esp_flash_firmware",
     "esp_erase_flash",
+    "esp_restore_flash",
     "memory_delete",
 }
 
@@ -47,4 +48,3 @@ def risk_level(tool_name: str) -> str:
 
 def requires_confirmation(tool_name: str) -> bool:
     return risk_level(tool_name) == "high"
-

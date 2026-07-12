@@ -50,6 +50,7 @@ HARDWARE_GATED_TOOLS = {
     "esp_flash_firmware",
     "esp_backup_flash",
     "esp_erase_flash",
+    "esp_restore_flash",
     "esp_file_upload",
     "esp_file_download",
     "esp_file_list",
@@ -273,6 +274,26 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
     "esp_erase_flash": (
         ToolSpec("esp_erase_flash", "Erase ESP flash."),
         flash_tools.esp_erase_flash,
+    ),
+    "esp_restore_flash": (
+        ToolSpec(
+            "esp_restore_flash",
+            "Restore a verified local BIN image to ESP flash. Requires explicit confirmation.",
+            {
+                "type": "object",
+                "properties": {
+                    "port": {"type": "string"},
+                    "input_path": {"type": "string"},
+                    "chip": {"type": "string"},
+                    "address": {"type": "integer"},
+                    "baud": {"type": "integer"},
+                    "expected_sha256": {"type": "string"},
+                    "confirm": {"type": "boolean"},
+                },
+                "required": ["port", "input_path"],
+            },
+        ),
+        flash_tools.esp_restore_flash,
     ),
     "esp_file_upload": (
         ToolSpec("esp_file_upload", "Upload a file to the board."),

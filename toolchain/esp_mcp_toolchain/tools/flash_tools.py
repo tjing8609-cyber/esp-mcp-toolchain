@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 
 from ..backends.espidf_backend import run_idf_flash
-from ..backends.esptool_backend import run_erase_flash, run_read_flash
+from ..backends.esptool_backend import run_erase_flash, run_read_flash, run_write_flash
 from ..errors import execution_error, not_implemented
 from ..paths import data_dir
 from ..paths import safe_project_path
@@ -122,4 +123,66 @@ def esp_erase_flash(port: str, chip: str = "esp32", confirm: bool = False) -> di
             "chip": chip,
         }
     )
+    return result
+
+
+def esp_restore_flash(
+    port: str,
+    input_path: str,
+    chip: str = "esp32",
+    address: int = 0,
+    baud: int = 460800,
+    expected_sha256: str = "",
+    confirm: bool = False,
+) -> dict:
+    if not confirm:
+        return execution_error(
+            "confirmation_required",
+            "Restoring a flash image overwrites board flash and requires confirm=True.",
+            tool="esp_restore_flash",
+            recoverable=True,
+            suggested_next_actions=["Verify port, input_path, address, and backup hash", "Call again with confirm=True only after user approval"],
+        )
+    try:
+        source = safe_project_path(input_path)
+    except ValueError as exc:
+        return execution_error("unsafe_input_path", str(exc), tool="esp_restore_flash")
+    if not source.exists() or not source.is_file():
+        return execution_error("restore_image_missing", f"Flash image does not exist: {source}", tool="esp_restore_flash")
+    size = source.stat().st_size
+    if size <= 0:
+        return execution_error("restore_image_empty", "Flash image is empty.", tool="esp_restore_flash")
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    if expected_sha256 and digest.lower() != expected_sha256.lower():
+        return execution_error(
+            "restore_hash_mismatch",
+            "Flash image SHA-256 does not match expected_sha256.",
+            tool="esp_restore_flash",
+            expected_sha256=expected_sha256.lower(),
+            actual_sha256=digest,
+        )
+    result = run_write_flash(
+        port=port,
+        input_path=source,
+        chip=chip,
+        address=address,
+        baud=baud,
+    )
+    result.update(
+        {
+            "tool": "esp_restore_flash",
+            "tool_name": "esp_restore_flash",
+            "tools名称": "esp_restore_flash",
+            "implemented": True,
+            "port": port,
+            "chip": chip,
+            "address": address,
+            "baud": baud,
+            "input_path": str(source),
+            "bytes_written": size if result.get("ok") else 0,
+            "sha256": digest,
+        }
+    )
+    if result.get("ok"):
+        result["data"] = {"input_path": str(source), "bytes_written": size, "sha256": digest}
     return result

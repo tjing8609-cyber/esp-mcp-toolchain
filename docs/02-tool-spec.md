@@ -17,6 +17,8 @@ Initial tools are grouped into:
 
 High-risk tools must require explicit confirmation in clients.
 
+Flash tools include `esp_backup_flash` for reading an image and `esp_restore_flash` for writing a verified local BIN image back to the board. Restore requires `confirm=True` and supports an expected SHA-256 guard.
+
 Project-scoped tools require `project_context_select(workspace_root)` first. Hardware attachments use:
 
 - `hardwork_upload_attachment`
