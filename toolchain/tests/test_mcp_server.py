@@ -15,6 +15,10 @@ def test_sdk_tools_list():
     assert any(tool.name == "project_context_select" for tool in tools)
     assert any(tool.name == "hardwork_upload_attachment" for tool in tools)
     assert any(tool.name == "hardwork_commit_mapping" for tool in tools)
+    assert any(tool.name == "esp_serial_monitor_start" for tool in tools)
+    assert any(tool.name == "esp_serial_monitor_stop" for tool in tools)
+    assert any(tool.name == "esp_serial_monitor_status" for tool in tools)
+    assert any(tool.name == "esp_serial_monitor_read" for tool in tools)
     assert any(tool.name == "hardwork_mapping_patch" for tool in tools)
     assert any(tool.name == "esp_restore_flash" for tool in tools)
 

@@ -137,6 +137,10 @@ esp-mcp-toolchain/
 - `esp_port_select`
 - `esp_port_status`
 - `esp_serial_capture`
+- `esp_serial_monitor_start`
+- `esp_serial_monitor_stop`
+- `esp_serial_monitor_status`
+- `esp_serial_monitor_read`
 - `esp_logs_latest`
 - `esp_logs_get`
 - `esp_logs_query`
@@ -183,7 +187,7 @@ MicroPython 方向：
 - `esp_serial_capture`
 - `esp_error_parse_log`
 
-当前状态：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已接入统一子进程管理、超时清理、`.part` 原子写入和精确长度校验，4 MiB 实板备份已通过；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成真实板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload` 和 `esp_file_download` 已通过 MicroPython raw REPL 与 `mpremote` 在 `COM3` 上完成烟测；`esp_reset` 已支持 MicroPython `soft` 和 ESP-IDF/通用固件 `hard` 两种模式，硬复位已捕获真实启动日志；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。仍保持占位或待增强的部分包括后台串口 monitor 和更多工程化查询能力。
+当前状态：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已接入统一子进程管理、超时清理、`.part` 原子写入和精确长度校验，4 MiB 实板备份已通过；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成真实板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload` 和 `esp_file_download` 已通过 MicroPython raw REPL 与 `mpremote` 在 `COM3` 上完成烟测；`esp_reset` 已支持 MicroPython `soft` 和 ESP-IDF/通用固件 `hard` 两种模式，硬复位已捕获真实启动日志；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。后台串口 Monitor 已在 `feature/serial-monitor` 完成候选实现和软件测试，但本次未枚举到 ESP USB 串口，真实板卡门禁尚未完成，因此还没有合入 `main`。更多工程化查询能力仍待后续开发。
 
 ### 第 4 阶段：hardwork 硬件资料上下文
 
@@ -293,9 +297,10 @@ MicroPython 方向：
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
 - 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源已复制到 `C:\Users\16224\plugins\esp-mcp-toolchain`，并通过 `codex plugin add esp-mcp-toolchain@personal-plugins` 安装启用。Codex 安装缓存位于 `C:\Users\16224\.codex\plugins\cache\personal-plugins\esp-mcp-toolchain\0.1.0`。
 - 初始测试集。
-- 已创建 `test` 分支用于维护测试文件、测试目录和合入前验证规则；当前测试入口为 `toolchain/tests/`。
+- 开发流程已改为 `feature/<topic>` 功能分支同时维护实现、测试和文档；历史 `test` 分支保留用于追溯，不再承载新功能。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
 - 已实现 `project_migrate_legacy_data`：支持只读预览、显式确认、SHA-256 比对、冲突不覆盖、复制或审计失败回滚和原子 JSONL 审计；不会递归迁移旧 `data/projects/`。
+- 后台串口 Monitor 候选实现已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
 
 最近一次本地验证：
 
@@ -303,17 +308,18 @@ MicroPython 方向：
 conda 环境：esp-mcp-toolchain
 Python：3.12.13
 官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
-MCP 烟测结果：39 tools / 12 resources / 4 prompts
+功能分支源码 MCP 烟测结果：43 tools / 12 resources / 4 prompts
 MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
-插件验证：源码目录和个人插件目录均通过本地 plugin validator
-Codex 插件安装状态：个人插件源已同步并通过 validator，版本为 `0.1.0+codex.20260713051437`；当前任务仍加载上一缓存 `0.1.0+codex.20260713045253`，需重启 Codex 后再验证新工具缓存
+插件验证：功能分支源码和 `C:\Users\16224\plugins\esp-mcp-toolchain` marketplace 源均通过 validator，版本为 `0.1.0+codex.20260713091610`；从 marketplace 源直接启动 stdio MCP 得到 `43 tools / 12 resources / 4 prompts`
+Codex 安装缓存：当前 PowerShell 执行桌面版 MSIX 内置 `codex.exe` 被系统拒绝，未能完成 `codex plugin add`；现有安装缓存仍是 `0.1.0+codex.20260713051437`，需在可用 CLI 或 Codex 重启后的新任务中验证四个 Monitor 工具
 python -m pytest
 ```
 
-测试分支全量验证结果：
+功能分支全量验证结果：
 
 ```text
-73 passed
+99 passed
+Monitor 专项：27 passed
 ```
 
 开发日志（同一天按提交时间分开）：
@@ -469,19 +475,30 @@ python -m pytest
 - 成功执行以临时文件和原子替换方式更新 `migration_audit.jsonl`，记录来源、目标项目、统计、冲突和带 SHA-256 的回滚清单，不留下半行 JSON。
 - `test` 分支全量测试加载主线实现得到 `73 passed`；MCP stdio 烟测枚举 39 个工具，临时目录中的 dry-run 与 synthetic `confirm=True` 迁移、内容校验和审计生成均通过。
 
+### 2026-07-13 16:52 - 实现后台串口 Monitor 候选
+
+- 新增 `esp_serial_monitor_start`、`esp_serial_monitor_stop`、`esp_serial_monitor_status` 和 `esp_serial_monitor_read`，读取接口使用单调递增 `seq`、`after_seq` 游标、有界等待和最大返回字节数。
+- Monitor 启动时固定 `project_id`、工作区和日志目录；后续切换当前项目不会改变已有会话的写入目标。
+- 会话使用 `STARTING`、`RUNNING`、`STOPPING`、`STOPPED`、`FAILED`、`DISCONNECTED` 状态机；原始字节分块落盘并支持 text、base64 和 both 表示。
+- 增加进程内与跨进程串口锁、进程所有权和端口身份记录、陈旧锁恢复，以及 stdin EOF、正常 shutdown、可捕获信号、`atexit` 和内部异常的有界清理；恢复前会确认原所有进程已经结束，强制终止仍依赖操作系统释放句柄和下次启动恢复。
+- 新增真实 MCP 子进程测试，验证关闭 stdin 后限时退出、串口可重新打开且没有陈旧锁；同时覆盖强制终止恢复、跨进程冲突、断连、磁盘故障、配额、UTF-8 分片和二进制日志。
+- 功能分支当前为 `43 tools / 12 resources / 4 prompts`，全量测试 `99 passed`，Monitor 专项 `27 passed`。
+- 本次只枚举到 `COM6`、`COM7` 两个蓝牙串口，没有检测到 ESP USB 串口，因此未打开任何端口；真实板卡验收尚未完成，功能不合入 `main`。
+- 协作流程改为功能分支同时维护代码、测试和文档，并增加 CI、CHANGELOG、开发状态页和 ADR；历史 `test` 分支保留但停止承载新开发。
+
 暂未完成：
 
-- 工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。
-- 后台串口 monitor。
+- 后台串口 Monitor 的真实板卡验收、CI 门禁和合入 `main`。
 - SQLite 仓储层落地。
 - `esp_logs_query` 已支持多词匹配，后续还可以继续扩展时间范围、run_id 前缀、字段过滤等查询能力。
+- 工程路径重绑定、项目合并、导入导出和迁移完整性校验工具；迁移体系继续暂停，排在 SQLite 和日志查询增强之后。
 - 更多板卡和更多固件项目的端到端验证；当前真实验证覆盖 `COM3` 上的 ESP32-D0WD-V3 板、MicroPython 备份/恢复、ESP-IDF 示例 build/flash、整片擦除后恢复。
 
 下一步计划：
 
-- 实现 `project_relocate`，要求用户显式提供旧、新工作区路径和旧项目标识，默认只预览，不自动猜测工程改名关系。
-- 在重绑定能力稳定后，再实现 `project_merge` 的冲突预览；导入导出与迁移完整性校验随后推进。
-- 后台串口 monitor、SQLite 仓储层和日志查询增强继续保持暂缓，不与工程迁移改动混在同一次提交。
+- 当前任务只完成 Monitor 功能分支并暂停；板卡重新枚举后，先核对端口身份，再完成启动、游标读取、停止和端口重开验收。
+- Monitor 通过真实板卡和 CI 门禁后才合入 `main`。
+- 后续依次开发 SQLite schema/仓储层、日志查询增强，最后再恢复工程重绑定、合并、导出、导入和完整性校验。
 
 ## 协作约定
 
@@ -497,9 +514,9 @@ python -m pytest
 - 工程迁移、合并、覆盖和重绑定属于高风险数据操作，默认只做预览，实际执行必须保留显式确认和审计记录。
 - 项目稳定事实写入 `memory` 时必须带 `source` 和 `confidence`。
 - 项目环境使用 conda 虚拟环境 `esp-mcp-toolchain`，不在项目根目录创建 `.venv`，也不直接修改全局 Python 环境。
-- 新增功能必须先在 `test` 分支补齐或更新测试，再进入主项目开发流。
-- 功能合入前必须运行 `python -m pytest` 全量测试；未通过时不得合入主分支。
-- 每次代码或文档变更后，都要更新 README 中的开发进程并推送到 GitHub。
+- 新增功能使用 `feature/<topic>` 分支，代码、测试和必要文档必须在同一分支；历史 `test` 分支只保留追溯用途。
+- 功能合入前必须通过本地 `python -m pytest` 全量测试和 GitHub Actions；依赖真实硬件时还必须通过硬件门禁。
+- README 维护稳定能力和里程碑；用户可见变化写入 CHANGELOG，当前门禁写入开发状态页，架构决定写入 ADR。
 - 提交信息要写明当次提交完成的工作和修改内容。
 - 提交前运行 `python -m pytest`。
 
@@ -513,3 +530,7 @@ python -m pytest
 - `docs/07-database-design.md`
 - `docs/10-development-roadmap.md`
 - `docs/11-development-rules.md`
+- `docs/12-development-status.md`
+- `docs/adr/0001-feature-branch-workflow.md`
+- `docs/adr/0002-serial-monitor-architecture.md`
+- `CHANGELOG.md`

@@ -14,12 +14,16 @@ def new_run_id(prefix: str = "run") -> str:
     return f"{prefix}_{now_compact()}_{uuid4().hex[:8]}"
 
 
-def latest_path() -> Path:
-    return logs_dir() / "latest.json"
+def _logs_root(log_root: str | Path | None = None) -> Path:
+    return Path(log_root) if log_root is not None else logs_dir()
 
 
-def session_path(run_id: str) -> Path:
-    return logs_dir() / "sessions" / f"{run_id}.jsonl"
+def latest_path(log_root: str | Path | None = None) -> Path:
+    return _logs_root(log_root) / "latest.json"
+
+
+def session_path(run_id: str, log_root: str | Path | None = None) -> Path:
+    return _logs_root(log_root) / "sessions" / f"{run_id}.jsonl"
 
 
 def write_event(
@@ -30,8 +34,12 @@ def write_event(
     *,
     run_id: str | None = None,
     source: str = "toolchain",
+    log_root: str | Path | None = None,
 ) -> dict:
-    ensure_runtime_dirs()
+    if log_root is None:
+        ensure_runtime_dirs()
+    else:
+        (_logs_root(log_root) / "sessions").mkdir(parents=True, exist_ok=True)
     rid = run_id or new_run_id("run")
     event = {
         "event_id": f"evt_{uuid4().hex}",
@@ -43,7 +51,7 @@ def write_event(
         "message": message,
         "data": data or {},
     }
-    append_jsonl(session_path(rid), event)
+    append_jsonl(session_path(rid, log_root), event)
     latest = {
         "run_id": rid,
         "status": "error" if level == "error" else "ok",
@@ -52,7 +60,9 @@ def write_event(
         "summary": message,
         "updated_at": event["ts"],
     }
-    latest_path().write_text(json.dumps(latest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    latest_target = latest_path(log_root)
+    latest_target.parent.mkdir(parents=True, exist_ok=True)
+    latest_target.write_text(json.dumps(latest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return event
 
 
