@@ -29,6 +29,7 @@ MEDIUM_RISK_TOOLS = {
 }
 
 HIGH_RISK_TOOLS = {
+    "project_migrate_legacy_data",
     "esp_file_delete",
     "esp_project_clean",
     "esp_flash_firmware",

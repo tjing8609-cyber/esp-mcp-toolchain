@@ -10,5 +10,6 @@ High-risk tools require explicit user confirmation:
 - project clean
 - firmware flash
 - flash erase
+- flash restore
+- confirmed project data migration (migration preview remains read-only)
 - memory delete
-

@@ -26,6 +26,14 @@ Flash tools include `esp_backup_flash` for reading an image and `esp_restore_fla
 
 Unsupported reset modes return `unsupported_reset_mode` instead of an unimplemented placeholder.
 
+`project_migrate_legacy_data(source_root, confirm=False)` migrates recognized shared data from an explicitly named legacy plugin or repository root into the active project:
+
+- Preview is the default and performs no migration or audit writes.
+- Recognized inputs are top-level `hardwork/`, plus `data/memory`, `data/logs`, `data/artifacts`, `data/project_config.json`, and `data/esp_mcp.sqlite`.
+- Legacy `data/projects/` is never traversed by this tool.
+- Existing files with the same SHA-256 are skipped; different existing files are reported as conflicts and are never overwritten.
+- Confirmed copies use exclusive destination creation, verify SHA-256, and roll back files created by the run if copying or audit persistence fails. Audit updates use a temporary file and atomic replacement to preserve the previous JSONL file and append a rollback manifest without partial lines.
+
 Project-scoped tools require `project_context_select(workspace_root)` first. Hardware attachments use:
 
 - `hardwork_upload_attachment`
