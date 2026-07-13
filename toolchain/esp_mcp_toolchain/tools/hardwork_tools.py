@@ -3,6 +3,7 @@ from __future__ import annotations
 from ..hardwork.hardwork_store import get_item, list_items, search_items, set_item
 from ..hardwork.attachment_store import AttachmentError, load_attachment_manifest, store_attachment
 from ..hardwork.mapping_writer import commit_mapping, patch_mapping
+from ..hardwork.mapping_types import GpioMappingEntry, SerialMappingEntry
 from ..errors import execution_error
 
 
@@ -44,8 +45,8 @@ def hardwork_attachment_list() -> dict:
 
 
 def hardwork_commit_mapping(
-    gpio_entries: list[dict],
-    serial_interfaces: list[dict],
+    gpio_entries: list[GpioMappingEntry],
+    serial_interfaces: list[SerialMappingEntry],
     source_attachment_ids: list[str],
     board_summary: str = "",
     unresolved_items: list[str] | None = None,
@@ -66,8 +67,8 @@ def hardwork_commit_mapping(
 
 
 def hardwork_mapping_patch(
-    gpio_entries: list[dict] | None = None,
-    serial_interfaces: list[dict] | None = None,
+    gpio_entries: list[GpioMappingEntry] | None = None,
+    serial_interfaces: list[SerialMappingEntry] | None = None,
     source_attachment_ids: list[str] | None = None,
     unresolved_items: list[str] | None = None,
     observation_source: str = "",

@@ -27,16 +27,6 @@ def _cell(value: object) -> str:
     return str(value).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
 
-def _validate_entries(entries: list[dict], kind: str) -> None:
-    for index, entry in enumerate(entries):
-        evidence = entry.get("evidence", "unconfirmed")
-        if evidence not in VALID_EVIDENCE:
-            raise ValueError(f"{kind}[{index}].evidence must be one of {sorted(VALID_EVIDENCE)}")
-        confidence = float(entry.get("confidence", 0.0))
-        if not 0.0 <= confidence <= 1.0:
-            raise ValueError(f"{kind}[{index}].confidence must be between 0 and 1")
-
-
 def mapping_path() -> Path:
     return hardwork_dir() / "index" / "hardware_mapping.json"
 
@@ -59,6 +49,20 @@ def _identity(entry: dict, kind: str) -> tuple[str, ...]:
     if not interface:
         raise ValueError("Serial patch entries require interface")
     return (interface,)
+
+
+def _validate_entries(entries: list[dict], kind: str) -> None:
+    for index, entry in enumerate(entries):
+        try:
+            _identity(entry, kind)
+        except ValueError as exc:
+            raise ValueError(f"{kind}[{index}]: {exc}") from exc
+        evidence = entry.get("evidence", "unconfirmed")
+        if evidence not in VALID_EVIDENCE:
+            raise ValueError(f"{kind}[{index}].evidence must be one of {sorted(VALID_EVIDENCE)}")
+        confidence = float(entry.get("confidence", 0.0))
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(f"{kind}[{index}].confidence must be between 0 and 1")
 
 
 def _meaningful(value: object) -> bool:

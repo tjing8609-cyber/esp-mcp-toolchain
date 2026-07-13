@@ -28,3 +28,10 @@ Project-scoped tools require `project_context_select(workspace_root)` first. Har
 
 After the first hardware attachment is uploaded, hardware-dependent tools remain blocked until a GPIO or serial mapping is committed.
 The first commit is a bounded base initialization. Later questions and board operations must use `hardwork_mapping_patch` to persist newly discovered facts without replacing unrelated mappings.
+
+Hardware mapping entries use structured FastMCP schemas:
+
+- Every GPIO entry requires `gpio` and `function`.
+- Every serial entry requires `interface`.
+- Optional evidence must be one of `schematic_confirmed`, `board_test_confirmed`, `model_inference`, or `unconfirmed`.
+- Invalid entries are rejected atomically before Markdown, JSON, or review state is written.
