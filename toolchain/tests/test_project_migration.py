@@ -82,6 +82,27 @@ def test_confirmed_project_migration_copies_missing_and_preserves_conflicts(tmp_
     assert audit["conflicts"][0]["destination_relative"] == "memory/memory.jsonl"
 
 
+def test_confirmed_project_migration_rolls_back_when_audit_write_fails(tmp_path, monkeypatch):
+    from esp_mcp_toolchain import project_migration
+
+    source = _legacy_tree(tmp_path)
+    target = data_dir()
+
+    def fail_audit(_path, _record):
+        raise OSError("audit unavailable")
+
+    monkeypatch.setattr(project_migration, "_append_audit", fail_audit)
+
+    result = project_tools.project_migrate_legacy_data(str(source), confirm=True)
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "legacy_migration_failed"
+    assert result["status"] == "rolled_back"
+    assert len(result["rolled_back_files"]) == 6
+    assert not (target / "hardwork" / "processed" / "gpio_map.md").exists()
+    assert not (target / "artifacts" / "flash" / "backup.bin").exists()
+
+
 def test_project_migration_rejects_missing_empty_and_active_project_sources(tmp_path):
     missing = project_tools.project_migrate_legacy_data(str(tmp_path / "missing"))
     empty_source = tmp_path / "empty"

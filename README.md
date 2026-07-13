@@ -223,7 +223,7 @@ MicroPython 方向：
 未来迁移工具：
 
 - `project_context_status`：显示当前 `workspace_root`、`project_id`、数据目录、审查状态和可迁移来源，不修改任何数据。
-- `project_migrate_legacy_data`：把当前旧版共享 `hardwork/`、memory、日志、产物和配置迁入指定项目；默认只生成预览，实际迁移必须显式 `confirm=True`，保留来源清单和审计记录。`test` 分支已建立 dry-run、确认执行、冲突保留、非法来源和 MCP schema 契约，主线实现待完成。
+- `project_migrate_legacy_data`：把当前旧版共享 `hardwork/`、memory、日志、产物和配置迁入指定项目；默认只生成预览，实际迁移必须显式 `confirm=True`，保留来源清单和审计记录。`test` 分支已建立 dry-run、确认执行、冲突保留、非法来源、审计失败回滚和 MCP schema 契约，主线实现待完成。
 - `project_relocate`：工程目录移动或改名后，将旧 `workspace_root` 对应的数据绑定到新路径；必须验证旧项目标识，不自动猜测两个目录属于同一工程。
 - `project_merge`：在用户明确指定源项目和目标项目后合并硬件资料或 memory；默认只预览冲突，实际合并必须显式确认，冲突项不得静默覆盖。
 - `project_export` / `project_import`：以带 manifest 和 SHA-256 校验的归档包迁移项目上下文；导入前校验格式、版本和目标项目，默认不覆盖已有数据。
@@ -294,7 +294,7 @@ MicroPython 方向：
 - 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源已复制到 `C:\Users\16224\plugins\esp-mcp-toolchain`，并通过 `codex plugin add esp-mcp-toolchain@personal-plugins` 安装启用。Codex 安装缓存位于 `C:\Users\16224\.codex\plugins\cache\personal-plugins\esp-mcp-toolchain\0.1.0`。
 - 初始测试集。
 - 已创建 `test` 分支用于维护测试文件、测试目录和合入前验证规则；当前测试入口为 `toolchain/tests/`。
-- `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计回滚清单和 MCP schema。
+- `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
 
 最近一次本地验证：
 
@@ -313,7 +313,7 @@ python -m pytest
 
 ```text
 上一稳定版本：68 passed
-当前迁移测试契约基线：4 failed（主线工具尚未实现，符合预期）
+当前迁移测试契约基线：5 failed（主线工具及审计失败回滚尚未实现，符合预期）
 ```
 
 开发日志（同一天按提交时间分开）：
@@ -454,6 +454,12 @@ python -m pytest
 - 测试要求缺失文件可复制、相同文件跳过、不同文件报告冲突且不覆盖，并为实际复制内容写入可审计的回滚清单。
 - 当前基线执行得到 `4 failed`，失败原因均为工具和 MCP 注册尚未实现；下一步只在 `main` 编写产品代码。
 
+### 2026-07-13 13:11 - 补充迁移审计失败回滚测试
+
+- 新增审计日志写入失败场景，要求已经复制到目标项目的本次新增文件全部删除，并返回 `legacy_migration_failed` 和 `rolled_back`。
+- 回滚只允许删除本次独占创建的文件，不得触碰迁移前已经存在的文件；测试继续使用 pytest 临时目录。
+- 当前迁移契约基线更新为 `5 failed`；下一步在 `main` 将审计写入纳入同一失败回滚边界。
+
 暂未完成：
 
 - `project_migrate_legacy_data` 主线实现、全量测试和 stdio 烟测。
@@ -462,6 +468,11 @@ python -m pytest
 - SQLite 仓储层落地。
 - `esp_logs_query` 已支持多词匹配，后续还可以继续扩展时间范围、run_id 前缀、字段过滤等查询能力。
 - 更多板卡和更多固件项目的端到端验证；当前真实验证覆盖 `COM3` 上的 ESP32-D0WD-V3 板、MicroPython 备份/恢复、ESP-IDF 示例 build/flash、整片擦除后恢复。
+
+下一步计划：
+
+- 在 `main` 完成 `project_migrate_legacy_data`，确保审计写入也是迁移事务的一部分。
+- 实现通过后运行测试分支全量门禁和 MCP stdio synthetic 迁移，不执行真实旧数据迁移。
 
 ## 协作约定
 
