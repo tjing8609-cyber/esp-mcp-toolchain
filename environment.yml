@@ -9,3 +9,4 @@ dependencies:
       - "pytest>=8.0"
       - "mcp>=1.27,<2"
       - "mpremote>=1.28"
+      - "typing-extensions>=4.12"

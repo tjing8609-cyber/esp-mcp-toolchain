@@ -301,17 +301,17 @@ MicroPython 方向：
 conda 环境：esp-mcp-toolchain
 Python：3.12.13
 官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
-MCP 烟测结果：31 tools / 10 resources / 4 prompts
+MCP 烟测结果：38 tools / 12 resources / 4 prompts
 MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
 插件验证：源码目录和个人插件目录均通过本地 plugin validator
 Codex 插件安装状态：插件源已同步到 `C:\Users\16224\plugins\esp-mcp-toolchain`；当前进程执行 `codex plugin add` 受 WindowsApps 权限限制
 python -m pytest
 ```
 
-`main` 基线测试结果：
+测试分支全量验证结果：
 
 ```text
-47 passed
+63 passed
 ```
 
 开发日志（同一天按提交时间分开）：
@@ -428,9 +428,16 @@ python -m pytest
 - 烧录前调用 `esp_backup_flash` 读取 4 MiB 时超过 MCP 300 秒调用上限，未生成可验证备份文件；本次不计为备份成功。
 - `esp_reset(mode="hard")` 返回 `implemented=false`，确认当前只支持 MicroPython `soft` 复位；ESP-IDF 硬复位仍需查明可靠 DTR/RTS 时序后实现。
 
+### 2026-07-13 - 修复硬件映射输入校验和 MCP schema
+
+- 为 GPIO 和串口映射增加结构化 TypedDict：GPIO 条目强制要求 `gpio + function`，串口条目强制要求 `interface`，证据字段在 MCP schema 中公开固定枚举。
+- `hardwork_commit_mapping` 在写入 Markdown、JSON 和硬件审查状态前验证稳定键，缺少必填字段时原子返回 `invalid_hardware_mapping`，不再生成空白映射。
+- `hardwork_mapping_patch` 复用相同的结构化条目 schema；Codex 通过 FastMCP `tools/list` 可以直接看到嵌套字段、必填项和证据枚举。
+- `test` 分支增加运行时拒绝和 MCP schema 回归测试；使用测试分支全量测试加载主线实现，执行 `python -m pytest` 得到 `63 passed`。
+- 本地 FastMCP 枚举验证为 `38 tools / 12 resources / 4 prompts`。
+
 暂未完成：
 
-- `hardwork_commit_mapping` 对 GPIO `function` 和串口 `interface` 的强制校验，以及 FastMCP 嵌套输入 schema 的明确字段约束。
 - `esp_backup_flash` 的 MCP 超时边界、超时进程清理和残缺备份处理。
 - `esp_reset(mode="hard")` 的 ESP-IDF/通用硬复位实现与实板验证。
 - 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。

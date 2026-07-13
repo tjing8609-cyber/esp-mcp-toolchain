@@ -393,7 +393,7 @@ def register_tools(mcp: FastMCP) -> None:
                     return normalize_tool_result(tool_name, blocked)
                 return normalize_tool_result(tool_name, tool_func(*args, **kwargs))
 
-            wrapper.__signature__ = inspect.signature(tool_func)  # type: ignore[attr-defined]
+            wrapper.__signature__ = inspect.signature(tool_func, eval_str=True)  # type: ignore[attr-defined]
             return wrapper
 
         mcp.tool(name=name, description=spec.description)(make_tool(name, func))
