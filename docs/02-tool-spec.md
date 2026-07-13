@@ -17,7 +17,14 @@ Initial tools are grouped into:
 
 High-risk tools must require explicit confirmation in clients.
 
-Flash tools include `esp_backup_flash` for reading an image and `esp_restore_flash` for writing a verified local BIN image back to the board. Restore requires `confirm=True` and supports an expected SHA-256 guard.
+Flash tools include `esp_backup_flash` for reading an image and `esp_restore_flash` for writing a verified local BIN image back to the board. Backup runs through the managed ESP-IDF subprocess wrapper, writes to a `.part` file, deletes partial output after failure or timeout, validates the exact requested byte count, and only then atomically replaces the final BIN. Restore requires `confirm=True` and supports an expected SHA-256 guard.
+
+`esp_reset` supports two explicit modes:
+
+- `soft`: send MicroPython Ctrl-C/Ctrl-D over the selected serial port.
+- `hard`: keep GPIO0 high with DTR inactive, pulse RTS for 100 ms to reset EN, then capture two seconds of boot output.
+
+Unsupported reset modes return `unsupported_reset_mode` instead of an unimplemented placeholder.
 
 Project-scoped tools require `project_context_select(workspace_root)` first. Hardware attachments use:
 

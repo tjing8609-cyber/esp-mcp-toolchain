@@ -183,7 +183,7 @@ MicroPython 方向：
 - `esp_serial_capture`
 - `esp_error_parse_log`
 
-当前状态：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已封装整片 flash 备份，但最新 4 MiB 实板调用触发 MCP 300 秒超时，仍需补齐超时边界、进程清理和残缺文件处理；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成真实板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload` 和 `esp_file_download` 已通过 MicroPython raw REPL 与 `mpremote` 在 `COM3` 上完成烟测；`esp_reset` 当前只实现 MicroPython `soft` 模式，ESP-IDF 可用的 `hard` 模式仍待实现；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。仍保持占位或待增强的部分包括后台串口 monitor 和更多工程化查询能力。
+当前状态：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已接入统一子进程管理、超时清理、`.part` 原子写入和精确长度校验，4 MiB 实板备份已通过；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成真实板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload` 和 `esp_file_download` 已通过 MicroPython raw REPL 与 `mpremote` 在 `COM3` 上完成烟测；`esp_reset` 已支持 MicroPython `soft` 和 ESP-IDF/通用固件 `hard` 两种模式，硬复位已捕获真实启动日志；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。仍保持占位或待增强的部分包括后台串口 monitor 和更多工程化查询能力。
 
 ### 第 4 阶段：hardwork 硬件资料上下文
 
@@ -311,7 +311,7 @@ python -m pytest
 测试分支全量验证结果：
 
 ```text
-63 passed
+68 passed
 ```
 
 开发日志（同一天按提交时间分开）：
@@ -428,7 +428,7 @@ python -m pytest
 - 烧录前调用 `esp_backup_flash` 读取 4 MiB 时超过 MCP 300 秒调用上限，未生成可验证备份文件；本次不计为备份成功。
 - `esp_reset(mode="hard")` 返回 `implemented=false`，确认当前只支持 MicroPython `soft` 复位；ESP-IDF 硬复位仍需查明可靠 DTR/RTS 时序后实现。
 
-### 2026-07-13 - 修复硬件映射输入校验和 MCP schema
+### 2026-07-13 12:31 - 修复硬件映射输入校验和 MCP schema
 
 - 为 GPIO 和串口映射增加结构化 TypedDict：GPIO 条目强制要求 `gpio + function`，串口条目强制要求 `interface`，证据字段在 MCP schema 中公开固定枚举。
 - `hardwork_commit_mapping` 在写入 Markdown、JSON 和硬件审查状态前验证稳定键，缺少必填字段时原子返回 `invalid_hardware_mapping`，不再生成空白映射。
@@ -436,10 +436,17 @@ python -m pytest
 - `test` 分支增加运行时拒绝和 MCP schema 回归测试；使用测试分支全量测试加载主线实现，执行 `python -m pytest` 得到 `63 passed`。
 - 本地 FastMCP 枚举验证为 `38 tools / 12 resources / 4 prompts`。
 
+### 2026-07-13 12:48 - 稳定 Flash 备份并实现硬复位
+
+- `esp_backup_flash` 改用 ESP-IDF 共用的受管子进程封装，子进程不再继承 MCP stdin，超时后会终止进程树。
+- 备份先写入同名 `.part` 文件；失败、超时或长度不符时删除残片并保留已有目标文件，只有字节数与请求值完全一致时才原子替换正式 BIN。
+- `COM3` 实板读取 4 MiB 成功，耗时约 100.7 秒，输出 4,194,304 字节，未残留 `.part`；备份 SHA-256 为 `12954cd7873a90e1e9c501ef0b9da7e730c434ca4f70781ccdcf733428895a3a`。
+- `esp_reset(mode="hard")` 使用 DTR 保持 GPIO0 高电平、RTS 低脉冲复位 EN，并捕获两秒启动输出；实板日志包含 `POWERON_RESET`、项目 `esp_idf_key_led_buzzer` 和 `ready`。
+- MCP stdio 烟测确认仍为 38 个工具，`esp_reset.mode` schema 枚举为 `soft`、`hard`；`test` 分支完整测试集加载主线实现得到 `68 passed`。
+- 原理图初始 DTR/RTS 解释与实板成功时序存在冲突，已作为单独的 `board_test_confirmed` 串口映射和待复核项写入当前工程硬件资料，暂不凭推测覆盖原始记录。
+
 暂未完成：
 
-- `esp_backup_flash` 的 MCP 超时边界、超时进程清理和残缺备份处理。
-- `esp_reset(mode="hard")` 的 ESP-IDF/通用硬复位实现与实板验证。
 - 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。
 - 后台串口 monitor。
 - SQLite 仓储层落地。

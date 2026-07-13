@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import time
+from typing import Literal
 
 from ..backends.pyserial_backend import get_serial_module
 from ..config import get_selected_port
-from ..errors import execution_error, not_implemented
+from ..errors import execution_error
 
 
-def esp_reset(port: str | None = None, mode: str = "soft") -> dict:
-    if mode != "soft":
-        return not_implemented("esp_reset")
+def esp_reset(port: str | None = None, mode: Literal["soft", "hard"] = "soft") -> dict:
+    if mode not in {"soft", "hard"}:
+        return execution_error(
+            "unsupported_reset_mode",
+            f"Unsupported reset mode: {mode}",
+            tool="esp_reset",
+            implemented=True,
+            suggested_next_actions=["Use mode=soft for MicroPython", "Use mode=hard to restart the running firmware"],
+        )
 
     serial_mod = get_serial_module()
     if serial_mod is None:
@@ -32,11 +39,18 @@ def esp_reset(port: str | None = None, mode: str = "soft") -> dict:
     chunks: list[str] = []
     try:
         with serial_mod.Serial(selected_port, baudrate=115200, timeout=0.1) as ser:
-            ser.dtr = False
-            ser.rts = False
-            ser.write(b"\x03")
-            time.sleep(0.1)
-            ser.write(b"\x04")
+            if mode == "soft":
+                ser.dtr = False
+                ser.rts = False
+                ser.write(b"\x03")
+                time.sleep(0.1)
+                ser.write(b"\x04")
+            else:
+                # Match esptool's control-line semantics while keeping IO0 high.
+                ser.setDTR(False)
+                ser.setRTS(True)
+                time.sleep(0.1)
+                ser.setRTS(False)
             end_at = time.monotonic() + 2.0
             while time.monotonic() < end_at:
                 data = ser.read(4096)
@@ -53,6 +67,7 @@ def esp_reset(port: str | None = None, mode: str = "soft") -> dict:
         )
 
     text = "".join(chunks)
+    message = "Sent MicroPython soft reset over serial." if mode == "soft" else "Restarted firmware with a hardware reset."
     return {
         "ok": True,
         "tool": "esp_reset",
@@ -62,6 +77,6 @@ def esp_reset(port: str | None = None, mode: str = "soft") -> dict:
         "port": selected_port,
         "mode": mode,
         "text": text,
-        "message": "Sent MicroPython soft reset over serial.",
+        "message": message,
         "data": {"text": text},
     }

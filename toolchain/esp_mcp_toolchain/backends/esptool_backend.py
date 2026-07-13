@@ -16,9 +16,18 @@ def run_read_flash(
     address: int = 0,
     size: int = 0x400000,
     baud: int = 460800,
-    timeout_s: int = 300,
+    timeout_s: int = 240,
 ) -> dict[str, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    partial_path = output_path.with_name(f"{output_path.name}.part")
+    partial_path.unlink(missing_ok=True)
+    idf_path = _idf_path()
+    if idf_path is None:
+        return {
+            "ok": False,
+            "error_kind": "idf_path_missing",
+            "message": "ESP-IDF path was not found for flash backup.",
+        }
     command = [
         str(_idf_python()),
         "-m",
@@ -29,28 +38,19 @@ def run_read_flash(
         port,
         "-b",
         str(baud),
+        "--before",
+        "default_reset",
+        "--after",
+        "hard_reset",
         "read_flash",
         hex(address),
         hex(size),
-        str(output_path),
+        str(partial_path),
     ]
     try:
-        completed = subprocess.run(
-            command,
-            cwd=str(Path.cwd()),
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return {
-            "ok": False,
-            "error_kind": "backup_timeout",
-            "message": f"esptool read_flash timed out after {timeout_s} seconds.",
-            "command": redact_command(command),
-        }
+        result = _run_idf_command(command, output_path.parent, idf_path, timeout_s)
     except Exception as exc:
+        partial_path.unlink(missing_ok=True)
         return {
             "ok": False,
             "error_kind": "backup_spawn_failed",
@@ -58,14 +58,38 @@ def run_read_flash(
             "command": redact_command(command),
         }
 
-    return {
-        "ok": completed.returncode == 0,
-        "returncode": completed.returncode,
-        "command": redact_command(command),
-        "stdout": completed.stdout,
-        "stderr": completed.stderr,
-        "message": "Flash backup completed." if completed.returncode == 0 else "Flash backup failed.",
-    }
+    if not result.get("ok"):
+        partial_path.unlink(missing_ok=True)
+        if result.get("error_kind") == "idf_command_timeout":
+            result["error_kind"] = "backup_timeout"
+            result["message"] = f"esptool read_flash timed out after {timeout_s} seconds."
+        else:
+            result["message"] = result.get("message", "Flash backup failed.")
+        return result
+
+    if not partial_path.exists():
+        return {
+            **result,
+            "ok": False,
+            "error_kind": "backup_output_missing",
+            "message": "esptool completed without creating a backup file.",
+        }
+
+    actual_size = partial_path.stat().st_size
+    if actual_size != size:
+        partial_path.unlink(missing_ok=True)
+        return {
+            **result,
+            "ok": False,
+            "error_kind": "backup_size_mismatch",
+            "message": "Flash backup size does not match the requested size.",
+            "expected_bytes": size,
+            "actual_bytes": actual_size,
+        }
+
+    partial_path.replace(output_path)
+    result["message"] = "Flash backup completed."
+    return result
 
 
 def run_erase_flash(*, port: str, chip: str = "esp32", timeout_s: int = 180) -> dict[str, Any]:
