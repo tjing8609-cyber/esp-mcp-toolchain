@@ -222,8 +222,8 @@ MicroPython 方向：
 
 未来迁移工具：
 
-- `project_context_status`：显示当前 `workspace_root`、`project_id`、数据目录、审查状态和可迁移来源，不修改任何数据。
-- `project_migrate_legacy_data`：把当前旧版共享 `hardwork/`、memory、日志、产物和配置迁入指定项目；默认只生成预览，实际迁移必须显式 `confirm=True`，保留来源清单和审计记录。`test` 分支已建立 dry-run、确认执行、冲突保留、非法来源、审计失败回滚和 MCP schema 契约，主线实现待完成。
+- `project_context_status`：显示当前 `workspace_root`、`project_id`、数据目录和迁移历史，不修改任何数据，也不自动猜测可迁移来源。
+- `project_migrate_legacy_data`：已实现。调用者必须明确提供旧插件或仓库根目录；默认只生成带 SHA-256 和冲突分类的预览，`confirm=True` 后只复制缺失文件，相同文件跳过、不同文件不覆盖，并写入迁移审计和回滚清单。
 - `project_relocate`：工程目录移动或改名后，将旧 `workspace_root` 对应的数据绑定到新路径；必须验证旧项目标识，不自动猜测两个目录属于同一工程。
 - `project_merge`：在用户明确指定源项目和目标项目后合并硬件资料或 memory；默认只预览冲突，实际合并必须显式确认，冲突项不得静默覆盖。
 - `project_export` / `project_import`：以带 manifest 和 SHA-256 校验的归档包迁移项目上下文；导入前校验格式、版本和目标项目，默认不覆盖已有数据。
@@ -237,7 +237,7 @@ MicroPython 方向：
 - 覆盖旧数据迁移 dry-run、显式确认、冲突、回滚记录、工程改名重绑定、导入导出校验和跨项目合并预览。
 - FastMCP 工具 schema、资源、prompt 和 stdio 握手必须通过测试；最终执行 `python -m pytest` 全量测试，通过后才允许合入主分支或更新个人插件缓存。
 
-当前状态：项目上下文、项目级目录隔离、对话附件归档、首次基础映射、GPIO/串口增量回写和硬件工具门禁已经实现。Codex 必须先调用 `project_context_select(workspace_root)`；插件启动目录不能替代用户工程目录。hardwork、memory、日志、产物、SQLite 路径和串口配置均按 `project_id` 隔离。后续任务发现的新硬件事实通过 `hardwork_mapping_patch` 合并。`project_migrate_legacy_data` 已完成测试契约但尚未进入主线实现；工程路径重绑定、项目合并、导入导出和迁移校验工具仍属于后续阶段。
+当前状态：项目上下文、项目级目录隔离、对话附件归档、首次基础映射、GPIO/串口增量回写、硬件工具门禁和旧版共享数据显式迁移已经实现。Codex 必须先调用 `project_context_select(workspace_root)`；插件启动目录不能替代用户工程目录。hardwork、memory、日志、产物、SQLite 路径和串口配置均按 `project_id` 隔离。后续任务发现的新硬件事实通过 `hardwork_mapping_patch` 合并。工程路径重绑定、项目合并、导入导出和迁移校验工具仍属于后续阶段。
 
 ### 第 5 阶段：项目内 memory
 
@@ -295,6 +295,7 @@ MicroPython 方向：
 - 初始测试集。
 - 已创建 `test` 分支用于维护测试文件、测试目录和合入前验证规则；当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
+- 已实现 `project_migrate_legacy_data`：支持只读预览、显式确认、SHA-256 比对、冲突不覆盖、复制或审计失败回滚和原子 JSONL 审计；不会递归迁移旧 `data/projects/`。
 
 最近一次本地验证：
 
@@ -302,18 +303,17 @@ MicroPython 方向：
 conda 环境：esp-mcp-toolchain
 Python：3.12.13
 官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
-MCP 烟测结果：38 tools / 12 resources / 4 prompts
+MCP 烟测结果：39 tools / 12 resources / 4 prompts
 MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
 插件验证：源码目录和个人插件目录均通过本地 plugin validator
-Codex 插件安装状态：重启后已生成并加载 `0.1.0+codex.20260713045253` 缓存
+Codex 插件安装状态：个人插件源已同步并通过 validator，版本为 `0.1.0+codex.20260713051437`；当前任务仍加载上一缓存 `0.1.0+codex.20260713045253`，需重启 Codex 后再验证新工具缓存
 python -m pytest
 ```
 
 测试分支全量验证结果：
 
 ```text
-上一稳定版本：68 passed
-当前迁移测试契约基线：5 failed（主线工具及审计失败回滚尚未实现，符合预期）
+73 passed
 ```
 
 开发日志（同一天按提交时间分开）：
@@ -460,9 +460,17 @@ python -m pytest
 - 回滚只允许删除本次独占创建的文件，不得触碰迁移前已经存在的文件；测试继续使用 pytest 临时目录。
 - 当前迁移契约基线更新为 `5 failed`；下一步在 `main` 将审计写入纳入同一失败回滚边界。
 
+### 2026-07-13 13:14 - 实现旧版共享数据显式迁移
+
+- 新增 `project_migrate_legacy_data(source_root, confirm=False)`；来源目录必须由调用者明确给出，工具不会自动猜测两个工程或目录属于同一项目。
+- 默认 dry-run 只计算文件数量、字节数、SHA-256、目标路径和 `copy` / `identical` / `conflict` 分类，不创建迁移文件或审计记录。
+- `confirm=True` 时只迁移旧版 `hardwork/`、memory、日志、产物、项目配置和 SQLite；旧 `data/projects/` 明确排除，避免把其他项目递归混入当前项目。
+- 复制使用独占创建，已有相同文件跳过、已有不同文件报告冲突且不覆盖；复制或审计写入失败时删除本次已复制文件并返回 `rolled_back`。
+- 成功执行以临时文件和原子替换方式更新 `migration_audit.jsonl`，记录来源、目标项目、统计、冲突和带 SHA-256 的回滚清单，不留下半行 JSON。
+- `test` 分支全量测试加载主线实现得到 `73 passed`；MCP stdio 烟测枚举 39 个工具，临时目录中的 dry-run 与 synthetic `confirm=True` 迁移、内容校验和审计生成均通过。
+
 暂未完成：
 
-- `project_migrate_legacy_data` 主线实现、全量测试和 stdio 烟测。
 - 工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。
 - 后台串口 monitor。
 - SQLite 仓储层落地。
@@ -471,8 +479,9 @@ python -m pytest
 
 下一步计划：
 
-- 在 `main` 完成 `project_migrate_legacy_data`，确保审计写入也是迁移事务的一部分。
-- 实现通过后运行测试分支全量门禁和 MCP stdio synthetic 迁移，不执行真实旧数据迁移。
+- 实现 `project_relocate`，要求用户显式提供旧、新工作区路径和旧项目标识，默认只预览，不自动猜测工程改名关系。
+- 在重绑定能力稳定后，再实现 `project_merge` 的冲突预览；导入导出与迁移完整性校验随后推进。
+- 后台串口 monitor、SQLite 仓储层和日志查询增强继续保持暂缓，不与工程迁移改动混在同一次提交。
 
 ## 协作约定
 

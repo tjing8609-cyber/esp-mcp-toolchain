@@ -101,6 +101,21 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
         ToolSpec("project_context_status", "Read the active isolated project context."),
         project_tools.project_context_status,
     ),
+    "project_migrate_legacy_data": (
+        ToolSpec(
+            "project_migrate_legacy_data",
+            "Preview or confirm migration of legacy shared ESP data into the active isolated project.",
+            {
+                "type": "object",
+                "properties": {
+                    "source_root": {"type": "string"},
+                    "confirm": {"type": "boolean", "default": False},
+                },
+                "required": ["source_root"],
+            },
+        ),
+        project_tools.project_migrate_legacy_data,
+    ),
     "esp_port_list": (
         ToolSpec("esp_port_list", "List local serial ports."),
         port_tools.esp_port_list,
