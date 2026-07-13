@@ -1,6 +1,7 @@
 from esp_mcp_toolchain.config import get_selected_port, set_selected_port
 from esp_mcp_toolchain.database.db import database_path
 from esp_mcp_toolchain.paths import data_dir, hardwork_dir, logs_dir, memory_dir
+from esp_mcp_toolchain import project_context
 from esp_mcp_toolchain.project_context import clear_project_context, project_id_for, select_project_context
 from esp_mcp_toolchain.resources.resource_registry import read_resource
 from esp_mcp_toolchain.server import call_tool
@@ -59,3 +60,42 @@ def test_project_scoped_tools_and_resources_require_context():
 
     assert tool_result["error_kind"] == "project_context_required"
     assert "project_context_required" in resource_result["contents"][0]["text"]
+
+
+def test_select_context_migrates_legacy_project_without_overwrite(tmp_path, monkeypatch):
+    monkeypatch.delenv("ESP_MCP_DATA_ROOT", raising=False)
+    workspace = tmp_path / "migration-workspace"
+    workspace.mkdir()
+    stable = tmp_path / "stable"
+    legacy = tmp_path / "legacy"
+    project_id = project_id_for(workspace)
+    legacy_file = legacy / project_id / "hardwork" / "processed" / "gpio_map.md"
+    legacy_file.parent.mkdir(parents=True)
+    legacy_file.write_text("legacy gpio", encoding="utf-8")
+    existing = stable / project_id / "memory" / "memory.jsonl"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("stable memory", encoding="utf-8")
+    legacy_memory = legacy / project_id / "memory" / "memory.jsonl"
+    legacy_memory.parent.mkdir(parents=True)
+    legacy_memory.write_text("legacy memory", encoding="utf-8")
+    monkeypatch.setattr(project_context, "storage_root", lambda: stable)
+    monkeypatch.setattr(project_context, "legacy_storage_roots", lambda: [legacy])
+
+    context = select_project_context(workspace)
+
+    assert context["migration"]["copied_files"] == 1
+    assert (stable / project_id / "hardwork" / "processed" / "gpio_map.md").read_text(encoding="utf-8") == "legacy gpio"
+    assert existing.read_text(encoding="utf-8") == "stable memory"
+
+
+def test_active_context_survives_in_memory_reset(tmp_path, monkeypatch):
+    monkeypatch.setenv("ESP_MCP_DATA_ROOT", str(tmp_path / "stable"))
+    workspace = tmp_path / "restart-workspace"
+    workspace.mkdir()
+    selected = select_project_context(workspace)
+    monkeypatch.setattr(project_context, "_ACTIVE_CONTEXT", None)
+
+    restored = project_context.get_project_context()
+
+    assert restored["project_id"] == selected["project_id"]
+    assert restored["project_dir"] == selected["project_dir"]

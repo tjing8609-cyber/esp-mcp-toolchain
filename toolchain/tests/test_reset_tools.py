@@ -5,6 +5,7 @@ from esp_mcp_toolchain.tools import reset_tools
 
 class FakeSerial:
     writes: list[bytes] = []
+    control_changes: list[tuple[str, bool]] = []
 
     def __init__(self, port: str, baudrate: int = 115200, timeout: float = 0.1):
         self.port = port
@@ -23,6 +24,14 @@ class FakeSerial:
     def write(self, data: bytes) -> int:
         self.writes.append(data)
         return len(data)
+
+    def setDTR(self, state: bool) -> None:
+        self.dtr = state
+        self.control_changes.append(("dtr", state))
+
+    def setRTS(self, state: bool) -> None:
+        self.rts = state
+        self.control_changes.append(("rts", state))
 
     def read(self, _size: int) -> bytes:
         if self._reads:
@@ -47,9 +56,23 @@ def test_reset_soft_sends_ctrl_c_ctrl_d(monkeypatch):
     assert "MicroPython" in result["text"]
 
 
-def test_reset_non_soft_stays_placeholder():
+def test_reset_hard_restarts_app_without_asserting_boot_pin(monkeypatch):
+    FakeSerial.control_changes = []
+    monkeypatch.setattr(reset_tools, "get_serial_module", lambda: FakeSerialModule)
+
     result = reset_tools.esp_reset(port="COM_TEST", mode="hard")
 
     assert result["ok"] is True
-    assert result["implemented"] is False
+    assert result["implemented"] is True
     assert result["tool_name"] == "esp_reset"
+    assert result["mode"] == "hard"
+    assert FakeSerial.control_changes == [("dtr", False), ("rts", True), ("rts", False)]
+    assert "MicroPython" in result["text"]
+
+
+def test_reset_rejects_unknown_mode():
+    result = reset_tools.esp_reset(port="COM_TEST", mode="unknown")
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "unsupported_reset_mode"
+    assert result["implemented"] is True

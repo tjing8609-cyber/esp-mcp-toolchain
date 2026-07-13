@@ -1,8 +1,15 @@
-# Development Roadmap
+# 开发路线图
 
-1. Python CLI: port list, port select, serial capture, latest logs.
-2. MCP server: use the official MCP Python SDK, `FastMCP`, and stdio transport to expose tools, resources, and prompts.
-3. ESP loop: build, flash, reset, serial capture, error parse.
-4. Hardwork context: list, get, set, search.
-5. Project memory: write, read, search, update, delete.
-6. SQLite index: migrate stable JSONL evidence into queryable tables.
+路线按依赖关系推进。每项功能必须在独立功能分支同时完成实现、测试和文档，通过全量测试与对应硬件门禁后才能合入 `main`。
+
+1. Python CLI：串口枚举、选择、固定时长捕获和日志读取。已完成基础闭环。
+2. MCP Server：使用官方 MCP Python SDK、`FastMCP` 和 stdio transport 暴露 tools、resources 和 prompts。已完成。
+3. ESP 开发闭环：构建、备份、烧录、恢复、复位、文件操作和错误解析。已完成当前板卡范围内的基础闭环。
+4. hardwork 上下文：附件归档、资料索引、硬件审查门禁和映射增量回写。已完成基础闭环。
+5. 项目 memory：写入、读取、检索、更新和删除。已完成基础闭环。
+6. 后台串口 Monitor：状态机、不可变项目绑定、游标读取、有界缓冲、分块落盘、跨进程串口锁和退出清理。软件测试、四平台 CI、Codex 插件缓存验证和真实 ESP 串口验收已完成，并已合入 `main`。
+7. SQLite schema 与仓储层：把稳定 JSONL 证据索引到可查询表中。尚未开始；这里的 schema 迁移只指数据库版本升级。
+8. 日志查询增强：在仓储层稳定后增加时间范围、run_id 前缀和字段过滤。尚未开始。
+9. 项目数据迁移体系：工程路径重绑定、项目合并、导出、导入和完整性校验。当前暂停，排在 SQLite 与日志查询增强之后；它与数据库 schema 迁移是两类任务。
+
+当前执行到第 6 项。完成 Monitor 功能分支后暂停，不自动开始第 7 项。

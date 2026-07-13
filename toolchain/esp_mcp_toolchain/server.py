@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import atexit
 from collections.abc import Callable
 from functools import wraps
 import inspect
+import signal
+import threading
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from . import __version__
 from .errors import execution_error
+from .backends.serial_monitor_backend import SERIAL_MONITOR_MANAGER
 from .project_context import ProjectContextError, get_project_context
 from .hardwork.review_state import hardware_review_required
 from .prompts.prompt_registry import PROMPTS, get_prompt
@@ -40,11 +44,16 @@ SERVER_INSTRUCTIONS = (
     "or full clean."
 )
 
+_SHUTDOWN_LOCK = threading.RLock()
+_SHUTDOWN_ACTIVE = False
+_HOOKS_INSTALLED = False
+
 CONTEXT_FREE_TOOLS = {"project_context_select", "project_context_status", "esp_port_list"}
 HARDWARE_GATED_TOOLS = {
     "esp_port_select",
     "esp_port_status",
     "esp_serial_capture",
+    "esp_serial_monitor_start",
     "esp_project_build",
     "esp_project_clean",
     "esp_flash_firmware",
@@ -139,6 +148,22 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
     "esp_serial_capture": (
         ToolSpec("esp_serial_capture", "Capture serial output for a fixed duration."),
         serial_tools.esp_serial_capture,
+    ),
+    "esp_serial_monitor_start": (
+        ToolSpec("esp_serial_monitor_start", "Start a project-bound background serial monitor."),
+        serial_tools.esp_serial_monitor_start,
+    ),
+    "esp_serial_monitor_stop": (
+        ToolSpec("esp_serial_monitor_stop", "Stop a background serial monitor by run_id."),
+        serial_tools.esp_serial_monitor_stop,
+    ),
+    "esp_serial_monitor_status": (
+        ToolSpec("esp_serial_monitor_status", "Read background serial monitor state."),
+        serial_tools.esp_serial_monitor_status,
+    ),
+    "esp_serial_monitor_read": (
+        ToolSpec("esp_serial_monitor_read", "Read serial monitor records using a sequence cursor."),
+        serial_tools.esp_serial_monitor_read,
     ),
     "esp_logs_latest": (
         ToolSpec("esp_logs_latest", "Read the latest tool run summary."),
@@ -458,5 +483,46 @@ def create_mcp_server() -> FastMCP:
     return mcp
 
 
+def shutdown_runtime(reason: str = "runtime_shutdown", timeout: float = 5.0) -> dict:
+    global _SHUTDOWN_ACTIVE
+    with _SHUTDOWN_LOCK:
+        if _SHUTDOWN_ACTIVE:
+            return {"ok": True, "already_active": True, "reason": reason}
+        _SHUTDOWN_ACTIVE = True
+    try:
+        result = SERIAL_MONITOR_MANAGER.shutdown_all(timeout)
+    finally:
+        with _SHUTDOWN_LOCK:
+            _SHUTDOWN_ACTIVE = False
+    return {**result, "reason": reason}
+
+
+def _signal_shutdown(signum: int, _frame: Any) -> None:
+    shutdown_runtime(f"signal_{signum}")
+    if signum == getattr(signal, "SIGINT", None):
+        raise KeyboardInterrupt
+    raise SystemExit(128 + signum)
+
+
+def install_shutdown_hooks() -> None:
+    global _HOOKS_INSTALLED
+    if _HOOKS_INSTALLED:
+        return
+    _HOOKS_INSTALLED = True
+    atexit.register(shutdown_runtime, "atexit")
+    for name in ("SIGINT", "SIGTERM", "SIGBREAK"):
+        signum = getattr(signal, name, None)
+        if signum is None:
+            continue
+        try:
+            signal.signal(signum, _signal_shutdown)
+        except (OSError, RuntimeError, ValueError):
+            continue
+
+
 def serve_stdio() -> None:
-    create_mcp_server().run(transport="stdio")
+    install_shutdown_hooks()
+    try:
+        create_mcp_server().run(transport="stdio")
+    finally:
+        shutdown_runtime("stdio_eof_or_server_exit")
