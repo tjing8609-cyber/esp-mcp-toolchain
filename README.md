@@ -223,7 +223,7 @@ MicroPython 方向：
 未来迁移工具：
 
 - `project_context_status`：显示当前 `workspace_root`、`project_id`、数据目录、审查状态和可迁移来源，不修改任何数据。
-- `project_migrate_legacy_data`：把当前旧版共享 `hardwork/`、memory、日志、产物和配置迁入指定项目；默认只生成预览，实际迁移必须显式 `confirm=True`，保留来源清单和审计记录。
+- `project_migrate_legacy_data`：把当前旧版共享 `hardwork/`、memory、日志、产物和配置迁入指定项目；默认只生成预览，实际迁移必须显式 `confirm=True`，保留来源清单和审计记录。`test` 分支已建立 dry-run、确认执行、冲突保留、非法来源和 MCP schema 契约，主线实现待完成。
 - `project_relocate`：工程目录移动或改名后，将旧 `workspace_root` 对应的数据绑定到新路径；必须验证旧项目标识，不自动猜测两个目录属于同一工程。
 - `project_merge`：在用户明确指定源项目和目标项目后合并硬件资料或 memory；默认只预览冲突，实际合并必须显式确认，冲突项不得静默覆盖。
 - `project_export` / `project_import`：以带 manifest 和 SHA-256 校验的归档包迁移项目上下文；导入前校验格式、版本和目标项目，默认不覆盖已有数据。
@@ -237,7 +237,7 @@ MicroPython 方向：
 - 覆盖旧数据迁移 dry-run、显式确认、冲突、回滚记录、工程改名重绑定、导入导出校验和跨项目合并预览。
 - FastMCP 工具 schema、资源、prompt 和 stdio 握手必须通过测试；最终执行 `python -m pytest` 全量测试，通过后才允许合入主分支或更新个人插件缓存。
 
-当前状态：项目上下文、项目级目录隔离、对话附件归档、首次基础映射、GPIO/串口增量回写和硬件工具门禁已经实现。Codex 必须先调用 `project_context_select(workspace_root)`；插件启动目录不能替代用户工程目录。hardwork、memory、日志、产物、SQLite 路径和串口配置均按 `project_id` 隔离。后续任务发现的新硬件事实通过 `hardwork_mapping_patch` 合并，旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移校验工具仍属于后续阶段。
+当前状态：项目上下文、项目级目录隔离、对话附件归档、首次基础映射、GPIO/串口增量回写和硬件工具门禁已经实现。Codex 必须先调用 `project_context_select(workspace_root)`；插件启动目录不能替代用户工程目录。hardwork、memory、日志、产物、SQLite 路径和串口配置均按 `project_id` 隔离。后续任务发现的新硬件事实通过 `hardwork_mapping_patch` 合并。`project_migrate_legacy_data` 已完成测试契约但尚未进入主线实现；工程路径重绑定、项目合并、导入导出和迁移校验工具仍属于后续阶段。
 
 ### 第 5 阶段：项目内 memory
 
@@ -294,6 +294,7 @@ MicroPython 方向：
 - 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源已复制到 `C:\Users\16224\plugins\esp-mcp-toolchain`，并通过 `codex plugin add esp-mcp-toolchain@personal-plugins` 安装启用。Codex 安装缓存位于 `C:\Users\16224\.codex\plugins\cache\personal-plugins\esp-mcp-toolchain\0.1.0`。
 - 初始测试集。
 - 已创建 `test` 分支用于维护测试文件、测试目录和合入前验证规则；当前测试入口为 `toolchain/tests/`。
+- `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计回滚清单和 MCP schema。
 
 最近一次本地验证：
 
@@ -304,14 +305,15 @@ Python：3.12.13
 MCP 烟测结果：38 tools / 12 resources / 4 prompts
 MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
 插件验证：源码目录和个人插件目录均通过本地 plugin validator
-Codex 插件安装状态：插件源已同步到 `C:\Users\16224\plugins\esp-mcp-toolchain`；当前进程执行 `codex plugin add` 受 WindowsApps 权限限制
+Codex 插件安装状态：重启后已生成并加载 `0.1.0+codex.20260713045253` 缓存
 python -m pytest
 ```
 
 测试分支全量验证结果：
 
 ```text
-68 passed
+上一稳定版本：68 passed
+当前迁移测试契约基线：4 failed（主线工具尚未实现，符合预期）
 ```
 
 开发日志（同一天按提交时间分开）：
@@ -445,9 +447,17 @@ python -m pytest
 - MCP stdio 烟测确认仍为 38 个工具，`esp_reset.mode` schema 枚举为 `soft`、`hard`；`test` 分支完整测试集加载主线实现得到 `68 passed`。
 - 原理图初始 DTR/RTS 解释与实板成功时序存在冲突，已作为单独的 `board_test_confirmed` 串口映射和待复核项写入当前工程硬件资料，暂不凭推测覆盖原始记录。
 
+### 2026-07-13 13:05 - 建立旧版共享数据迁移测试契约
+
+- `test` 分支新增 `project_migrate_legacy_data` 测试，限定来源必须由调用者明确提供，默认只读预览，`confirm=True` 才能写入当前项目隔离目录。
+- 迁移范围限定为旧版 `hardwork/`、memory、日志、产物、项目配置和 SQLite；明确排除旧 `data/projects/`，避免把其他工程数据递归混入当前工程。
+- 测试要求缺失文件可复制、相同文件跳过、不同文件报告冲突且不覆盖，并为实际复制内容写入可审计的回滚清单。
+- 当前基线执行得到 `4 failed`，失败原因均为工具和 MCP 注册尚未实现；下一步只在 `main` 编写产品代码。
+
 暂未完成：
 
-- 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。
+- `project_migrate_legacy_data` 主线实现、全量测试和 stdio 烟测。
+- 工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。
 - 后台串口 monitor。
 - SQLite 仓储层落地。
 - `esp_logs_query` 已支持多词匹配，后续还可以继续扩展时间范围、run_id 前缀、字段过滤等查询能力。
