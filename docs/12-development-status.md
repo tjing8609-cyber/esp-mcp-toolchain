@@ -1,6 +1,6 @@
 # 当前开发状态
 
-更新时间：2026-07-13 22:10（Asia/Shanghai）
+更新时间：2026-07-13 22:14（Asia/Shanghai）
 
 ## 当前分支
 
@@ -19,6 +19,7 @@
 - 跨进程锁、进程所有权、端口身份记录、stdin EOF 清理、内部异常清理和强制终止后的陈旧锁恢复已有自动化测试；另有回归测试保证活跃的其他 MCP 进程不会被误判为陈旧会话。
 - 当前源码 MCP 枚举结果：43 tools / 12 resources / 4 prompts。
 - 当前跨分支全量测试结果：101 passed；Monitor 专项：29 passed。测试来自 `index-test`，实现来自 `index`。
+- GitHub Actions push 触发分支已包含 `main`、`test` 和 `feature/**`，双工作树后续都受远端矩阵门禁约束。
 - GitHub Actions 已确认提交 `60a3a83` 的 Windows/Linux、Python 3.10/3.12 四个任务全部成功；4 条 Node.js 20 弃用警告来自 Actions 运行时，不是测试失败。
 - 功能分支头 `962a382` 的 Windows/Linux、Python 3.10/3.12 四个任务也已全部成功。
 - `main` 合入提交 `e67dd7f` 的四个矩阵任务全部成功，用时 1 分 28 秒。
