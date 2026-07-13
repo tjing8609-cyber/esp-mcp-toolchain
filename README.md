@@ -527,6 +527,10 @@ Monitor 专项：29 passed
 - 已把 `main` 同步到个人 marketplace 源 `C:\Users\16224\plugins\esp-mcp-toolchain`；源版本为 `0.1.0+codex.20260713135819`，plugin validator 通过，Monitor 后端哈希与仓库一致，从该源直接枚举得到 `43 tools / 12 resources / 4 prompts`。
 - 当前 Codex 桌面执行上下文运行安装包内 `codex plugin add` 时被 Windows 返回 `Access is denied`，因此没有伪造或手工覆盖插件缓存；需要在可执行 CLI 的终端重新安装并重启 Codex 后完成当前模型工具面验收。
 
+### 2026-07-13 22:14 - 补齐 test 分支远端门禁
+
+- GitHub Actions 原配置只监听 `main` 和 `feature/**`，与恢复后的双工作树规则不一致；现已把 `test` 加入 push 触发分支，后续主线实现和测试分支都必须通过 Windows/Linux、Python 3.10/3.12 矩阵。
+
 暂未完成：
 
 - 执行 `codex plugin add esp-mcp-toolchain@personal-plugins`、重启 Codex，并确认新缓存和当前模型工具面复测。

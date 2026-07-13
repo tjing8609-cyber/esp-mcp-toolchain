@@ -14,6 +14,7 @@
 ### Changed
 
 - `main` 维护产品实现和文档；`test` 分支的分支专属提交维护测试文件和测试规则，门禁由测试工作树加载主线源码执行。
+- GitHub Actions 的 push 触发分支增加 `test`，使测试分支也执行 Windows/Linux、Python 3.10/3.12 矩阵。
 - README、CHANGELOG、开发状态页和 ADR 分工记录不同层级的信息。
 
 ### Fixed
