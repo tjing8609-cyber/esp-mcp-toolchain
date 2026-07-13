@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from esp_mcp_toolchain.backends import esptool_backend
 
@@ -88,3 +89,21 @@ def test_read_flash_rejects_incomplete_output(monkeypatch, tmp_path):
     assert result["actual_bytes"] == 5
     assert not output.exists()
     assert not output.with_name("backup.bin.part").exists()
+
+
+def test_erase_flash_backend_remains_callable(monkeypatch, tmp_path):
+    _prepare_backend(monkeypatch, tmp_path)
+    observed = {}
+
+    def fake_run(command, **kwargs):
+        observed.update(command=command, kwargs=kwargs)
+        return SimpleNamespace(returncode=0, stdout="erased", stderr="")
+
+    monkeypatch.setattr(esptool_backend.subprocess, "run", fake_run)
+
+    result = esptool_backend.run_erase_flash(port="COM_TEST")
+
+    assert result["ok"] is True
+    assert "erase_flash" in observed["command"]
+    assert observed["kwargs"]["capture_output"] is True
+    assert observed["kwargs"]["timeout"] == 180
