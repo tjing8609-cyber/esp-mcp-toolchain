@@ -295,12 +295,12 @@ MicroPython 方向：
 - `.mcp.json` 改为 Codex 插件标准的 `mcpServers` 包裹结构。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源位于 `C:\Users\16224\plugins\esp-mcp-toolchain`。本次 Monitor 修复已同步到该源，版本为 `0.1.0+codex.20260713135819`，validator 和 stdio 枚举均通过；当前任务仍加载旧缓存，需要重新安装并重启 Codex 才能切换到新版本。
+- 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源位于 `C:\Users\16224\plugins\esp-mcp-toolchain`。本次 Monitor 修复已同步到该源并重新安装，当前 Codex 缓存版本为 `0.1.0+codex.20260713135819`；validator、stdio 枚举、缓存后端哈希核对和当前模型实板调用均已通过。
 - 初始测试集。
 - 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；门禁从 `index-test` 加载 `index` 的主线源码执行。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
 - 已实现 `project_migrate_legacy_data`：支持只读预览、显式确认、SHA-256 比对、冲突不覆盖、复制或审计失败回滚和原子 JSONL 审计；不会递归迁移旧 `data/projects/`。
-- 后台串口 Monitor 候选实现已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
+- 后台串口 Monitor 已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
 - 后台串口 Monitor 已完成 `COM3` 真实板卡启动、游标读取、停止清理和同端口重新打开验收；本次固件的 UART0 运行时控制台 `115200` 实测事实已增量写入当前项目硬件映射。
 - 后台串口 Monitor 已修复 CH9102 实板稀疏输出下固定 `read(4096)` 可能返回污染缓冲的问题：串口改为非阻塞，先读取 `in_waiting`，单次最多读取 1024 字节，无数据时有界休眠；新增回归和真实按键门禁均通过。
 
@@ -313,8 +313,8 @@ Python：3.12.13
 功能分支源码 MCP 烟测结果：43 tools / 12 resources / 4 prompts
 MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
 插件验证：修复后的仓库源码和 `C:\Users\16224\plugins\esp-mcp-toolchain` marketplace 源均通过 validator，版本为 `0.1.0+codex.20260713135819`；核心 Monitor 后端 SHA-256 一致，从 marketplace 源直接枚举得到 `43 tools / 12 resources / 4 prompts`
-Codex 安装缓存：当前任务仍加载 `0.1.0+codex.20260713091610`；新缓存需要重新安装并重启 Codex 后验证
-GitHub Actions：功能分支头 `962a382` 和 `main` 合入提交 `e67dd7f` 的 Windows/Linux、Python 3.10/3.12 四个任务均全部成功
+Codex 安装缓存：当前任务已加载 `0.1.0+codex.20260713135819`；缓存 Monitor 后端 SHA-256 与仓库一致，当前模型已直接调用新版工具完成实板验收
+GitHub Actions：`main` 提交 `1873e1c` 和 `test` 提交 `8d74dd8` 的 Windows/Linux、Python 3.10/3.12 四个任务均全部成功
 python -m pytest
 ```
 
@@ -531,9 +531,16 @@ Monitor 专项：29 passed
 
 - GitHub Actions 原配置只监听 `main` 和 `feature/**`，与恢复后的双工作树规则不一致；现已把 `test` 加入 push 触发分支，后续主线实现和测试分支都必须通过 Windows/Linux、Python 3.10/3.12 矩阵。
 
+### 2026-07-13 22:34 - 完成新版插件重载和当前模型实板验收
+
+- Codex 重启后确认安装缓存 `0.1.0+codex.20260713135819` 已生成，缓存中的 Monitor 后端 SHA-256 与 `main` 和 marketplace 源一致；当前模型能够直接调用新版项目上下文、串口枚举和 Monitor 工具。
+- 最终人工确认门禁 `monitor_20260713_223126_87fc393e` 在 `COM3`、`115200` 捕获一次完整按键序列：5 组 LED/蜂鸣器 on/off、`sequence done` 和按键释放；用户同时确认 LED 与蜂鸣器实物动作正常。
+- 该会话共接收并持久化 733 字节、24 条有序分片，所有记录 `decode_error=false`，没有缓冲丢弃或未持久化字节；停止后为 `STOPPED`、`worker_alive=false`、`cleanup_complete=true`。
+- 随后通过 `monitor_20260713_223337_a7fc4184` 再次打开并停止同一串口，`COM3` 最终为 available 且 not busy。协调按键时间时产生的较早会话不作为最终人工门禁结论。
+- 本轮没有烧录、擦除、清理、删除或修改开发板固件。
+
 暂未完成：
 
-- 执行 `codex plugin add esp-mcp-toolchain@personal-plugins`、重启 Codex，并确认新缓存和当前模型工具面复测。
 - SQLite 仓储层落地。
 - `esp_logs_query` 已支持多词匹配，后续还可以继续扩展时间范围、run_id 前缀、字段过滤等查询能力。
 - 工程路径重绑定、项目合并、导入导出和迁移完整性校验工具；迁移体系继续暂停，排在 SQLite 和日志查询增强之后。
@@ -541,8 +548,8 @@ Monitor 专项：29 passed
 
 下一步计划：
 
-- 在可执行 Codex CLI 的终端重新安装个人 marketplace 插件；重启后用当前模型调用新版 Monitor 做最终短验收。
-- 后续依次开发 SQLite schema/仓储层、日志查询增强，最后再恢复工程重绑定、合并、导出、导入和完整性校验；本次不自动开始。
+- Monitor 污染读取修复、插件重载和当前模型实板验收已经完成，本任务结束后暂停。
+- 后续依次开发 SQLite schema/仓储层、日志查询增强，最后再恢复工程重绑定、合并、导出、导入和完整性校验；未经新计划审核不自动开始。
 
 ## 协作约定
 
