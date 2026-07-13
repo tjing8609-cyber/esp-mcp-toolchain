@@ -19,6 +19,38 @@ def test_sdk_tools_list():
     assert any(tool.name == "esp_restore_flash" for tool in tools)
 
 
+def _resolve_schema(schema: dict, root: dict) -> dict:
+    reference = schema.get("$ref")
+    if not reference:
+        return schema
+    assert reference.startswith("#/$defs/")
+    return root["$defs"][reference.rsplit("/", 1)[-1]]
+
+
+def test_hardware_mapping_tools_expose_structured_entry_schemas():
+    tools = asyncio.run(create_mcp_server().list_tools())
+    by_name = {tool.name: tool for tool in tools}
+
+    commit_schema = by_name["hardwork_commit_mapping"].inputSchema
+    gpio_schema = _resolve_schema(commit_schema["properties"]["gpio_entries"]["items"], commit_schema)
+    serial_schema = _resolve_schema(commit_schema["properties"]["serial_interfaces"]["items"], commit_schema)
+
+    assert {"gpio", "function"} <= set(gpio_schema["required"])
+    assert "interface" in serial_schema["required"]
+    assert gpio_schema["properties"]["evidence"]["enum"] == [
+        "schematic_confirmed",
+        "board_test_confirmed",
+        "model_inference",
+        "unconfirmed",
+    ]
+
+    patch_schema = by_name["hardwork_mapping_patch"].inputSchema
+    patch_gpio_union = patch_schema["properties"]["gpio_entries"]["anyOf"]
+    patch_gpio_array = next(option for option in patch_gpio_union if option.get("type") == "array")
+    patch_gpio_schema = _resolve_schema(patch_gpio_array["items"], patch_schema)
+    assert {"gpio", "function"} <= set(patch_gpio_schema["required"])
+
+
 def test_sdk_resources_list():
     resources = asyncio.run(create_mcp_server().list_resources())
     assert any(str(resource.uri) == "esp://logs/latest" for resource in resources)

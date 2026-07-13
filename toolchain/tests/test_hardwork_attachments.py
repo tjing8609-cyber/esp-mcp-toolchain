@@ -95,6 +95,50 @@ def test_commit_mapping_generates_files_and_unlocks_tools(isolated_project_conte
     assert status.get("error_kind") != "hardware_context_required"
 
 
+def test_commit_mapping_rejects_gpio_without_function(isolated_project_context):
+    source = _write_png(isolated_project_context / "pinout.png")
+    attachment_id = hardwork_upload_attachment(str(source), "pinout")["attachment"]["attachment_id"]
+
+    result = hardwork_commit_mapping(
+        gpio_entries=[
+            {
+                "gpio": 32,
+                "direction": "output",
+                "evidence": "schematic_confirmed",
+                "confidence": 0.95,
+            }
+        ],
+        serial_interfaces=[],
+        source_attachment_ids=[attachment_id],
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "invalid_hardware_mapping"
+    assert "function" in result["message"]
+
+
+def test_commit_mapping_rejects_serial_without_interface(isolated_project_context):
+    source = _write_png(isolated_project_context / "serial.png")
+    attachment_id = hardwork_upload_attachment(str(source), "serial")["attachment"]["attachment_id"]
+
+    result = hardwork_commit_mapping(
+        gpio_entries=[],
+        serial_interfaces=[
+            {
+                "tx_gpio": 1,
+                "rx_gpio": 3,
+                "evidence": "schematic_confirmed",
+                "confidence": 0.95,
+            }
+        ],
+        source_attachment_ids=[attachment_id],
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "invalid_hardware_mapping"
+    assert "interface" in result["message"]
+
+
 def test_later_attachment_does_not_reset_ready_review(isolated_project_context):
     first = _write_png(isolated_project_context / "first.png")
     uploaded = hardwork_upload_attachment(str(first), "pinout")
