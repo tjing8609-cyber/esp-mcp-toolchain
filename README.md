@@ -295,13 +295,14 @@ MicroPython 方向：
 - `.mcp.json` 改为 Codex 插件标准的 `mcpServers` 包裹结构。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源已复制到 `C:\Users\16224\plugins\esp-mcp-toolchain`，并通过个人 marketplace 安装启用。当前已验证的 Codex 安装缓存版本为 `C:\Users\16224\.codex\plugins\cache\personal-plugins\esp-mcp-toolchain\0.1.0+codex.20260713091610`。
+- 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源位于 `C:\Users\16224\plugins\esp-mcp-toolchain`。本次 Monitor 修复的源码版本已更新为 `0.1.0+codex.20260713135819`；当前任务仍加载旧缓存，提交后需要重新安装并重启 Codex 才能切换到新版本。
 - 初始测试集。
-- 开发流程已改为 `feature/<topic>` 功能分支同时维护实现、测试和文档；历史 `test` 分支保留用于追溯，不再承载新功能。当前测试入口为 `toolchain/tests/`。
+- 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；门禁从 `index-test` 加载 `index` 的主线源码执行。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
 - 已实现 `project_migrate_legacy_data`：支持只读预览、显式确认、SHA-256 比对、冲突不覆盖、复制或审计失败回滚和原子 JSONL 审计；不会递归迁移旧 `data/projects/`。
 - 后台串口 Monitor 候选实现已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
 - 后台串口 Monitor 已完成 `COM3` 真实板卡启动、游标读取、停止清理和同端口重新打开验收；本次固件的 UART0 运行时控制台 `115200` 实测事实已增量写入当前项目硬件映射。
+- 后台串口 Monitor 已修复 CH9102 实板稀疏输出下固定 `read(4096)` 可能返回污染缓冲的问题：串口改为非阻塞，先读取 `in_waiting`，单次最多读取 1024 字节，无数据时有界休眠；新增回归和真实按键门禁均通过。
 
 最近一次本地验证：
 
@@ -311,17 +312,17 @@ Python：3.12.13
 官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
 功能分支源码 MCP 烟测结果：43 tools / 12 resources / 4 prompts
 MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
-插件验证：功能分支源码和 `C:\Users\16224\plugins\esp-mcp-toolchain` marketplace 源均通过 validator，版本为 `0.1.0+codex.20260713091610`；从 marketplace 源直接启动 stdio MCP 得到 `43 tools / 12 resources / 4 prompts`
-Codex 安装缓存：重启后已加载 `0.1.0+codex.20260713091610`；当前任务可见并实际调用四个 Monitor 工具
+插件验证：修复后的仓库源码通过 validator，源码版本为 `0.1.0+codex.20260713135819`；marketplace 源和安装缓存将在提交后同步验证
+Codex 安装缓存：当前任务仍加载 `0.1.0+codex.20260713091610`；新缓存需要重新安装并重启 Codex 后验证
 GitHub Actions：功能分支头 `962a382` 和 `main` 合入提交 `e67dd7f` 的 Windows/Linux、Python 3.10/3.12 四个任务均全部成功
 python -m pytest
 ```
 
-功能分支全量验证结果：
+本次修复跨分支全量验证结果（`index-test` 测试加载 `index` 源码）：
 
 ```text
-99 passed
-Monitor 专项：27 passed
+101 passed
+Monitor 专项：29 passed
 ```
 
 开发日志（同一天按提交时间分开）：
@@ -511,8 +512,18 @@ Monitor 专项：27 passed
 - CI 有 4 条 Actions 运行时 Node.js 20 弃用警告，不是测试失败；后续可单独升级 `actions/checkout` 和 `actions/setup-python`，本次不扩大修改范围。
 - Monitor 合入流程已完成；本地 `main`、远端 `origin/main` 和主分支 CI 均已核实。
 
+### 2026-07-13 21:57 - 修复 CH9102 Monitor 污染读取
+
+- 全量实板复测发现 `monitor_20260713_194149_b9df143f` 出现一条非法 UTF-8 记录，重复测试 `monitor_20260713_194522_9bbed9a6` 又在约 3 秒内记录 215,952 字节旧片段和污染数据；该吞吐明显超过 `115200 8N1` 的有效载荷能力，原门禁结论失效。
+- 故障触发边界定位到 Windows CH9102 / pyserial 稀疏流量与固定超时 `read(4096)` 的组合，但不把驱动内部原因表述为已经证明；代码改用非阻塞串口、`in_waiting` 实际待收长度、1024 字节单次上限和 5 ms 空闲等待。
+- `test` 分支新增“只读实际待收字节”和“限制单次读取量”两条回归；两条测试在修复前稳定失败，修复后通过。`index-test` 测试加载 `index` 源码执行全量门禁得到 `101 passed`，Monitor 专项为 `29 passed`。
+- 自动复位门禁 `monitor_20260713_201602_a7c32955` 捕获 3,653 字节启动日志，62 条记录均无解码错误，单条最大 68 字节，停止后全部持久化并释放串口。
+- 最终按键门禁 `monitor_20260713_215648_f1366541` 捕获两次真实按键序列；每次均包含 5 组 LED/蜂鸣器 on/off、结束和释放日志。共 1,466 字节、41 条记录，`decode_error=0`、替换字符为 0、无丢弃或未持久化字节，停止清理完整。
+- 本次只执行串口读取和一次硬复位，没有烧录、擦除、清理或修改开发板固件。
+
 暂未完成：
 
+- 新缓存安装后的 Codex 重启与当前模型工具面复测。
 - SQLite 仓储层落地。
 - `esp_logs_query` 已支持多词匹配，后续还可以继续扩展时间范围、run_id 前缀、字段过滤等查询能力。
 - 工程路径重绑定、项目合并、导入导出和迁移完整性校验工具；迁移体系继续暂停，排在 SQLite 和日志查询增强之后。
@@ -520,7 +531,7 @@ Monitor 专项：27 passed
 
 下一步计划：
 
-- 当前任务已完成 Monitor 合入 `main` 和主分支 CI 核实，现暂停。
+- 提交并推送 `main` 与 `test`，更新个人 marketplace 插件缓存；重启 Codex 后再用当前模型调用新版 Monitor 做最终短验收。
 - 后续依次开发 SQLite schema/仓储层、日志查询增强，最后再恢复工程重绑定、合并、导出、导入和完整性校验；本次不自动开始。
 
 ## 协作约定
@@ -537,7 +548,7 @@ Monitor 专项：27 passed
 - 工程迁移、合并、覆盖和重绑定属于高风险数据操作，默认只做预览，实际执行必须保留显式确认和审计记录。
 - 项目稳定事实写入 `memory` 时必须带 `source` 和 `confidence`。
 - 项目环境使用 conda 虚拟环境 `esp-mcp-toolchain`，不在项目根目录创建 `.venv`，也不直接修改全局 Python 环境。
-- 新增功能使用 `feature/<topic>` 分支，代码、测试和必要文档必须在同一分支；历史 `test` 分支只保留追溯用途。
+- 产品实现和文档提交到 `main`；`test` 分支的分支专属提交只维护测试文件、测试目录和验证规则，门禁由 `index-test` 测试加载 `index` 源码执行。
 - 功能合入前必须通过本地 `python -m pytest` 全量测试和 GitHub Actions；依赖真实硬件时还必须通过硬件门禁。
 - README 维护稳定能力和里程碑；用户可见变化写入 CHANGELOG，当前门禁写入开发状态页，架构决定写入 ADR。
 - 提交信息要写明当次提交完成的工作和修改内容。

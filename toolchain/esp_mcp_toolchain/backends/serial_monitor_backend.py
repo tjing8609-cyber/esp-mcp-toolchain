@@ -29,6 +29,8 @@ DEFAULT_BUFFER_BYTES = 1024 * 1024
 TERMINAL_STATES = {"STOPPED", "FAILED", "DISCONNECTED"}
 _UTF8_MAX_PENDING_BYTES = 3
 _INPUT_SLICE_BYTES = MAX_RECORD_BYTES - _UTF8_MAX_PENDING_BYTES
+_SERIAL_READ_MAX_BYTES = 1024
+_SERIAL_IDLE_SLEEP_SECONDS = 0.005
 
 
 class MonitorConflictError(RuntimeError):
@@ -121,7 +123,7 @@ def _open_serial(serial_module: Any, binding: MonitorBinding) -> Any:
     try:
         serial_port.port = binding.port
         serial_port.baudrate = binding.baudrate
-        serial_port.timeout = 0.1
+        serial_port.timeout = 0
         for name, value in (("rtscts", False), ("dsrdtr", False), ("xonxoff", False)):
             if hasattr(serial_port, name):
                 setattr(serial_port, name, value)
@@ -138,6 +140,17 @@ def _open_serial(serial_module: Any, binding: MonitorBinding) -> Any:
         except Exception:
             pass
         raise
+
+
+def _read_serial_chunk(serial_port: Any) -> bytes:
+    try:
+        waiting = int(serial_port.in_waiting)
+    except AttributeError:
+        return bytes(serial_port.read(_SERIAL_READ_MAX_BYTES))
+    if waiting <= 0:
+        time.sleep(_SERIAL_IDLE_SLEEP_SECONDS)
+        return b""
+    return bytes(serial_port.read(min(waiting, _SERIAL_READ_MAX_BYTES)))
 
 
 class MonitorSession:
@@ -304,9 +317,9 @@ class MonitorSession:
                 )
 
             while not self._stop_event.is_set():
-                data = self._serial.read(4096)
+                data = _read_serial_chunk(self._serial)
                 if data:
-                    self._consume(bytes(data))
+                    self._consume(data)
 
             if self.state == MonitorState.RUNNING:
                 self._transition(MonitorState.STOPPING)
