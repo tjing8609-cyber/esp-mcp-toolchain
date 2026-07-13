@@ -1,12 +1,12 @@
 # 当前开发状态
 
-更新时间：2026-07-13 21:57（Asia/Shanghai）
+更新时间：2026-07-13 22:10（Asia/Shanghai）
 
 ## 当前分支
 
 - 分支：`main`
 - 目标：修复后台串口 Monitor 在 CH9102 实板上出现的污染读取；不在本任务中启动 SQLite、日志查询增强或项目迁移体系开发。
-- 当前状态：修复实现、跨分支全量门禁和真实板卡门禁已通过，等待提交、推送和新版插件重载。
+- 当前状态：修复、跨分支全量门禁、真实板卡门禁、GitHub 推送和 marketplace 源同步已完成，等待新版插件重载。
 
 ## 已完成的软件验证
 
@@ -37,8 +37,8 @@
 
 ## 插件同步
 
-- 修复后的仓库源码通过 plugin validator，源码版本为 `0.1.0+codex.20260713135819`。
-- 当前任务仍加载缓存版本 `0.1.0+codex.20260713091610`；新版 marketplace 源、缓存和 stdio MCP 将在提交后同步验证。
+- 修复后的仓库源码与 `C:\Users\16224\plugins\esp-mcp-toolchain` marketplace 源均通过 plugin validator，版本为 `0.1.0+codex.20260713135819`；核心 Monitor 后端哈希一致，从 marketplace 源直接枚举为 43 tools / 12 resources / 4 prompts。
+- 当前任务仍加载缓存版本 `0.1.0+codex.20260713091610`；当前桌面执行上下文调用安装包内 Codex CLI 被 Windows 返回 `Access is denied`，没有手工覆盖缓存。
 - Codex 重启后还需确认 `0.1.0+codex.20260713135819` 在当前模型工具面可见，并使用新版工具做一次短验收。
 
 ## 后续顺序
@@ -47,4 +47,4 @@
 2. 日志查询增强。
 3. 工程路径重绑定、项目合并、导出、导入和完整性校验；该迁移体系继续暂停。
 
-Monitor 修复的本地软件与硬件门禁已完成；下一动作是提交并推送 `main` / `test`、更新个人插件，然后重启 Codex 验收新版工具。
+Monitor 修复、推送和 marketplace 源同步已完成；下一动作是在可执行 Codex CLI 的终端运行 `codex plugin add esp-mcp-toolchain@personal-plugins`，重启后验收新版工具。
