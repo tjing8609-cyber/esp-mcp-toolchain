@@ -183,7 +183,7 @@ MicroPython 方向：
 - `esp_serial_capture`
 - `esp_error_parse_log`
 
-当前状态：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已封装整片 flash 备份；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成真实板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload`、`esp_file_download` 和 `esp_reset` 已通过 MicroPython raw REPL 与 `mpremote` 在 `COM3` 上完成烟测；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。仍保持占位或待增强的部分包括后台串口 monitor 和更多工程化查询能力。
+当前状态：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已封装整片 flash 备份，但最新 4 MiB 实板调用触发 MCP 300 秒超时，仍需补齐超时边界、进程清理和残缺文件处理；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成真实板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload` 和 `esp_file_download` 已通过 MicroPython raw REPL 与 `mpremote` 在 `COM3` 上完成烟测；`esp_reset` 当前只实现 MicroPython `soft` 模式，ESP-IDF 可用的 `hard` 模式仍待实现；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。仍保持占位或待增强的部分包括后台串口 monitor 和更多工程化查询能力。
 
 ### 第 4 阶段：hardwork 硬件资料上下文
 
@@ -270,7 +270,7 @@ MicroPython 方向：
 
 ## 当前进度
 
-截至 2026-07-09，已完成：
+截至 2026-07-13，已完成：
 
 - 仓库结构初始化。
 - GitHub 远端同步，主分支为 `main`。
@@ -299,7 +299,7 @@ MicroPython 方向：
 
 ```text
 conda 环境：esp-mcp-toolchain
-Python：3.12.10
+Python：3.12.13
 官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
 MCP 烟测结果：31 tools / 10 resources / 4 prompts
 MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
@@ -308,10 +308,10 @@ Codex 插件安装状态：插件源已同步到 `C:\Users\16224\plugins\esp-mcp
 python -m pytest
 ```
 
-测试结果：
+`main` 基线测试结果：
 
 ```text
-40 passed
+47 passed
 ```
 
 开发日志（同一天按提交时间分开）：
@@ -414,8 +414,25 @@ python -m pytest
 - 默认数据根目录迁移到稳定的 `%USERPROFILE%/.codex/esp-mcp-toolchain/data/projects/`，不再随插件版本缓存变化；`ESP_MCP_DATA_ROOT` 覆盖行为保持不变。
 - 选择项目时扫描源码目录和个人插件历史缓存中的同 `project_id` 数据，按“只复制缺失文件、不覆盖已有目标”规则迁移，并返回迁移来源和复制文件数。
 
+### 2026-07-12 14:02 - 重新归档硬件资料并验证项目隔离
+
+- 将 PCB 和原理图附件归档到当前工作区的独立项目上下文，生成 GPIO、串口和板卡摘要资料；英文工作区与旧中文路径工作区得到不同 `project_id`，未发生跨项目自动合并。
+- 基础映射确认 KEY1 为 GPIO34、绿色 LED 为 GPIO32 低有效、蜂鸣器为 GPIO25 PWM、UART0 为 GPIO1/GPIO3。
+- 实测发现 `hardwork_commit_mapping` 会接受缺少 `function` 或 `interface` 的条目，可能生成空白 Markdown，并使后续 `hardwork_mapping_patch` 无法建立稳定键；该输入校验缺口列入下一轮修复。
+
+### 2026-07-12 14:14 - 完成插件实板闭环并记录稳定性缺口
+
+- 在 ASCII 工作区通过 MCP 编译 `examples/esp_idf_key_led_buzzer`，固件大小 `0x2ee90`，app 分区剩余 82%。
+- 重新枚举串口后确认 `COM3` 为 CH9102 USB 串口，使用 `esp_flash_firmware(confirm=True)` 写入 ESP32-D0WD-V3；bootloader、partition table 和 app 三个区段均通过哈希校验。
+- 串口捕获完整记录 KEY1 触发后的五次 LED/PWM 蜂鸣器开关，以及 `sequence done` 和按键释放后重新就绪日志。
+- 烧录前调用 `esp_backup_flash` 读取 4 MiB 时超过 MCP 300 秒调用上限，未生成可验证备份文件；本次不计为备份成功。
+- `esp_reset(mode="hard")` 返回 `implemented=false`，确认当前只支持 MicroPython `soft` 复位；ESP-IDF 硬复位仍需查明可靠 DTR/RTS 时序后实现。
+
 暂未完成：
 
+- `hardwork_commit_mapping` 对 GPIO `function` 和串口 `interface` 的强制校验，以及 FastMCP 嵌套输入 schema 的明确字段约束。
+- `esp_backup_flash` 的 MCP 超时边界、超时进程清理和残缺备份处理。
+- `esp_reset(mode="hard")` 的 ESP-IDF/通用硬复位实现与实板验证。
 - 旧版共享数据迁移、工程路径重绑定、项目合并、导入导出和迁移完整性校验工具。
 - 后台串口 monitor。
 - SQLite 仓储层落地。
