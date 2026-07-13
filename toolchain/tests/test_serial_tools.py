@@ -152,6 +152,84 @@ def test_monitor_start_read_cursor_binary_and_stop():
     assert persisted["state"] == "STOPPED"
 
 
+def test_monitor_reads_only_reported_available_bytes(monkeypatch):
+    payload = b"KEY1 pressed\r\n"
+    stale = (b"\xffold-monitor-data" * 300)[: 4096 - len(payload)]
+
+    class AvailableSerial(FakeSerial):
+        remaining = bytearray(payload)
+        read_sizes: list[int] = []
+
+        @property
+        def in_waiting(self):
+            return len(type(self).remaining)
+
+        def read(self, size: int):
+            type(self).read_sizes.append(size)
+            if not type(self).remaining:
+                time.sleep(0.005)
+                return b""
+            available = len(type(self).remaining)
+            chunk = bytes(type(self).remaining[:size])
+            del type(self).remaining[:size]
+            if size > available:
+                return chunk + stale[: size - available]
+            return chunk
+
+    class AvailableSerialModule:
+        Serial = AvailableSerial
+
+    monkeypatch.setattr(serial_tools, "get_serial_module", lambda: AvailableSerialModule)
+    start = serial_tools.esp_serial_monitor_start("COM_AVAILABLE")
+    run_id = start["run_id"]
+    result = serial_tools.esp_serial_monitor_read(run_id, representation="both", wait_ms=1000)
+    raw = b"".join(base64.b64decode(record["raw_base64"]) for record in result["records"])
+
+    assert AvailableSerial.instances[0].timeout == 0
+    assert AvailableSerial.read_sizes[0] == len(payload)
+    assert raw == payload
+    serial_tools.esp_serial_monitor_stop(run_id)
+
+
+def test_monitor_caps_each_available_read(monkeypatch):
+    payload = b"x" * 5000
+
+    class BacklogSerial(FakeSerial):
+        remaining = bytearray(payload)
+        read_sizes: list[int] = []
+
+        @property
+        def in_waiting(self):
+            return len(type(self).remaining)
+
+        def read(self, size: int):
+            type(self).read_sizes.append(size)
+            if not type(self).remaining:
+                time.sleep(0.005)
+                return b""
+            chunk = bytes(type(self).remaining[:size])
+            del type(self).remaining[:size]
+            return chunk
+
+    class BacklogSerialModule:
+        Serial = BacklogSerial
+
+    monkeypatch.setattr(serial_tools, "get_serial_module", lambda: BacklogSerialModule)
+    start = serial_tools.esp_serial_monitor_start("COM_BACKLOG")
+    run_id = start["run_id"]
+
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        status = serial_tools.esp_serial_monitor_status(run_id)["monitors"][0]
+        if status["bytes_received"] == len(payload):
+            break
+        time.sleep(0.01)
+
+    assert status["bytes_received"] == len(payload)
+    assert max(BacklogSerial.read_sizes) <= 1024
+    serial_tools.esp_serial_monitor_stop(run_id)
+
+
 def test_monitor_read_never_exceeds_max_bytes_even_if_backend_returns_a_large_chunk():
     start = serial_tools.esp_serial_monitor_start("COM_LARGE")
     run_id = start["run_id"]
