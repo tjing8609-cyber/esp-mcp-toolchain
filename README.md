@@ -313,7 +313,7 @@ Python：3.12.13
 MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
 插件验证：功能分支源码和 `C:\Users\16224\plugins\esp-mcp-toolchain` marketplace 源均通过 validator，版本为 `0.1.0+codex.20260713091610`；从 marketplace 源直接启动 stdio MCP 得到 `43 tools / 12 resources / 4 prompts`
 Codex 安装缓存：重启后已加载 `0.1.0+codex.20260713091610`；当前任务可见并实际调用四个 Monitor 工具
-GitHub Actions：功能分支头 `962a382` 的 Windows/Linux、Python 3.10/3.12 四个任务全部成功
+GitHub Actions：功能分支头 `962a382` 和 `main` 合入提交 `e67dd7f` 的 Windows/Linux、Python 3.10/3.12 四个任务均全部成功
 python -m pytest
 ```
 
@@ -503,7 +503,13 @@ Monitor 专项：27 passed
 - 用户审核后批准合入；`origin/main` 是 `feature/serial-monitor` 的直接祖先，合并前没有分叉或冲突。
 - 合入范围包含 Monitor 实现、配套文档、CI，以及此前隔离在历史 `test` 分支但按新规范应与实现共同进入主线的回归测试。
 - 功能分支头 `962a382` 已通过本地 `99 passed`、插件 validator、MCP 枚举、四平台 CI 和 `COM3` 真实板卡门禁。
-- 合入提交推送后继续核实 `main` 的 GitHub Actions；本任务结束后暂停，不自动开始 SQLite、日志查询增强或迁移体系。
+- 合入提交已推送到 `origin/main`；本任务结束后暂停，不自动开始 SQLite、日志查询增强或迁移体系。
+
+### 2026-07-13 18:05 - 确认 main 合入 CI
+
+- `main` 合入提交 `e67dd7f` 的 GitHub Actions 状态为 `Success`，Windows/Linux、Python 3.10/3.12 四个任务全部完成，用时 1 分 28 秒。
+- CI 有 4 条 Actions 运行时 Node.js 20 弃用警告，不是测试失败；后续可单独升级 `actions/checkout` 和 `actions/setup-python`，本次不扩大修改范围。
+- Monitor 合入流程已完成；本地 `main`、远端 `origin/main` 和主分支 CI 均已核实。
 
 暂未完成：
 
@@ -514,7 +520,7 @@ Monitor 专项：27 passed
 
 下一步计划：
 
-- 当前任务完成 Monitor 合入 `main` 并核实主分支 CI 后暂停。
+- 当前任务已完成 Monitor 合入 `main` 和主分支 CI 核实，现暂停。
 - 后续依次开发 SQLite schema/仓储层、日志查询增强，最后再恢复工程重绑定、合并、导出、导入和完整性校验；本次不自动开始。
 
 ## 协作约定

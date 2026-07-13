@@ -20,4 +20,4 @@
 
 - Monitor 假串口、存储和进程级专项测试通过，包括 stdin EOF、强制终止恢复、跨进程冲突、断连、缓冲区淘汰、UTF-8 分片、二进制日志和磁盘故障。
 - 功能分支与个人 marketplace 源均通过 plugin validator；重启后的 Codex 已加载 `0.1.0+codex.20260713091610` 缓存并实际调用四个 Monitor 工具。
-- `COM3` 真实板卡门禁已通过：捕获 ESP-IDF 启动日志、验证游标续读不重复、停止后完整落盘，并立即重新打开同一端口。功能分支头 `962a382` 的 Windows/Linux、Python 3.10/3.12 CI 全部成功；Monitor 已合入 `main`。
+- `COM3` 真实板卡门禁已通过：捕获 ESP-IDF 启动日志、验证游标续读不重复、停止后完整落盘，并立即重新打开同一端口。功能分支头 `962a382` 和 `main` 合入提交 `e67dd7f` 的 Windows/Linux、Python 3.10/3.12 CI 均全部成功；Monitor 已合入 `main`。
