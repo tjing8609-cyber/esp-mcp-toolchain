@@ -295,7 +295,7 @@ MicroPython 方向：
 - `.mcp.json` 改为 Codex 插件标准的 `mcpServers` 包裹结构。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源位于 `C:\Users\16224\plugins\esp-mcp-toolchain`。本次 Monitor 修复的源码版本已更新为 `0.1.0+codex.20260713135819`；当前任务仍加载旧缓存，提交后需要重新安装并重启 Codex 才能切换到新版本。
+- 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源位于 `C:\Users\16224\plugins\esp-mcp-toolchain`。本次 Monitor 修复已同步到该源，版本为 `0.1.0+codex.20260713135819`，validator 和 stdio 枚举均通过；当前任务仍加载旧缓存，需要重新安装并重启 Codex 才能切换到新版本。
 - 初始测试集。
 - 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；门禁从 `index-test` 加载 `index` 的主线源码执行。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
@@ -312,7 +312,7 @@ Python：3.12.13
 官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
 功能分支源码 MCP 烟测结果：43 tools / 12 resources / 4 prompts
 MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
-插件验证：修复后的仓库源码通过 validator，源码版本为 `0.1.0+codex.20260713135819`；marketplace 源和安装缓存将在提交后同步验证
+插件验证：修复后的仓库源码和 `C:\Users\16224\plugins\esp-mcp-toolchain` marketplace 源均通过 validator，版本为 `0.1.0+codex.20260713135819`；核心 Monitor 后端 SHA-256 一致，从 marketplace 源直接枚举得到 `43 tools / 12 resources / 4 prompts`
 Codex 安装缓存：当前任务仍加载 `0.1.0+codex.20260713091610`；新缓存需要重新安装并重启 Codex 后验证
 GitHub Actions：功能分支头 `962a382` 和 `main` 合入提交 `e67dd7f` 的 Windows/Linux、Python 3.10/3.12 四个任务均全部成功
 python -m pytest
@@ -521,9 +521,15 @@ Monitor 专项：29 passed
 - 最终按键门禁 `monitor_20260713_215648_f1366541` 捕获两次真实按键序列；每次均包含 5 组 LED/蜂鸣器 on/off、结束和释放日志。共 1,466 字节、41 条记录，`decode_error=0`、替换字符为 0、无丢弃或未持久化字节，停止清理完整。
 - 本次只执行串口读取和一次硬复位，没有烧录、擦除、清理或修改开发板固件。
 
+### 2026-07-13 22:10 - 推送修复并同步 marketplace 源
+
+- `main` 实现与文档提交 `409d0ec`、`test` 回归提交 `75a5c84` 已推送到 GitHub；测试分支同步主线后再次执行常规 `python -m pytest`，结果为 `101 passed`。
+- 已把 `main` 同步到个人 marketplace 源 `C:\Users\16224\plugins\esp-mcp-toolchain`；源版本为 `0.1.0+codex.20260713135819`，plugin validator 通过，Monitor 后端哈希与仓库一致，从该源直接枚举得到 `43 tools / 12 resources / 4 prompts`。
+- 当前 Codex 桌面执行上下文运行安装包内 `codex plugin add` 时被 Windows 返回 `Access is denied`，因此没有伪造或手工覆盖插件缓存；需要在可执行 CLI 的终端重新安装并重启 Codex 后完成当前模型工具面验收。
+
 暂未完成：
 
-- 新缓存安装后的 Codex 重启与当前模型工具面复测。
+- 执行 `codex plugin add esp-mcp-toolchain@personal-plugins`、重启 Codex，并确认新缓存和当前模型工具面复测。
 - SQLite 仓储层落地。
 - `esp_logs_query` 已支持多词匹配，后续还可以继续扩展时间范围、run_id 前缀、字段过滤等查询能力。
 - 工程路径重绑定、项目合并、导入导出和迁移完整性校验工具；迁移体系继续暂停，排在 SQLite 和日志查询增强之后。
@@ -531,7 +537,7 @@ Monitor 专项：29 passed
 
 下一步计划：
 
-- 提交并推送 `main` 与 `test`，更新个人 marketplace 插件缓存；重启 Codex 后再用当前模型调用新版 Monitor 做最终短验收。
+- 在可执行 Codex CLI 的终端重新安装个人 marketplace 插件；重启后用当前模型调用新版 Monitor 做最终短验收。
 - 后续依次开发 SQLite schema/仓储层、日志查询增强，最后再恢复工程重绑定、合并、导出、导入和完整性校验；本次不自动开始。
 
 ## 协作约定
