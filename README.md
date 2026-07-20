@@ -313,7 +313,7 @@ Python：3.12.13
 测试工作树：index-test / test
 实现源码：index / main（由 ESP_MCP_SOURCE_ROOT 和跨工作树脚本显式加载）
 SQLite 定向契约：33 passed
-跨工作树全量门禁：134 passed in 19.63s
+跨工作树全量门禁：134 passed in 21.44s
 覆盖：schema v2、v1 hardwork/memory 重建、首次并发建库、并发 sequence/import、UUID/时间戳、run 终态、selected_port、JSONL 增长/复制去重、native run 冲突隔离、stale Monitor 对账、Monitor 跨项目绑定、MCP schema 和前后置镜像故障
 当前项目正式迁移：首轮 19 files / 32 events，第二轮 0 / 0 / 0；12 cancelled、2 failed、5 succeeded；19 markers；foreign_key_check 为空
 真实硬件：本轮未执行烧录、擦除、删除、full clean 或其他板卡动作
@@ -562,7 +562,7 @@ SQLite 定向契约：33 passed
 
 ### 2026-07-20 19:05 - 完成本地提交、正式迁移和 marketplace 源同步
 
-- `main` SQLite 实现提交为 `08bce0b`；`test` 契约提交为 `c59b509`，同步主线合并为 `9bbd265`。最终跨工作树门禁为 `134 passed in 19.63s`。
+- `main` SQLite 实现提交为 `08bce0b`；`test` 契约提交为 `c59b509`，同步主线合并为 `9bbd265`。最终跨工作树门禁为 `134 passed in 21.44s`。
 - 当前项目已创建 `esp_mcp.sqlite` schema v2。首轮导入 19 份旧 JSONL、32 个事件；第二轮为 0 / 0 / 0，状态分布为 12 cancelled、2 failed、5 succeeded，19 个 marker，外键检查为空。
 - 插件 cache-buster 更新为 `0.1.0+codex.20260720110129`；个人 marketplace 源只做受控文件覆盖，不删除额外文件。源目录 validator、`99 passed` 和 `43 tools / 12 resources / 4 prompts` 枚举通过，`esp_logs_query` 已暴露全部结构化过滤字段。
 - marketplace 源的 `data` 仍为 56 个文件、8,408,399 字节，根 `hardwork` 仍为 13 个文件；未追踪运行数据没有被删除，受控 hardwork 内容也未改变。
