@@ -11,16 +11,32 @@
 - 新增跨进程串口锁、进程所有权与端口身份记录、只针对已结束进程的陈旧锁恢复，以及 MCP Server 退出清理。
 - 新增 Windows / Linux、Python 3.10 / 3.12 的 GitHub Actions 全量测试矩阵。
 
+- 新增 SQLite schema v2 与 runs/events 仓储，包含 project-scoped 复合键、外键、JSON 对象约束、规范 UUID、事务 sequence 和结构化查询索引。
+- 新增 v1 数据库重建迁移、legacy JSONL 稳定快照与可重复导入，以及 `docs/adr/0003-sqlite-log-authority.md`。
+- `esp_logs_query` 新增 `run_id`、`phase`、`level`、`tool`、`source`、时间和 sequence 范围过滤，并同步 CLI、FastMCP schema 和静态工具注册资源。
+
 ### Changed
 
 - `main` 维护产品实现和文档；`test` 分支的分支专属提交维护测试文件和测试规则，门禁由测试工作树加载主线源码执行。
 - GitHub Actions 的 push 触发分支增加 `test`，使测试分支也执行 Windows/Linux、Python 3.10/3.12 矩阵。
 - README、CHANGELOG、开发状态页和 ADR 分工记录不同层级的信息。
+- SQLite 成为 runs/events 的正式状态与查询源；JSONL 改为审计镜像和旧数据迁移入口，`latest.json` 不再是查询权威。
+- 同步工具统一使用 start/prepare/complete/finish run 生命周期；后台 Monitor 在启动时固定完整 `LogScope`，并由 worker 写入原项目终态。
+- 跨工作树门禁由 `index-test` 明确加载 `index` 源码，并校验实际导入来源，避免测试工作树误测自身旧实现。
 
 ### Fixed
 
 - Monitor 串口改为非阻塞读取，先查询实际待收字节，单次最多读取 1024 字节；避免 Windows CH9102 稀疏输出场景中固定 `read(4096)` 产生污染记录。
 - 无串口数据时使用 5 ms 有界等待，避免非阻塞轮询占满 CPU，同时保持停止清理及时响应。
+
+- v1 hardwork/memory 表通过重建获得 project-scoped 复合主键，不再只追加可空 `project_id`。
+- event UUID 幂等比较纳入规范化时间戳；终态 run 拒绝新事件，同时允许完全相同事件的严格重试。
+- legacy JSONL 的事件身份不再依赖绝对文件路径，复制文件不会产生重复事件；导入器不会提前结束已有原生 running run。
+- SQLite 事件提交后，JSONL 或 `latest.json` 镜像失败只形成 warning，不再阻止业务动作或反向否定正式审计。
+- Monitor 启动失败统一终结已创建 run；stale manifest 使用确定性事件和 `sqlite_reconciled` 标记与原项目 SQLite 可重复对账。
+- legacy JSONL 对原生 run 只允许既有 UUID 的严格去重；同 run_id 新 UUID 不再追加事件、回填端口或写 marker。
+- optional 默认端口在 run 创建时冻结并传入业务函数，避免审计端口与实际动作端口发生 TOCTOU 偏差；缺失必填端口在建 run 前拒绝。
+- 动作或状态变更完成后的日志故障保留真实业务结果，并通过 `logging_persisted=false` 和 `logging_warning` 报告审计缺口。
 
 ### Validation
 
@@ -28,5 +44,9 @@
 - 两条污染读取回归在修复前失败、修复后通过；跨分支全量门禁为 `101 passed`，Monitor 专项为 `29 passed`。
 - `COM3` 修复后门禁通过：启动日志 3,653 字节无解码错误；最终按键日志包含两次完整五脉冲序列，共 1,466 字节、41 条记录，无替换字符、丢弃或未持久化字节。
 - 修复后的仓库源码和个人 marketplace 源均通过 plugin validator，版本为 `0.1.0+codex.20260713135819`，从 marketplace 源直接枚举为 43 tools / 12 resources / 4 prompts；重新安装并重启后，缓存后端哈希核对和当前模型实板工具调用均已通过。
+- SQLite 定向契约 `33 passed`；`index-test` 显式加载 `index` 源码的跨工作树完整门禁 `134 passed in 19.53s`。
+- 当前项目 19 份旧 JSONL 已只读导入临时 SQLite：32 events，12 cancelled、2 failed、5 succeeded，外键检查为空；重复导入与正式项目写入仍按发布步骤执行。
+- SQLite 本轮只使用临时目录、mock 和独立进程验证，不涉及烧录、擦除、删除、full clean 或其他真实硬件动作。
+- 在最终全量门禁、GitHub Actions 和插件同步完成前，本节的 SQLite 内容属于 `[Unreleased]` 候选，不代表当前 marketplace 源或 Codex 缓存已经包含该实现。
 - 当前模型最终门禁 `monitor_20260713_223126_87fc393e` 捕获一次人工确认的完整五脉冲序列，共 733 字节、24 条分片，无解码错误、丢弃或未持久化字节；停止清理和同端口重新打开均成功。
 - `COM3` 真实板卡门禁已通过：捕获 ESP-IDF 启动日志、验证游标续读不重复、停止后完整落盘，并立即重新打开同一端口。功能分支头 `962a382` 和 `main` 合入提交 `e67dd7f` 的 Windows/Linux、Python 3.10/3.12 CI 均全部成功；Monitor 已合入 `main`。

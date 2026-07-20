@@ -7,6 +7,7 @@ from ..backends import mpremote_backend
 from ..backends.raw_repl_backend import execute_code
 from ..config import get_selected_port
 from ..errors import execution_error, not_implemented
+from .log_tools import logged_task
 
 
 def _quote_micro_python(value: str) -> str:
@@ -52,6 +53,11 @@ def _parse_mpremote_ls(stdout: str) -> list[str]:
     return files
 
 
+@logged_task(
+    task_type="file_upload",
+    selected_port_arg="port",
+    payload_args=("backend", "local_path", "remote_path"),
+)
 def esp_file_upload(
     port: str | None = None,
     backend: str = "mpremote",
@@ -129,6 +135,11 @@ def esp_file_upload(
     return result
 
 
+@logged_task(
+    task_type="file_download",
+    selected_port_arg="port",
+    payload_args=("backend", "remote_path", "local_path"),
+)
 def esp_file_download(
     port: str | None = None,
     backend: str = "mpremote",
@@ -203,6 +214,11 @@ def esp_file_download(
     }
 
 
+@logged_task(
+    task_type="file_list",
+    selected_port_arg="port",
+    payload_args=("backend", "remote_dir"),
+)
 def esp_file_list(port: str | None = None, backend: str = "mpremote", remote_dir: str = "/") -> dict:
     if backend == "mpremote":
         selected_port = _resolve_port("esp_file_list", port)
@@ -252,6 +268,11 @@ def esp_file_list(port: str | None = None, backend: str = "mpremote", remote_dir
     return result
 
 
+@logged_task(
+    task_type="file_read",
+    selected_port_arg="port",
+    payload_args=("backend", "remote_path", "max_bytes"),
+)
 def esp_file_read(
     port: str | None = None,
     backend: str = "mpremote",
@@ -340,6 +361,11 @@ def esp_file_read(
     return result
 
 
+@logged_task(
+    task_type="file_delete",
+    selected_port_arg="port",
+    payload_args=("backend", "remote_path"),
+)
 def esp_file_delete(
     port: str | None = None,
     backend: str = "mpremote",

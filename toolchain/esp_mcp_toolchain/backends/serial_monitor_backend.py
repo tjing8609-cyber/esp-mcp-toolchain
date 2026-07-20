@@ -10,6 +10,7 @@ from pathlib import Path
 import threading
 import time
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 from .serial_monitor_lock import PortLease, PortLockError, current_process_owner, identity_key
 from .serial_monitor_store import (
@@ -18,10 +19,12 @@ from .serial_monitor_store import (
     SerialLogStore,
     SerialLogStoreError,
     load_manifest,
+    mark_serial_run_sqlite_reconciled,
     read_persisted_records,
     recover_serial_runs,
 )
-from ..tools.log_tools import write_event
+from ..database import log_repository
+from ..tools.log_tools import LogScope, finish_run, write_event
 from ..utils.time_utils import now_utc_iso
 
 
@@ -224,7 +227,20 @@ class MonitorSession:
         except OSError as exc:
             self.last_error = _error_payload("monitor_manifest_write_failed", exc)
 
-    def _emit(self, level: str, message: str, data: dict | None = None) -> None:
+    def _log_scope(self) -> LogScope:
+        return LogScope.bound(
+            project_id=self.binding.project_id,
+            log_root=self.binding.log_root,
+        )
+
+    def _emit(
+        self,
+        level: str,
+        message: str,
+        data: dict | None = None,
+        *,
+        phase: str = "execute",
+    ) -> None:
         try:
             write_event(
                 "esp_serial_monitor",
@@ -232,10 +248,11 @@ class MonitorSession:
                 message,
                 data or {},
                 run_id=self.binding.run_id,
+                phase=phase,
                 source="esp32",
-                log_root=self.binding.log_root,
+                scope=self._log_scope(),
             )
-        except OSError:
+        except Exception:
             pass
 
     def _append_record(self, raw: bytes) -> None:
@@ -383,7 +400,27 @@ class MonitorSession:
                 if self.last_error is None:
                     self.last_error = _error_payload("monitor_log_close_failed", exc)
             level = "error" if self.state in {MonitorState.FAILED, MonitorState.DISCONNECTED} else "info"
-            self._emit(level, terminal_message, {"state": self.state.value, "last_error": self.last_error})
+            self._emit(
+                level,
+                terminal_message,
+                {"state": self.state.value, "last_error": self.last_error},
+                phase="complete",
+            )
+            try:
+                final_run_status = (
+                    "failed"
+                    if self.state in {MonitorState.FAILED, MonitorState.DISCONNECTED}
+                    else "cancelled"
+                )
+                finish_run(
+                    self.binding.run_id,
+                    final_run_status,
+                    summary=terminal_message,
+                    payload={"state": self.state.value, "last_error": self.last_error},
+                    scope=self._log_scope(),
+                )
+            except Exception:
+                pass
             with self._condition:
                 self._condition.notify_all()
 
@@ -488,6 +525,73 @@ class SerialMonitorManager:
         self._sessions: dict[str, MonitorSession] = {}
         self._lock = threading.RLock()
 
+    @staticmethod
+    def _reconcile_recovered_runs(binding: MonitorBinding, recovered: list[dict]) -> None:
+        scope = LogScope.bound(project_id=binding.project_id, log_root=binding.log_root)
+        for manifest in recovered:
+            manifest_project_id = str(manifest.get("project_id") or binding.project_id)
+            run_id = str(manifest.get("run_id") or "")
+            if manifest_project_id != binding.project_id or not run_id:
+                continue
+            try:
+                existing = log_repository.get_run(
+                    scope.database_file,
+                    project_id=scope.project_id,
+                    run_id=run_id,
+                )
+                if existing is not None and existing["status"] == "failed":
+                    mark_serial_run_sqlite_reconciled(binding.log_root, run_id)
+                    continue
+                if existing is not None and existing["status"] != "running":
+                    continue
+                last_error = manifest.get("last_error")
+                if not isinstance(last_error, dict):
+                    last_error = {
+                        "error_kind": "stale_monitor_recovered",
+                        "message": "A previous monitor process ended without completing cleanup.",
+                    }
+                stopped_at = str(manifest.get("stopped_at") or "")
+                if not stopped_at:
+                    continue
+                message = str(
+                    last_error.get("message")
+                    or "A previous monitor process ended without completing cleanup."
+                )
+                event = write_event(
+                    "esp_serial_monitor",
+                    "error",
+                    message,
+                    {"state": "FAILED", "last_error": last_error},
+                    run_id=run_id,
+                    ts=stopped_at,
+                    phase="complete",
+                    event_uuid=str(
+                        uuid5(
+                            NAMESPACE_URL,
+                            f"esp-mcp-toolchain:stale-monitor:{scope.project_id}:{run_id}",
+                        )
+                    ),
+                    source="monitor_recovery",
+                    task_type="serial_monitor",
+                    selected_port=(
+                        str(manifest["port"]) if isinstance(manifest.get("port"), str) else None
+                    ),
+                    scope=scope,
+                )
+                if event.get("ok") is False:
+                    continue
+                finished = finish_run(
+                    run_id,
+                    "failed",
+                    summary=message,
+                    payload={"state": "FAILED", "last_error": last_error},
+                    scope=scope,
+                )
+                if finished["status"] == "failed":
+                    mark_serial_run_sqlite_reconciled(binding.log_root, run_id)
+            except Exception:
+                continue
+
     def start(self, binding: MonitorBinding, serial_module: Any) -> MonitorSession:
         port_key = identity_key(binding.port_identity)
         with self._lock:
@@ -496,7 +600,8 @@ class SerialMonitorManager:
                 for session in self._sessions.values()
                 if session.status()["state"] not in TERMINAL_STATES
             }
-            recover_serial_runs(binding.log_root, skip_run_ids=active_run_ids)
+            recovered = recover_serial_runs(binding.log_root, skip_run_ids=active_run_ids)
+            self._reconcile_recovered_runs(binding, recovered)
             for session in self._sessions.values():
                 status = session.status()
                 if status["state"] in TERMINAL_STATES:

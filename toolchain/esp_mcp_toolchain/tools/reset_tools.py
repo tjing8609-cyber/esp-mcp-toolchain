@@ -6,8 +6,10 @@ from typing import Literal
 from ..backends.pyserial_backend import get_serial_module
 from ..config import get_selected_port
 from ..errors import execution_error
+from .log_tools import logged_task
 
 
+@logged_task(task_type="reset", selected_port_arg="port", payload_args=("mode",))
 def esp_reset(port: str | None = None, mode: Literal["soft", "hard"] = "soft") -> dict:
     if mode not in {"soft", "hard"}:
         return execution_error(
