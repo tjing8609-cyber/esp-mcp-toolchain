@@ -7,7 +7,7 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：按已审核方案把 SQLite 升级为正式 runs/events 日志库，并完成迁移、任务生命周期和结构化查询。
-- 当前状态：实现、跨工作树门禁、本地提交、当前项目正式迁移和 marketplace 源同步已完成；GitHub 推送/Actions 与 Codex 插件缓存重载尚未完成。
+- 当前状态：实现、跨工作树门禁、本地提交、当前项目正式迁移、marketplace 源同步、GitHub 推送和 Actions 四平台矩阵已完成；Codex 插件缓存重载尚未完成。
 
 ## 已完成实现
 
@@ -32,11 +32,11 @@
 - 跨工作树完整门禁：`134 passed in 21.44s`。
 - 覆盖 fresh/v1 schema、首次并发建库、hardwork/memory 复合键、并发 sequence/import、UUID/时间戳、run 终态、selected_port、JSONL 增长与复制去重、native run 冲突隔离、嵌套任务、Monitor 跨项目/stale 对账、MCP schema 以及前后置镜像故障。
 - 当前项目已正式创建 schema v2 SQLite：首轮导入 19 files / 32 events，第二轮导入 0 / 0 / 0；状态为 12 cancelled、2 failed、5 succeeded，19 个 migration marker，外键检查为空。
+- GitHub `main` push workflow #12 与 `test` push workflow #11 均为 success；Windows/Linux、Python 3.10/3.12 共 8 个 job 的完整测试步骤全部通过。
 - 本轮没有烧录、擦除、删除、full clean 或其他真实硬件动作；SQLite 存储层不需要新增实板门禁。
 
 ## 待完成
 
-1. 推送 GitHub 并确认 Windows/Linux、Python 3.10/3.12 矩阵。
-2. 通过 Plugin Management 重新安装/加载 `0.1.0+codex.20260720110129`，在新任务核对 SQLite 工具 schema 与源码版本。
+1. 通过 Plugin Management 重新安装/加载 `0.1.0+codex.20260720110129`，在新任务核对 SQLite 工具 schema 与源码版本。
 
 在上述步骤完成前，不把 SQLite 标记为已发布到当前 Codex 插件缓存，也不自动开始项目合并/导入导出体系。

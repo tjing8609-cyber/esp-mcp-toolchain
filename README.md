@@ -270,7 +270,7 @@ MicroPython 方向：
 - memory_items / memory_audit 表。
 - 日志导出和检索增强。
 
-当前状态：SQLite 已在本地主线成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v2、迁移、任务生命周期和结构化查询已通过 `134 passed` 跨工作树门禁；本地提交、当前项目正式迁移和个人 marketplace 源同步已完成，公开 GitHub 推送/Actions 与 Codex 缓存重载仍待完成。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
+当前状态：SQLite 已在本地主线成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v2、迁移、任务生命周期和结构化查询已通过 `134 passed` 跨工作树门禁；本地提交、当前项目正式迁移、个人 marketplace 源同步、公开 GitHub 推送和 Actions 四平台矩阵均已完成，Codex 缓存重载仍待完成。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
 
 ## 当前进度
 
@@ -303,7 +303,7 @@ MicroPython 方向：
 - 后台串口 Monitor 已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
 - 后台串口 Monitor 已完成 `COM3` 真实板卡启动、游标读取、停止清理和同端口重新打开验收；本次固件的 UART0 运行时控制台 `115200` 实测事实已增量写入当前项目硬件映射。
 - 后台串口 Monitor 已修复 CH9102 实板稀疏输出下固定 `read(4096)` 可能返回污染缓冲的问题：串口改为非阻塞，先读取 `in_waiting`，单次最多读取 1024 字节，无数据时有界休眠；新增回归和真实按键门禁均通过。
-- SQLite 日志闭环已在本地主线和 marketplace 源接通：build/flash/file/exec/capture/port select 等同步工具使用统一 run 生命周期；Monitor worker 使用启动时绑定的 LogScope 写终态；`esp_logs_latest/get/query`、CLI 和 MCP schema 统一读取/暴露 SQLite。JSONL/latest 镜像故障只返回 warning，native run 拒绝外部新事件，stale Monitor 可重复对账，默认端口在审计与动作间冻结一致。远端门禁和当前 Codex 缓存重载完成前，不视为已发布到当前工具面。
+- SQLite 日志闭环已在本地主线、GitHub 和 marketplace 源接通：build/flash/file/exec/capture/port select 等同步工具使用统一 run 生命周期；Monitor worker 使用启动时绑定的 LogScope 写终态；`esp_logs_latest/get/query`、CLI 和 MCP schema 统一读取/暴露 SQLite。JSONL/latest 镜像故障只返回 warning，native run 拒绝外部新事件，stale Monitor 可重复对账，默认端口在审计与动作间冻结一致。当前 Codex 缓存重载完成前，不视为已发布到当前工具面。
 
 最近一次本地验证：
 
@@ -317,7 +317,7 @@ SQLite 定向契约：33 passed
 覆盖：schema v2、v1 hardwork/memory 重建、首次并发建库、并发 sequence/import、UUID/时间戳、run 终态、selected_port、JSONL 增长/复制去重、native run 冲突隔离、stale Monitor 对账、Monitor 跨项目绑定、MCP schema 和前后置镜像故障
 当前项目正式迁移：首轮 19 files / 32 events，第二轮 0 / 0 / 0；12 cancelled、2 failed、5 succeeded；19 markers；foreign_key_check 为空
 真实硬件：本轮未执行烧录、擦除、删除、full clean 或其他板卡动作
-远端与插件：本地提交、正式迁移和 marketplace 源同步已完成；公开 GitHub 推送/Actions 与 Codex 缓存重载待完成
+远端与插件：main/test 已同步公开 GitHub，两个 push workflow 的 Windows/Linux、Python 3.10/3.12 共 8 个 job 全部成功；marketplace 源已同步，Codex 缓存重载待完成
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -568,6 +568,13 @@ SQLite 定向契约：33 passed
 - marketplace 源的 `data` 仍为 56 个文件、8,408,399 字节，根 `hardwork` 仍为 13 个文件；未追踪运行数据没有被删除，受控 hardwork 内容也未改变。
 - 当前 Codex 任务不会热加载新插件缓存；需通过 Plugin Management 重载后在新任务核对。GitHub 仓库为公开仓库，推送仍等待明确的公开上传授权。
 - 本轮没有烧录、擦除、删除、full clean 或其他真实硬件动作。
+
+### 2026-07-20 19:19 - 完成 GitHub 同步和远端矩阵
+
+- 获得公开上传授权后，使用原子推送将 `main` 的 `8c7aad7` 和 `test` 的 `78951a4` 同步到 GitHub；推送后两工作树分别为 `main...origin/main`、`test...origin/test`，均无未提交改动。
+- `main` push workflow [#12](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/29738048371) 和 `test` push workflow [#11](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/29738048362) 均为 `completed / success`。
+- Windows/Linux、Python 3.10/3.12 共 8 个 job 全部成功；每个 job 的依赖安装和完整 `python -m pytest` 步骤均成功，没有失败、跳过或取消步骤。
+- SQLite 本地实现、正式迁移、marketplace 源同步和 GitHub 远端门禁均已完成；剩余发布边界仅为通过 Plugin Management 重载插件，并在新任务核对新缓存工具面。
 
 ## 协作约定
 

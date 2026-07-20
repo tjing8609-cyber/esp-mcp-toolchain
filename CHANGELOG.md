@@ -48,6 +48,7 @@
 - SQLite 定向契约 `33 passed`；`index-test` 显式加载 `index` 源码的跨工作树完整门禁 `134 passed in 21.44s`。
 - 当前项目已正式创建 schema v2 SQLite：首轮导入 19 files / 32 events，第二轮 0 / 0 / 0；12 cancelled、2 failed、5 succeeded，19 markers，外键检查为空。
 - SQLite 本轮只使用临时目录、mock 和独立进程验证，不涉及烧录、擦除、删除、full clean 或其他真实硬件动作。
-- 本地全量门禁、正式迁移和 marketplace 源同步已完成；在 GitHub Actions 与 Codex 缓存重载完成前，本节仍属于 `[Unreleased]`，不代表当前安装缓存已经包含该实现。
+- `main` push workflow #12 和 `test` push workflow #11 均通过；Windows/Linux、Python 3.10/3.12 共 8 个 job 的完整测试步骤全部成功。
+- 本地全量门禁、正式迁移、marketplace 源同步和 GitHub Actions 已完成；在 Codex 缓存重载完成前，本节仍属于 `[Unreleased]`，不代表当前安装缓存已经包含该实现。
 - 当前模型最终门禁 `monitor_20260713_223126_87fc393e` 捕获一次人工确认的完整五脉冲序列，共 733 字节、24 条分片，无解码错误、丢弃或未持久化字节；停止清理和同端口重新打开均成功。
 - `COM3` 真实板卡门禁已通过：捕获 ESP-IDF 启动日志、验证游标续读不重复、停止后完整落盘，并立即重新打开同一端口。功能分支头 `962a382` 和 `main` 合入提交 `e67dd7f` 的 Windows/Linux、Python 3.10/3.12 CI 均全部成功；Monitor 已合入 `main`。
