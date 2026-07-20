@@ -20,11 +20,34 @@
 python -m pytest
 ```
 
+- 双工作树门禁必须从 `index-test` 显式加载 `index` 源码，推荐使用 test 分支脚本：
+
+```powershell
+.\scripts\run_cross_worktree_tests.ps1 `
+  -SourceRoot ..\index `
+  -PythonPath C:\Users\16224\anaconda3\envs\esp-mcp-toolchain\python.exe
+```
+
+- 门禁必须断言实际加载的 `esp_mcp_toolchain` 位于 `SourceRoot/toolchain`；只修改 `PYTHONPATH` 但仍导入 test 工作树源码不算有效验证。
+- 每次新增或修改测试后必须重新记录 pytest 的 collected/failed/passed；不得沿用修改前的历史数字。只有最后一次完整跨工作树运行的 passed 数可以写成当前门禁结果。
+
 - GitHub Actions 必须至少覆盖 Windows 与 Linux，以及项目支持的 Python 版本。
 - 新增工具、后端、资源、提示词、存储逻辑或硬件流程时，必须在 `test` 分支新增或更新对应测试，并对 `main` 待提交源码执行门禁。
 - 修复 bug 时，优先补充能够复现问题的回归测试。
 - 全量测试未通过时，不得合入 `main`，也不得作为稳定能力写入发布说明。
 - 依赖串口的测试优先使用可控假串口和独立子进程覆盖并发、退出、断连和故障注入；假串口测试不能替代真实板卡验收。
+
+## SQLite 日志规则
+
+- SQLite 是 runs/events 的正式查询源，JSONL 只能作为审计镜像和迁移输入；查询工具不得静默回退到 JSONL。
+- schema 或仓储变化必须覆盖 fresh init、v1 迁移、并发 init、并发 sequence、UUID 严格幂等、run 终态、selected_port 冲突和跨项目隔离。
+- 并发 init 必须覆盖两个线程和两个独立进程同时创建同一个尚不存在的数据库，并覆盖 WAL 设置发生在 `BEGIN IMMEDIATE` 之前的锁竞争。
+- legacy JSONL 测试必须覆盖重复导入、复制文件去重、并发 marker 以及原生 running run 不被提前结束。
+- 时间过滤参数必须与写入时间使用同一 UTC 规范化规则；legacy 未知 level 不得使可恢复历史文件永久无法导入。
+- 后台 Monitor 必须验证启动项目 A、切换到 B、终止后 run/events 仍全部落在 A。
+- 动作或状态变更前日志不可用时必须阻止执行；完成后的日志故障不得覆盖业务结果，尤其不能诱导调用方自动重试烧录、擦除、删除、恢复、端口选择或配置写入。
+- 对 port selection、配置写入等非硬件状态变更同样应用后置日志失败语义：业务变更不得回滚或被误报为未执行，但必须返回 `logging_persisted=false` 和 `logging_warning`。
+- SQLite 层改动不需要真实硬件门禁；涉及硬件工具时通过 mock 验证生命周期，只有硬件执行逻辑本身变化才进入真实板卡门禁。
 
 ## 硬件操作规则
 

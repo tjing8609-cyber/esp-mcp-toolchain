@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from ..backends.espidf_backend import run_idf_build, run_idf_clean
-from ..errors import execution_error, not_implemented
+from ..errors import execution_error
 from ..paths import safe_project_path
+from .log_tools import logged_task
 
 
+@logged_task(task_type="build", payload_args=("project_dir", "backend", "target", "log_name"))
 def esp_project_build(project_dir: str = ".", backend: str = "espidf", target: str = "esp32", log_name: str = "build_default") -> dict:
     if backend != "espidf":
         return execution_error(
@@ -36,6 +38,7 @@ def esp_project_build(project_dir: str = ".", backend: str = "espidf", target: s
     return result
 
 
+@logged_task(task_type="clean", payload_args=("project_dir", "mode"))
 def esp_project_clean(project_dir: str = ".", mode: str = "clean", confirm: bool = False) -> dict:
     if mode not in {"clean", "fullclean"}:
         return execution_error(

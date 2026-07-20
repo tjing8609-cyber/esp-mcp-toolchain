@@ -48,9 +48,17 @@ def build_parser() -> argparse.ArgumentParser:
     logs_get.add_argument("--tail", type=int, default=80)
 
     logs_query = sub.add_parser("logs-query")
-    logs_query.add_argument("--query", required=True)
+    logs_query.add_argument("--query", default="")
     logs_query.add_argument("--limit", type=int, default=20)
     logs_query.add_argument("--level")
+    logs_query.add_argument("--run-id")
+    logs_query.add_argument("--phase")
+    logs_query.add_argument("--tool")
+    logs_query.add_argument("--source")
+    logs_query.add_argument("--from-ts")
+    logs_query.add_argument("--to-ts")
+    logs_query.add_argument("--sequence-from", type=int)
+    logs_query.add_argument("--sequence-to", type=int)
 
     error_text = sub.add_parser("error-parse-text")
     error_text.add_argument("--text", required=True)
@@ -110,7 +118,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "logs-get":
         return emit(log_tools.esp_logs_get(run_id=args.run_id, tail=args.tail))
     if args.command == "logs-query":
-        return emit(log_tools.esp_logs_query(query=args.query, limit=args.limit, level=args.level))
+        return emit(
+            log_tools.esp_logs_query(
+                query=args.query,
+                limit=args.limit,
+                level=args.level,
+                run_id=args.run_id,
+                phase=args.phase,
+                tool=args.tool,
+                source=args.source,
+                from_ts=args.from_ts,
+                to_ts=args.to_ts,
+                sequence_from=args.sequence_from,
+                sequence_to=args.sequence_to,
+            )
+        )
     if args.command == "error-parse-text":
         return emit(error_tools.esp_error_parse_text(text=args.text))
     if args.command == "hardwork-list":

@@ -6,8 +6,10 @@ from ..backends import mpremote_backend
 from ..backends.raw_repl_backend import execute_code
 from ..config import get_selected_port
 from ..errors import execution_error, not_implemented
+from .log_tools import logged_task
 
 
+@logged_task(task_type="exec_code", selected_port_arg="port", payload_args=("backend", "capture_ms"))
 def esp_exec_code(port: str | None = None, backend: str = "raw_repl", code: str = "", capture_ms: int = 3000) -> dict:
     if backend != "raw_repl":
         return execution_error(
@@ -39,6 +41,11 @@ def esp_exec_code(port: str | None = None, backend: str = "raw_repl", code: str 
     return result
 
 
+@logged_task(
+    task_type="run_file",
+    selected_port_arg="port",
+    payload_args=("backend", "path", "path_type", "capture_ms"),
+)
 def esp_run_file(
     port: str | None = None,
     backend: str = "mpremote",

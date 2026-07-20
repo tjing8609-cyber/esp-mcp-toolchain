@@ -271,10 +271,18 @@ def recover_serial_runs(log_root: Path, *, skip_run_ids: set[str] | None = None)
                     }
                 )
                 known_chunk_names.add(final_path.name)
-        if manifest.get("state") in {"STARTING", "RUNNING", "STOPPING"} or changed:
+        stale_state = manifest.get("state") in {"STARTING", "RUNNING", "STOPPING"}
+        last_error = manifest.get("last_error")
+        needs_sqlite_reconciliation = (
+            manifest.get("state") == "FAILED"
+            and isinstance(last_error, dict)
+            and last_error.get("error_kind") == "stale_monitor_recovered"
+            and not manifest.get("sqlite_reconciled")
+        )
+        if stale_state or changed:
             manifest.update(
                 {
-                    "run_id": manifest.get("run_id") or run_dir.name,
+                    "run_id": run_dir.name,
                     "state": "FAILED",
                     "stopped_at": now_utc_iso(),
                     "last_error": {
@@ -282,11 +290,14 @@ def recover_serial_runs(log_root: Path, *, skip_run_ids: set[str] | None = None)
                         "message": "A previous monitor process ended without completing cleanup.",
                     },
                     "chunks": sorted(chunks, key=lambda chunk: int(chunk.get("chunk_id", 0))),
+                    "sqlite_reconciled": False,
                 }
             )
             if unresolved_parts:
                 manifest["recovery_unresolved_parts"] = unresolved_parts
             _atomic_json(manifest_path, manifest)
+        if stale_state or changed or needs_sqlite_reconciliation:
+            manifest["run_id"] = run_dir.name
             recovered.append(manifest)
     return recovered
 
@@ -299,6 +310,17 @@ def load_manifest(run_dir: Path) -> dict | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def mark_serial_run_sqlite_reconciled(log_root: Path, run_id: str) -> dict:
+    manifest_path = log_root / "serial" / run_id / "manifest.json"
+    manifest = load_manifest(manifest_path.parent)
+    if manifest is None:
+        raise FileNotFoundError(f"No monitor manifest for {run_id}")
+    manifest["sqlite_reconciled"] = True
+    manifest["sqlite_reconciled_at"] = now_utc_iso()
+    _atomic_json(manifest_path, manifest)
+    return manifest
 
 
 def read_persisted_records(

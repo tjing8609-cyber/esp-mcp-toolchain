@@ -170,11 +170,41 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
         log_tools.esp_logs_latest,
     ),
     "esp_logs_get": (
-        ToolSpec("esp_logs_get", "Read log events by run_id."),
+        ToolSpec(
+            "esp_logs_get",
+            "Read log events by run_id.",
+            {
+                "type": "object",
+                "properties": {
+                    "run_id": {"type": "string"},
+                    "tail": {"type": "integer", "default": 80, "minimum": 1, "maximum": 10000},
+                },
+                "required": ["run_id"],
+            },
+        ),
         log_tools.esp_logs_get,
     ),
     "esp_logs_query": (
-        ToolSpec("esp_logs_query", "Search log events."),
+        ToolSpec(
+            "esp_logs_query",
+            "Search SQLite log events with text and structured filters.",
+            {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "default": ""},
+                    "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 1000},
+                    "level": {"type": ["string", "null"]},
+                    "run_id": {"type": ["string", "null"]},
+                    "phase": {"type": ["string", "null"]},
+                    "tool": {"type": ["string", "null"]},
+                    "source": {"type": ["string", "null"]},
+                    "from_ts": {"type": ["string", "null"]},
+                    "to_ts": {"type": ["string", "null"]},
+                    "sequence_from": {"type": ["integer", "null"], "minimum": 1},
+                    "sequence_to": {"type": ["integer", "null"], "minimum": 1},
+                },
+            },
+        ),
         log_tools.esp_logs_query,
     ),
     "esp_error_parse_log": (

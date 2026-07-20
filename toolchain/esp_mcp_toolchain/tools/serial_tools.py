@@ -11,8 +11,8 @@ from ..config import get_selected_port
 from ..errors import execution_error
 from ..paths import logs_dir
 from ..project_context import get_project_context
-from ..utils.time_utils import now_compact, now_iso
-from .log_tools import new_run_id, write_event
+from ..utils.time_utils import now_compact
+from .log_tools import LogScope, finish_run, logged_task, new_run_id, start_run, write_event
 
 
 _SESSION_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -39,6 +39,65 @@ def _validate_monitor_run_id(run_id: str, tool: str) -> dict | None:
     )
 
 
+def _finish_monitor_start_failure(
+    *,
+    tool: str,
+    run_id: str,
+    scope: LogScope,
+    error_kind: str,
+    message: str,
+    details: dict | None = None,
+    logging_warnings: list[str] | None = None,
+) -> dict:
+    payload = {"error_kind": error_kind, **(details or {})}
+    warnings = list(logging_warnings or [])
+    try:
+        completed = write_event(
+            tool,
+            "error",
+            message,
+            payload,
+            run_id=run_id,
+            phase="complete",
+            scope=scope,
+        )
+        if completed.get("ok") is False:
+            warnings.append(
+                f"terminal event: {completed.get('message') or completed.get('error_kind')}"
+            )
+        elif completed.get("logging_persisted") is False:
+            warnings.append(
+                f"terminal event: {completed.get('logging_warning') or 'audit mirror failed'}"
+            )
+    except Exception as exc:
+        warnings.append(f"terminal event: {type(exc).__name__}: {exc}")
+    try:
+        finished = finish_run(run_id, "failed", summary=message, payload=payload, scope=scope)
+        if finished.get("logging_persisted") is False:
+            warnings.append(
+                f"run finalization: {finished.get('logging_warning') or 'latest mirror failed'}"
+            )
+    except Exception as exc:
+        warnings.append(f"run finalization: {type(exc).__name__}: {exc}")
+    response_extra = dict(details or {})
+    if warnings:
+        response_extra["logging_persisted"] = False
+        response_extra["logging_warning"] = "; ".join(warnings)
+    return execution_error(
+        error_kind,
+        message,
+        tool=tool,
+        run_id=run_id,
+        project_id=scope.project_id,
+        **response_extra,
+    )
+
+
+@logged_task(
+    task_type="serial_capture",
+    selected_port_arg="port",
+    payload_args=("baudrate", "duration_ms", "stop_on_traceback", "session_name"),
+)
 def esp_serial_capture(
     port: str | None = None,
     baudrate: int = 115200,
@@ -67,7 +126,6 @@ def esp_serial_capture(
             suggested_next_actions=["Run port-list", "Run port-select COMx"],
         )
 
-    run_id = new_run_id("serial")
     raw_dir = logs_dir() / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     raw_path = raw_dir / f"{session_name}_{now_compact()}.log"
@@ -89,33 +147,19 @@ def esp_serial_capture(
             "serial_capture_failed",
             str(exc),
             tool="esp_serial_capture",
-            run_id=run_id,
             suggested_next_actions=["Check port name", "Close other serial monitors", "Run port-status"],
         )
 
     text = "".join(chunks)
     raw_path.write_text(text, encoding="utf-8")
-    write_event(
-        "esp_serial_capture",
-        "serial",
-        f"Captured {len(text)} characters from {selected_port}",
-        {
-            "port": selected_port,
-            "baudrate": baudrate,
-            "duration_ms": duration_ms,
-            "raw_path": str(raw_path),
-            "created_at": now_iso(),
-        },
-        run_id=run_id,
-        source="esp32",
-    )
     return {
         "ok": True,
-        "run_id": run_id,
         "port": selected_port,
         "baudrate": baudrate,
         "raw_path": str(Path(raw_path)),
+        "bytes_read": len(text.encode("utf-8")),
         "text": text,
+        "message": f"Captured {len(text)} characters from {selected_port}.",
     }
 
 
@@ -159,29 +203,117 @@ def esp_serial_monitor_start(
         port_identity=describe_serial_port(selected_port),
         baudrate=baudrate,
     )
+    scope = LogScope.bound(project_id=binding.project_id, log_root=binding.log_root)
+    start_payload = {
+        "port": selected_port,
+        "baudrate": baudrate,
+        "session_name": session_name,
+    }
+    run_started = False
+    try:
+        start_run(
+            "serial_monitor",
+            run_id=run_id,
+            selected_port=selected_port,
+            payload=start_payload,
+            scope=scope,
+        )
+        run_started = True
+        prepared = write_event(
+            tool,
+            "info",
+            f"Serial monitor start requested on {selected_port}.",
+            start_payload,
+            run_id=run_id,
+            phase="prepare",
+            scope=scope,
+        )
+    except Exception as exc:
+        message = f"Could not initialize the SQLite run log: {exc}"
+        if run_started:
+            return _finish_monitor_start_failure(
+                tool=tool,
+                run_id=run_id,
+                scope=scope,
+                error_kind="sqlite_log_start_failed",
+                message=message,
+            )
+        return execution_error(
+            "sqlite_log_start_failed",
+            message,
+            tool=tool,
+            run_id=run_id,
+            project_id=scope.project_id,
+        )
+    if prepared.get("ok") is False:
+        return _finish_monitor_start_failure(
+            tool=tool,
+            run_id=run_id,
+            scope=scope,
+            error_kind=prepared.get("error_kind", "log_write_failed"),
+            message=prepared.get("message", "Could not write the monitor prepare event."),
+        )
+    prepare_warnings: list[str] = []
+    if prepared.get("logging_persisted") is False:
+        prepare_warnings.append(
+            f"prepare event: {prepared.get('logging_warning') or 'audit mirror failed'}"
+        )
     try:
         session = SERIAL_MONITOR_MANAGER.start(binding, serial_mod)
     except SerialLogQuotaError as exc:
-        return execution_error("serial_log_quota_exceeded", str(exc), tool=tool)
-    except MonitorConflictError as exc:
-        return execution_error(exc.error_kind, str(exc), tool=tool)
-    except (OSError, RuntimeError) as exc:
-        return execution_error("serial_monitor_start_failed", str(exc), tool=tool)
-    status = session.status()
-    if status["state"] == "FAILED":
-        return execution_error(
-            status.get("last_error", {}).get("error_kind", "serial_monitor_start_failed"),
-            status.get("last_error", {}).get("message", "Serial monitor failed during startup."),
+        return _finish_monitor_start_failure(
             tool=tool,
-            monitor=status,
+            run_id=run_id,
+            scope=scope,
+            error_kind="serial_log_quota_exceeded",
+            message=str(exc),
+            logging_warnings=prepare_warnings,
         )
-    return {
+    except MonitorConflictError as exc:
+        return _finish_monitor_start_failure(
+            tool=tool,
+            run_id=run_id,
+            scope=scope,
+            error_kind=exc.error_kind,
+            message=str(exc),
+            logging_warnings=prepare_warnings,
+        )
+    except (OSError, RuntimeError) as exc:
+        return _finish_monitor_start_failure(
+            tool=tool,
+            run_id=run_id,
+            scope=scope,
+            error_kind="serial_monitor_start_failed",
+            message=str(exc),
+            logging_warnings=prepare_warnings,
+        )
+    status = session.status()
+    if status["state"] in {"FAILED", "DISCONNECTED", "STOPPED"}:
+        status = session.request_stop(2.0)
+        return _finish_monitor_start_failure(
+            tool=tool,
+            run_id=run_id,
+            scope=scope,
+            error_kind=status.get("last_error", {}).get(
+                "error_kind", "serial_monitor_start_failed"
+            ),
+            message=status.get("last_error", {}).get(
+                "message", "Serial monitor failed during startup."
+            ),
+            details={"monitor": status},
+            logging_warnings=prepare_warnings,
+        )
+    result = {
         "ok": True,
         "run_id": run_id,
+        "project_id": scope.project_id,
         "state": status["state"],
         "monitor": status,
     }
-
+    if prepare_warnings:
+        result["logging_persisted"] = False
+        result["logging_warning"] = "; ".join(prepare_warnings)
+    return result
 
 def esp_serial_monitor_stop(run_id: str, timeout_ms: int = 5000) -> dict:
     tool = "esp_serial_monitor_stop"

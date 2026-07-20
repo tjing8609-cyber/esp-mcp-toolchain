@@ -9,12 +9,18 @@ from ..errors import execution_error, not_implemented
 from ..paths import data_dir
 from ..paths import safe_project_path
 from ..utils.time_utils import now_compact
+from .log_tools import logged_task
 
 
 def _default_backup_path(prefix: str = "flash_backup") -> Path:
     return data_dir() / "artifacts" / "flash" / f"{prefix}_{now_compact()}.bin"
 
 
+@logged_task(
+    task_type="backup_flash",
+    selected_port_arg="port",
+    payload_args=("chip", "size", "address", "baud", "output_path"),
+)
 def esp_backup_flash(
     port: str,
     chip: str = "esp32",
@@ -49,6 +55,11 @@ def esp_backup_flash(
     return result
 
 
+@logged_task(
+    task_type="flash",
+    selected_port_arg="port",
+    payload_args=("backend", "project_dir", "baud", "monitor_after_flash"),
+)
 def esp_flash_firmware(
     port: str,
     backend: str = "espidf",
@@ -102,6 +113,7 @@ def esp_flash_firmware(
     return result
 
 
+@logged_task(task_type="erase_flash", selected_port_arg="port", payload_args=("chip",))
 def esp_erase_flash(port: str, chip: str = "esp32", confirm: bool = False) -> dict:
     if not confirm:
         return execution_error(
@@ -126,6 +138,11 @@ def esp_erase_flash(port: str, chip: str = "esp32", confirm: bool = False) -> di
     return result
 
 
+@logged_task(
+    task_type="restore_flash",
+    selected_port_arg="port",
+    payload_args=("input_path", "chip", "address", "baud", "expected_sha256"),
+)
 def esp_restore_flash(
     port: str,
     input_path: str,

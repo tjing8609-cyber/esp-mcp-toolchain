@@ -222,7 +222,7 @@ MicroPython 方向：
 - GPIO 增量记录按 `gpio + function` 合并，串口按 `interface` 合并；相同事实可以补充来源或升级证据，关键字段冲突必须返回冲突列表并原子拒绝写入。
 - 自动生成或更新 `gpio_map.md`、`serial_interface.md` 和 `hardware_mapping.json`，并同步 hardwork index/manifest。每条结论必须区分“原图确认”“实板测试确认”“模型推断”和“待确认”，不得把推断写成已确认事实。
 - 增加硬件上下文门禁：映射未提交时，串口选择与串口操作、GPIO/板载外设操作、烧录、擦除和其他依赖芯片或 flash 参数的工具返回 `hardware_context_required`；hardwork 读取、附件读取和映射提交保持可用。
-- SQLite 仓储层落地时，项目数据表必须包含 `project_id`，仓储查询强制按当前项目过滤，禁止无项目范围的全表读取。
+- SQLite 的 runs/events 表包含 `project_id`，仓储查询强制按当前项目过滤，禁止无项目范围的全表读取；hardwork 和 memory 当前仍使用项目隔离的文件仓储。
 
 未来迁移工具：
 
@@ -258,23 +258,23 @@ MicroPython 方向：
 
 当前状态：已完成 JSONL 版本的写入、读取、搜索、更新、删除和冲突审计雏形。
 
-### 第 6 阶段：SQLite 索引和日志库增强
+### 第 6 阶段：SQLite 正式日志库和检索增强
 
-目标：在 JSONL 稳定后升级为 SQLite 索引 + 原始日志文件的组合。
+定位：SQLite 保存 runs/events 的正式状态并承担查询；JSONL 保留为审计镜像和旧会话迁移输入，串口原始字节继续使用分块文件。
 
-计划实现：
+本阶段范围：
 
-- `data/esp_mcp.sqlite`
+- `<storage_root>/<project_id>/esp_mcp.sqlite`
 - runs / events / raw_logs / errors 表。
 - hardwork_items / hardwork_audit 表。
 - memory_items / memory_audit 表。
 - 日志导出和检索增强。
 
-当前状态：已写入 `schema.sql` 和初始化脚本，仓库默认仍以 JSONL 作为第一版运行时存储。
+当前状态：候选实现中 SQLite 已成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v2、v1/JSONL 迁移、首次并发建库、事务序号、严格 UUID 幂等、run 状态机、同步工具/异步 Monitor 生命周期和结构化查询已通过 `134 passed` 跨工作树门禁；远端 CI 和插件同步仍待完成。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
 
 ## 当前进度
 
-截至 2026-07-13，已完成：
+截至 2026-07-20，已完成：
 
 - 仓库结构初始化。
 - GitHub 远端同步，主分支为 `main`。
@@ -285,17 +285,17 @@ MicroPython 方向：
 - 新增 conda 环境文件 `environment.yml`，环境名为 `esp-mcp-toolchain`。
 - 串口枚举、串口选择、串口状态检查。
 - 串口固定时长捕获的基础实现。
-- JSONL 日志写入、读取、检索。
+- JSONL 审计镜像写入和旧 session 迁移。
 - MicroPython Traceback 文本解析。
 - hardwork processed 文档和索引基础实现。
 - memory JSONL 存储和 audit 基础实现。
-- SQLite schema 初稿。
+- SQLite schema v2 与正式日志仓储：project-scoped runs/events、复合外键、查询索引、事务 sequence、UUID/时间戳严格幂等、终态约束和可重复迁移。
 - Codex skill 文件和示例工作流。
 - Codex 插件 manifest 补齐 `name`、`version`、`description`、`author`、`homepage`、`repository`、`license`、`keywords`、`skills`、`apps`、`mcpServers` 和 `interface`。`hooks.json` 已创建；`hooks` 未写入 `plugin.json`，因为当前插件验证器会拒绝该字段，优先保证插件可见和可验证。
 - `.mcp.json` 改为 Codex 插件标准的 `mcpServers` 包裹结构。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 本机个人 marketplace 已创建在 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源位于 `C:\Users\16224\plugins\esp-mcp-toolchain`。本次 Monitor 修复已同步到该源并重新安装，当前 Codex 缓存版本为 `0.1.0+codex.20260713135819`；validator、stdio 枚举、缓存后端哈希核对和当前模型实板调用均已通过。
+- 本机个人 marketplace 位于 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源位于 `C:\Users\16224\plugins\esp-mcp-toolchain`。当前 Codex 缓存版本仍为 `0.1.0+codex.20260713135819`，包含已验收的 Monitor 修复；本次 SQLite 改动尚未同步到 marketplace 源或缓存。
 - 初始测试集。
 - 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；门禁从 `index-test` 加载 `index` 的主线源码执行。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
@@ -303,28 +303,22 @@ MicroPython 方向：
 - 后台串口 Monitor 已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
 - 后台串口 Monitor 已完成 `COM3` 真实板卡启动、游标读取、停止清理和同端口重新打开验收；本次固件的 UART0 运行时控制台 `115200` 实测事实已增量写入当前项目硬件映射。
 - 后台串口 Monitor 已修复 CH9102 实板稀疏输出下固定 `read(4096)` 可能返回污染缓冲的问题：串口改为非阻塞，先读取 `in_waiting`，单次最多读取 1024 字节，无数据时有界休眠；新增回归和真实按键门禁均通过。
+- SQLite 日志闭环候选实现已接通：build/flash/file/exec/capture/port select 等同步工具使用统一 run 生命周期；Monitor worker 使用启动时绑定的 LogScope 写终态；`esp_logs_latest/get/query`、CLI 和 MCP schema 统一读取/暴露 SQLite。JSONL/latest 镜像故障只返回 warning，native run 拒绝外部新事件，stale Monitor 可重复对账，默认端口在审计与动作间冻结一致。远端门禁和插件同步完成前不视为已发布能力。
 
 最近一次本地验证：
 
 ```text
-conda 环境：esp-mcp-toolchain
+Conda 环境：esp-mcp-toolchain
 Python：3.12.13
-官方 MCP client 连接 toolchain/mcp_server.py 并执行 initialize/list
-功能分支源码 MCP 烟测结果：43 tools / 12 resources / 4 prompts
-MCP tools/call 烟测：已实现工具返回 `implemented=true`，未实现分支仍返回名称占位字段
-插件验证：修复后的仓库源码和 `C:\Users\16224\plugins\esp-mcp-toolchain` marketplace 源均通过 validator，版本为 `0.1.0+codex.20260713135819`；核心 Monitor 后端 SHA-256 一致，从 marketplace 源直接枚举得到 `43 tools / 12 resources / 4 prompts`
-Codex 安装缓存：当前任务已加载 `0.1.0+codex.20260713135819`；缓存 Monitor 后端 SHA-256 与仓库一致，当前模型已直接调用新版工具完成实板验收
-GitHub Actions：`main` 提交 `1873e1c` 和 `test` 提交 `8d74dd8` 的 Windows/Linux、Python 3.10/3.12 四个任务均全部成功
-python -m pytest
+测试工作树：index-test / test
+实现源码：index / main（由 ESP_MCP_SOURCE_ROOT 和跨工作树脚本显式加载）
+SQLite 定向契约：33 passed
+跨工作树全量门禁：134 passed in 19.53s
+覆盖：schema v2、v1 hardwork/memory 重建、首次并发建库、并发 sequence/import、UUID/时间戳、run 终态、selected_port、JSONL 增长/复制去重、native run 冲突隔离、stale Monitor 对账、Monitor 跨项目绑定、MCP schema 和前后置镜像故障
+真实旧日志演练：19 files / 32 events；12 cancelled、2 failed、5 succeeded；foreign_key_check 为空
+真实硬件：本轮未执行烧录、擦除、删除、full clean 或其他板卡动作
+远端与插件：GitHub Actions、marketplace 源和 Codex 缓存同步待本地提交后执行
 ```
-
-本次修复跨分支全量验证结果（`index-test` 测试加载 `index` 源码）：
-
-```text
-101 passed
-Monitor 专项：29 passed
-```
-
 开发日志（同一天按提交时间分开）：
 
 ### 2026-07-09 12:16 - 接入官方 MCP SDK
@@ -539,17 +533,32 @@ Monitor 专项：29 passed
 - 随后通过 `monitor_20260713_223337_a7fc4184` 再次打开并停止同一串口，`COM3` 最终为 available 且 not busy。协调按键时间时产生的较早会话不作为最终人工门禁结论。
 - 本轮没有烧录、擦除、清理、删除或修改开发板固件。
 
+### 2026-07-20 16:20 - 落地 SQLite 正式日志仓储
+
+- 按审核后的字段合同完成 schema v2：runs/events 使用 project-scoped 复合键、复合外键、JSON 对象约束、规范 UUID 和常用查询索引。
+- SQLite 成为 `esp_logs_latest/get/query` 的正式查询源；JSONL 保留为审计镜像，旧 session 文件使用稳定快照、SHA-256 marker 和 UUIDv5 可重复导入。
+- run 状态机限制终态改写和终态新事件；sequence 在 `BEGIN IMMEDIATE` 事务中分配。v1 的 hardwork/memory 表会真正重建为复合主键，而不是只追加 project_id 列。
+- 同步工具接入统一 start/prepare/complete/finish 生命周期；后台 Monitor 固化完整 LogScope，并在 worker 终止时写入 failed 或 cancelled。
+- 动作或状态变更完成后若日志收尾失败，返回真实业务结果、`logging_persisted=false` 和 `logging_warning`，不会把已经成功的烧录、擦除、删除、端口选择或配置写入误报为失败。
+- 最终审查补齐镜像故障容错、Monitor 异常收尾与 stale 对账、native run 导入隔离和默认端口冻结；6 条新增契约全部通过。
+- `test` 分支新增跨工作树来源门禁和 SQLite 契约；定向 `33 passed`，跨工作树全量 `134 passed`。本轮未执行任何真实硬件动作。
+- 当前项目 19 份旧 JSONL 已在临时数据库完成迁移演练，共导入 32 个事件，外键检查为空；正式项目数据库尚未写入。
+
 暂未完成：
 
-- SQLite 仓储层落地。
-- `esp_logs_query` 已支持多词匹配，后续还可以继续扩展时间范围、run_id 前缀、字段过滤等查询能力。
-- 工程路径重绑定、项目合并、导入导出和迁移完整性校验工具；迁移体系继续暂停，排在 SQLite 和日志查询增强之后。
-- 更多板卡和更多固件项目的端到端验证；当前真实验证覆盖 `COM3` 上的 ESP32-D0WD-V3 板、MicroPython 备份/恢复、ESP-IDF 示例 build/flash、整片擦除后恢复。
+- 本次 SQLite 实现和测试尚未提交、推送，也尚未取得新的 GitHub Actions 结果。
+- 当前项目数据目录尚未正式创建 SQLite；迁移后仍需重复导入核对幂等、状态分布和外键。
+- 个人 marketplace 源和 Codex 安装缓存仍是上一个 Monitor 版本，尚未包含 SQLite 改动。
+- 日志导出、聚合和 run_id 前缀等后续增强。
+- 工程路径重绑定、项目合并、导入导出和迁移完整性校验工具；该体系继续暂停。
+- 更多板卡和固件项目的端到端验证；当前既有真实验证范围不因本次纯存储改动扩大。
 
 下一步计划：
 
-- Monitor 污染读取修复、插件重载和当前模型实板验收已经完成，本任务结束后暂停。
-- 后续依次开发 SQLite schema/仓储层、日志查询增强，最后再恢复工程重绑定、合并、导出、导入和完整性校验；未经新计划审核不自动开始。
+- 提交 `main` 实现/文档和 `test` 契约测试，同步分支后再次运行全量门禁。
+- 推送 GitHub 并确认 Windows/Linux、Python 3.10/3.12 矩阵。
+- 正式迁移当前项目旧日志并核对重复导入结果。
+- 同步 marketplace 源、重新加载插件并核对 SQLite schema/查询工具；完成后暂停，不自动开始项目迁移体系。
 
 ## 协作约定
 
@@ -584,4 +593,5 @@ Monitor 专项：29 passed
 - `docs/12-development-status.md`
 - `docs/adr/0001-feature-branch-workflow.md`
 - `docs/adr/0002-serial-monitor-architecture.md`
+- `docs/adr/0003-sqlite-log-authority.md`
 - `CHANGELOG.md`
