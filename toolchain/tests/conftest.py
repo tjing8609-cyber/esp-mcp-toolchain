@@ -1,4 +1,14 @@
 from pathlib import Path
+import os
+import sys
+
+
+_SOURCE_ROOT = os.environ.get("ESP_MCP_SOURCE_ROOT")
+if _SOURCE_ROOT:
+    source_toolchain = str((Path(_SOURCE_ROOT).resolve() / "toolchain"))
+    if source_toolchain in sys.path:
+        sys.path.remove(source_toolchain)
+    sys.path.insert(0, source_toolchain)
 
 import pytest
 

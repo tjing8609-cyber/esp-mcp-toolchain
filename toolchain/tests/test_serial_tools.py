@@ -4,6 +4,7 @@ import base64
 import json
 from pathlib import Path
 from queue import Empty, Queue
+import sqlite3
 import threading
 import time
 
@@ -343,6 +344,41 @@ def test_monitor_is_bound_to_starting_project(tmp_path, monkeypatch):
     second_events = tmp_path / "data" / second_context["project_id"] / "logs" / "sessions" / f"{run_id}.jsonl"
     assert first_events.exists()
     assert not second_events.exists()
+
+    first_database = tmp_path / "data" / first_context["project_id"] / "esp_mcp.sqlite"
+    second_database = tmp_path / "data" / second_context["project_id"] / "esp_mcp.sqlite"
+    assert first_database.is_file()
+    with sqlite3.connect(first_database) as connection:
+        first_run_count = connection.execute(
+            "SELECT count(*) FROM runs WHERE project_id = ? AND run_id = ?",
+            (first_context["project_id"], run_id),
+        ).fetchone()[0]
+        first_event_count = connection.execute(
+            "SELECT count(*) FROM events WHERE project_id = ? AND run_id = ?",
+            (first_context["project_id"], run_id),
+        ).fetchone()[0]
+        leaked_event_count = connection.execute(
+            "SELECT count(*) FROM events WHERE project_id = ? AND run_id = ?",
+            (second_context["project_id"], run_id),
+        ).fetchone()[0]
+    assert first_run_count == 1
+    assert first_event_count >= 1
+    assert leaked_event_count == 0
+
+    if second_database.exists():
+        with sqlite3.connect(second_database) as connection:
+            has_runs_table = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runs'"
+            ).fetchone()
+            second_run_count = (
+                connection.execute(
+                    "SELECT count(*) FROM runs WHERE run_id = ?",
+                    (run_id,),
+                ).fetchone()[0]
+                if has_runs_table
+                else 0
+            )
+        assert second_run_count == 0
 
 
 def test_monitor_disconnect_preserves_buffer_and_terminal_reason():

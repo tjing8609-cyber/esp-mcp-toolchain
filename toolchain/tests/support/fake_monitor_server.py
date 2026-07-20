@@ -7,13 +7,23 @@ import sys
 import threading
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO_ROOT / "toolchain"))
+REPO_ROOT = Path(
+    os.environ.get("ESP_MCP_SOURCE_ROOT", Path(__file__).resolve().parents[3])
+).resolve()
+SOURCE_TOOLCHAIN = REPO_ROOT / "toolchain"
+sys.path.insert(0, str(SOURCE_TOOLCHAIN))
 
 from process_lock import acquire_process_lock, release_process_lock  # noqa: E402
+import esp_mcp_toolchain  # noqa: E402
 from esp_mcp_toolchain.project_context import select_project_context  # noqa: E402
 from esp_mcp_toolchain.server import serve_stdio  # noqa: E402
 from esp_mcp_toolchain.tools import serial_tools  # noqa: E402
+
+
+if not Path(esp_mcp_toolchain.__file__).resolve().is_relative_to(SOURCE_TOOLCHAIN):
+    raise RuntimeError(
+        f"Expected ESP MCP source under {SOURCE_TOOLCHAIN}, loaded {esp_mcp_toolchain.__file__}"
+    )
 
 
 class FakeSerial:

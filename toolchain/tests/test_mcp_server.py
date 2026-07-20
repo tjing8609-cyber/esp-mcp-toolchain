@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import sys
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -94,12 +95,28 @@ def test_tools_resources_describe_directory_and_registry():
 
 def test_stdio_project_context_persists_across_tool_calls(isolated_project_context):
     async def scenario():
-        repository_root = Path(__file__).resolve().parents[2]
+        repository_root = Path(
+            os.environ.get("ESP_MCP_SOURCE_ROOT", Path(__file__).resolve().parents[2])
+        ).resolve()
+        source_toolchain = repository_root / "toolchain"
+        server_script = source_toolchain / "mcp_server.py"
+        assert server_script.is_file()
+        child_env = {
+            **os.environ,
+            "ESP_MCP_SOURCE_ROOT": str(repository_root),
+            "ESP_MCP_DATA_ROOT": str(isolated_project_context.parent / "stdio-project-data"),
+        }
+        inherited_pythonpath = child_env.get("PYTHONPATH")
+        child_env["PYTHONPATH"] = (
+            str(source_toolchain)
+            if not inherited_pythonpath
+            else os.pathsep.join((str(source_toolchain), inherited_pythonpath))
+        )
         parameters = StdioServerParameters(
-            command="python",
-            args=["toolchain/mcp_server.py"],
+            command=sys.executable,
+            args=[str(server_script)],
             cwd=str(repository_root),
-            env={**os.environ, "ESP_MCP_DATA_ROOT": str(isolated_project_context.parent / "stdio-project-data")},
+            env=child_env,
         )
         async with stdio_client(parameters) as streams:
             async with ClientSession(*streams) as session:
