@@ -29,7 +29,7 @@
 - 独立 Conda 环境：`C:\Users\16224\anaconda3\envs\esp-mcp-toolchain\python.exe`。
 - 测试工作树通过 `ESP_MCP_SOURCE_ROOT` 和跨工作树脚本显式加载实现工作树源码。
 - SQLite 定向契约：`33 passed`。
-- 跨工作树完整门禁：`134 passed in 19.63s`。
+- 跨工作树完整门禁：`134 passed in 21.44s`。
 - 覆盖 fresh/v1 schema、首次并发建库、hardwork/memory 复合键、并发 sequence/import、UUID/时间戳、run 终态、selected_port、JSONL 增长与复制去重、native run 冲突隔离、嵌套任务、Monitor 跨项目/stale 对账、MCP schema 以及前后置镜像故障。
 - 当前项目已正式创建 schema v2 SQLite：首轮导入 19 files / 32 events，第二轮导入 0 / 0 / 0；状态为 12 cancelled、2 failed、5 succeeded，19 个 migration marker，外键检查为空。
 - 本轮没有烧录、擦除、删除、full clean 或其他真实硬件动作；SQLite 存储层不需要新增实板门禁。
