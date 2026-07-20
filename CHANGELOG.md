@@ -44,9 +44,10 @@
 - 两条污染读取回归在修复前失败、修复后通过；跨分支全量门禁为 `101 passed`，Monitor 专项为 `29 passed`。
 - `COM3` 修复后门禁通过：启动日志 3,653 字节无解码错误；最终按键日志包含两次完整五脉冲序列，共 1,466 字节、41 条记录，无替换字符、丢弃或未持久化字节。
 - 修复后的仓库源码和个人 marketplace 源均通过 plugin validator，版本为 `0.1.0+codex.20260713135819`，从 marketplace 源直接枚举为 43 tools / 12 resources / 4 prompts；重新安装并重启后，缓存后端哈希核对和当前模型实板工具调用均已通过。
-- SQLite 定向契约 `33 passed`；`index-test` 显式加载 `index` 源码的跨工作树完整门禁 `134 passed in 19.53s`。
-- 当前项目 19 份旧 JSONL 已只读导入临时 SQLite：32 events，12 cancelled、2 failed、5 succeeded，外键检查为空；重复导入与正式项目写入仍按发布步骤执行。
+- SQLite 版本已同步到个人 marketplace 源 `0.1.0+codex.20260720110129`；validator、源目录 `99 passed` 和 `43 tools / 12 resources / 4 prompts` 枚举通过。当前 Codex 缓存尚未重载该版本。
+- SQLite 定向契约 `33 passed`；`index-test` 显式加载 `index` 源码的跨工作树完整门禁 `134 passed in 19.63s`。
+- 当前项目已正式创建 schema v2 SQLite：首轮导入 19 files / 32 events，第二轮 0 / 0 / 0；12 cancelled、2 failed、5 succeeded，19 markers，外键检查为空。
 - SQLite 本轮只使用临时目录、mock 和独立进程验证，不涉及烧录、擦除、删除、full clean 或其他真实硬件动作。
-- 在最终全量门禁、GitHub Actions 和插件同步完成前，本节的 SQLite 内容属于 `[Unreleased]` 候选，不代表当前 marketplace 源或 Codex 缓存已经包含该实现。
+- 本地全量门禁、正式迁移和 marketplace 源同步已完成；在 GitHub Actions 与 Codex 缓存重载完成前，本节仍属于 `[Unreleased]`，不代表当前安装缓存已经包含该实现。
 - 当前模型最终门禁 `monitor_20260713_223126_87fc393e` 捕获一次人工确认的完整五脉冲序列，共 733 字节、24 条分片，无解码错误、丢弃或未持久化字节；停止清理和同端口重新打开均成功。
 - `COM3` 真实板卡门禁已通过：捕获 ESP-IDF 启动日志、验证游标续读不重复、停止后完整落盘，并立即重新打开同一端口。功能分支头 `962a382` 和 `main` 合入提交 `e67dd7f` 的 Windows/Linux、Python 3.10/3.12 CI 均全部成功；Monitor 已合入 `main`。

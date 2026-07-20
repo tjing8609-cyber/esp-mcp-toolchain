@@ -1,6 +1,6 @@
 {
   "name": "esp-mcp-toolchain",
-  "version": "0.1.0+codex.20260713135819",
+  "version": "0.1.0+codex.20260720110129",
   "description": "A generic stdio MCP toolchain for ESP development.",
   "author": {
     "name": "tjing8609-cyber",

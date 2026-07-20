@@ -270,7 +270,7 @@ MicroPython 方向：
 - memory_items / memory_audit 表。
 - 日志导出和检索增强。
 
-当前状态：候选实现中 SQLite 已成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v2、v1/JSONL 迁移、首次并发建库、事务序号、严格 UUID 幂等、run 状态机、同步工具/异步 Monitor 生命周期和结构化查询已通过 `134 passed` 跨工作树门禁；远端 CI 和插件同步仍待完成。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
+当前状态：SQLite 已在本地主线成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v2、迁移、任务生命周期和结构化查询已通过 `134 passed` 跨工作树门禁；本地提交、当前项目正式迁移和个人 marketplace 源同步已完成，公开 GitHub 推送/Actions 与 Codex 缓存重载仍待完成。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
 
 ## 当前进度
 
@@ -295,7 +295,7 @@ MicroPython 方向：
 - `.mcp.json` 改为 Codex 插件标准的 `mcpServers` 包裹结构。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 本机个人 marketplace 位于 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源位于 `C:\Users\16224\plugins\esp-mcp-toolchain`。当前 Codex 缓存版本仍为 `0.1.0+codex.20260713135819`，包含已验收的 Monitor 修复；本次 SQLite 改动尚未同步到 marketplace 源或缓存。
+- 本机个人 marketplace 位于 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源位于 `C:\Users\16224\plugins\esp-mcp-toolchain`。SQLite 已同步到源版本 `0.1.0+codex.20260720110129`，validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过；当前 Codex 缓存仍为上一个 Monitor 版本，需通过 Plugin Management 重载后在新任务验收。
 - 初始测试集。
 - 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；门禁从 `index-test` 加载 `index` 的主线源码执行。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
@@ -303,7 +303,7 @@ MicroPython 方向：
 - 后台串口 Monitor 已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
 - 后台串口 Monitor 已完成 `COM3` 真实板卡启动、游标读取、停止清理和同端口重新打开验收；本次固件的 UART0 运行时控制台 `115200` 实测事实已增量写入当前项目硬件映射。
 - 后台串口 Monitor 已修复 CH9102 实板稀疏输出下固定 `read(4096)` 可能返回污染缓冲的问题：串口改为非阻塞，先读取 `in_waiting`，单次最多读取 1024 字节，无数据时有界休眠；新增回归和真实按键门禁均通过。
-- SQLite 日志闭环候选实现已接通：build/flash/file/exec/capture/port select 等同步工具使用统一 run 生命周期；Monitor worker 使用启动时绑定的 LogScope 写终态；`esp_logs_latest/get/query`、CLI 和 MCP schema 统一读取/暴露 SQLite。JSONL/latest 镜像故障只返回 warning，native run 拒绝外部新事件，stale Monitor 可重复对账，默认端口在审计与动作间冻结一致。远端门禁和插件同步完成前不视为已发布能力。
+- SQLite 日志闭环已在本地主线和 marketplace 源接通：build/flash/file/exec/capture/port select 等同步工具使用统一 run 生命周期；Monitor worker 使用启动时绑定的 LogScope 写终态；`esp_logs_latest/get/query`、CLI 和 MCP schema 统一读取/暴露 SQLite。JSONL/latest 镜像故障只返回 warning，native run 拒绝外部新事件，stale Monitor 可重复对账，默认端口在审计与动作间冻结一致。远端门禁和当前 Codex 缓存重载完成前，不视为已发布到当前工具面。
 
 最近一次本地验证：
 
@@ -313,11 +313,11 @@ Python：3.12.13
 测试工作树：index-test / test
 实现源码：index / main（由 ESP_MCP_SOURCE_ROOT 和跨工作树脚本显式加载）
 SQLite 定向契约：33 passed
-跨工作树全量门禁：134 passed in 19.53s
+跨工作树全量门禁：134 passed in 19.63s
 覆盖：schema v2、v1 hardwork/memory 重建、首次并发建库、并发 sequence/import、UUID/时间戳、run 终态、selected_port、JSONL 增长/复制去重、native run 冲突隔离、stale Monitor 对账、Monitor 跨项目绑定、MCP schema 和前后置镜像故障
-真实旧日志演练：19 files / 32 events；12 cancelled、2 failed、5 succeeded；foreign_key_check 为空
+当前项目正式迁移：首轮 19 files / 32 events，第二轮 0 / 0 / 0；12 cancelled、2 failed、5 succeeded；19 markers；foreign_key_check 为空
 真实硬件：本轮未执行烧录、擦除、删除、full clean 或其他板卡动作
-远端与插件：GitHub Actions、marketplace 源和 Codex 缓存同步待本地提交后执行
+远端与插件：本地提交、正式迁移和 marketplace 源同步已完成；公开 GitHub 推送/Actions 与 Codex 缓存重载待完成
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -559,6 +559,15 @@ SQLite 定向契约：33 passed
 - 推送 GitHub 并确认 Windows/Linux、Python 3.10/3.12 矩阵。
 - 正式迁移当前项目旧日志并核对重复导入结果。
 - 同步 marketplace 源、重新加载插件并核对 SQLite schema/查询工具；完成后暂停，不自动开始项目迁移体系。
+
+### 2026-07-20 19:05 - 完成本地提交、正式迁移和 marketplace 源同步
+
+- `main` SQLite 实现提交为 `08bce0b`；`test` 契约提交为 `c59b509`，同步主线合并为 `9bbd265`。最终跨工作树门禁为 `134 passed in 19.63s`。
+- 当前项目已创建 `esp_mcp.sqlite` schema v2。首轮导入 19 份旧 JSONL、32 个事件；第二轮为 0 / 0 / 0，状态分布为 12 cancelled、2 failed、5 succeeded，19 个 marker，外键检查为空。
+- 插件 cache-buster 更新为 `0.1.0+codex.20260720110129`；个人 marketplace 源只做受控文件覆盖，不删除额外文件。源目录 validator、`99 passed` 和 `43 tools / 12 resources / 4 prompts` 枚举通过，`esp_logs_query` 已暴露全部结构化过滤字段。
+- marketplace 源的 `data` 仍为 56 个文件、8,408,399 字节，根 `hardwork` 仍为 13 个文件；未追踪运行数据没有被删除，受控 hardwork 内容也未改变。
+- 当前 Codex 任务不会热加载新插件缓存；需通过 Plugin Management 重载后在新任务核对。GitHub 仓库为公开仓库，推送仍等待明确的公开上传授权。
+- 本轮没有烧录、擦除、删除、full clean 或其他真实硬件动作。
 
 ## 协作约定
 

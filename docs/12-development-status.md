@@ -7,7 +7,7 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：按已审核方案把 SQLite 升级为正式 runs/events 日志库，并完成迁移、任务生命周期和结构化查询。
-- 当前状态：候选实现与本地跨工作树门禁已完成；提交、GitHub Actions、当前项目正式迁移、marketplace 源和 Codex 插件缓存同步尚未执行。
+- 当前状态：实现、跨工作树门禁、本地提交、当前项目正式迁移和 marketplace 源同步已完成；GitHub 推送/Actions 与 Codex 插件缓存重载尚未完成。
 
 ## 已完成实现
 
@@ -29,17 +29,14 @@
 - 独立 Conda 环境：`C:\Users\16224\anaconda3\envs\esp-mcp-toolchain\python.exe`。
 - 测试工作树通过 `ESP_MCP_SOURCE_ROOT` 和跨工作树脚本显式加载实现工作树源码。
 - SQLite 定向契约：`33 passed`。
-- 跨工作树完整门禁：`134 passed in 19.53s`。
+- 跨工作树完整门禁：`134 passed in 19.63s`。
 - 覆盖 fresh/v1 schema、首次并发建库、hardwork/memory 复合键、并发 sequence/import、UUID/时间戳、run 终态、selected_port、JSONL 增长与复制去重、native run 冲突隔离、嵌套任务、Monitor 跨项目/stale 对账、MCP schema 以及前后置镜像故障。
-- 当前项目 19 份旧 JSONL 已只读导入临时 SQLite 验证：19 files、32 events，12 cancelled、2 failed、5 succeeded，外键检查为空。
+- 当前项目已正式创建 schema v2 SQLite：首轮导入 19 files / 32 events，第二轮导入 0 / 0 / 0；状态为 12 cancelled、2 failed、5 succeeded，19 个 migration marker，外键检查为空。
 - 本轮没有烧录、擦除、删除、full clean 或其他真实硬件动作；SQLite 存储层不需要新增实板门禁。
 
 ## 待完成
 
-1. 执行最终 `git diff --check`，复核 README、CHANGELOG、ADR 和状态文档。
-2. 提交 `main` 实现/文档和 `test` 契约测试，合并同步后再跑一次完整门禁。
-3. 推送 GitHub 并确认 Windows/Linux、Python 3.10/3.12 矩阵。
-4. 在当前项目数据目录正式创建 SQLite，并重复导入验证幂等、状态分布和外键。
-5. 同步个人 marketplace 源，重新安装/加载插件，并核对 SQLite 工具 schema 与源码版本。
+1. 推送 GitHub 并确认 Windows/Linux、Python 3.10/3.12 矩阵。
+2. 通过 Plugin Management 重新安装/加载 `0.1.0+codex.20260720110129`，在新任务核对 SQLite 工具 schema 与源码版本。
 
 在上述步骤完成前，不把 SQLite 标记为已发布到当前 Codex 插件缓存，也不自动开始项目合并/导入导出体系。
