@@ -1,13 +1,6 @@
 from esp_mcp_toolchain.backends import mpremote_backend
 
 
-class FakeCompleted:
-    def __init__(self, returncode: int, stdout: str = "", stderr: str = ""):
-        self.returncode = returncode
-        self.stdout = stdout
-        self.stderr = stderr
-
-
 def test_run_remote_file_uses_exec_open(monkeypatch):
     calls = []
 
@@ -25,18 +18,32 @@ def test_run_remote_file_uses_exec_open(monkeypatch):
 
 def test_run_mpremote_retries_raw_repl_entry_failure(monkeypatch):
     calls = []
+    responses = iter(
+        [
+            {
+                "ok": False,
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "mpremote.transport.TransportError: could not enter raw repl",
+            },
+            {"ok": True, "returncode": 0, "stdout": "ok\n", "stderr": ""},
+        ]
+    )
 
-    def fake_run(command, capture_output: bool, text: bool, timeout: int, check: bool):
-        calls.append(command)
-        if len(calls) == 1:
-            return FakeCompleted(1, stderr="mpremote.transport.TransportError: could not enter raw repl")
-        return FakeCompleted(0, stdout="ok\n")
+    def fake_run_managed(command: list[str], *, timeout_s: int):
+        calls.append((command, timeout_s))
+        return next(responses)
 
-    monkeypatch.setattr(mpremote_backend.subprocess, "run", fake_run)
+    monkeypatch.setattr(mpremote_backend, "run_managed_command", fake_run_managed)
     monkeypatch.setattr(mpremote_backend.time, "sleep", lambda _seconds: None)
 
-    result = mpremote_backend.run_mpremote(["fs", "ls", "/"], port="COM_TEST")
+    result = mpremote_backend.run_mpremote(
+        ["fs", "ls", "/"],
+        port="COM_TEST",
+        timeout_s=9,
+    )
 
     assert result["ok"] is True
     assert result["stdout"] == "ok\n"
     assert len(calls) == 2
+    assert all(timeout_s == 9 for _command, timeout_s in calls)

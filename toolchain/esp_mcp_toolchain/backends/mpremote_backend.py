@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
-from ..utils.subprocess_utils import redact_command
+from ..utils.subprocess_utils import run_managed_command
 
 
 def _base_command(port: str) -> list[str]:
@@ -15,50 +14,30 @@ def _base_command(port: str) -> list[str]:
 
 def run_mpremote(args: list[str], *, port: str, timeout_s: int = 30) -> dict[str, Any]:
     command = [*_base_command(port), *args]
-    completed = None
-    for attempt in range(2):
-        try:
-            completed = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=timeout_s,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            return {
-                "ok": False,
-                "error_kind": "mpremote_timeout",
-                "message": f"mpremote timed out after {timeout_s} seconds.",
-                "command": redact_command(command),
-            }
-        except Exception as exc:
-            return {
-                "ok": False,
-                "error_kind": "mpremote_spawn_failed",
-                "message": str(exc),
-                "command": redact_command(command),
-            }
-        if completed.returncode == 0 or "could not enter raw repl" not in completed.stderr.lower():
+    result: dict[str, Any] | None = None
+    for _attempt in range(2):
+        result = run_managed_command(command, timeout_s=timeout_s)
+        if result.get("error_kind") == "managed_command_timeout":
+            result["error_kind"] = "mpremote_timeout"
+            result["message"] = f"mpremote timed out after {timeout_s} seconds."
+            return result
+        if result.get("error_kind") == "managed_command_spawn_failed":
+            result["error_kind"] = "mpremote_spawn_failed"
+            return result
+        if result.get("ok") or "could not enter raw repl" not in str(result.get("stderr", "")).lower():
             break
         time.sleep(0.5)
 
-    if completed is None:
+    if result is None:
         return {
             "ok": False,
             "error_kind": "mpremote_not_run",
             "message": "mpremote did not run.",
-            "command": redact_command(command),
+            "command": " ".join(command),
         }
 
-    return {
-        "ok": completed.returncode == 0,
-        "returncode": completed.returncode,
-        "command": redact_command(command),
-        "stdout": completed.stdout,
-        "stderr": completed.stderr,
-        "message": "mpremote command completed." if completed.returncode == 0 else "mpremote command failed.",
-    }
+    result["message"] = "mpremote command completed." if result.get("ok") else "mpremote command failed."
+    return result
 
 
 def list_files(*, port: str, remote_dir: str = "/", timeout_s: int = 30) -> dict[str, Any]:
