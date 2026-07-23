@@ -53,6 +53,79 @@ def _parse_mpremote_ls(stdout: str) -> list[str]:
     return files
 
 
+def _read_raw_repl_bytes(
+    *,
+    tool: str,
+    selected_port: str,
+    remote_path: str,
+    max_bytes: int,
+) -> tuple[dict, bytes | None]:
+    limit = max(0, int(max_bytes))
+    code = (
+        f"_p={_quote_micro_python(remote_path)}\n"
+        f"_n={limit}\n"
+        "with open(_p, 'rb') as _f:\n"
+        "    _data = _f.read(_n + 1)\n"
+        "print(repr(_data))"
+    )
+    result = execute_code(selected_port, code, timeout_ms=3000)
+    result.update(
+        {
+            "tool": tool,
+            "tool_name": tool,
+            "tools閸氬秶袨": tool,
+            "implemented": True,
+            "port": selected_port,
+            "backend": "raw_repl",
+            "remote_path": remote_path,
+            "max_bytes": limit,
+        }
+    )
+    if not result.get("ok"):
+        return result, None
+    try:
+        payload = ast.literal_eval(result.get("stdout", "").strip())
+    except (SyntaxError, ValueError) as exc:
+        return (
+            execution_error(
+                "file_read_parse_failed",
+                str(exc),
+                tool=tool,
+                tool_name=tool,
+                implemented=True,
+                stdout=result.get("stdout", ""),
+                port=selected_port,
+                backend="raw_repl",
+                remote_path=remote_path,
+                max_bytes=limit,
+            ),
+            None,
+        )
+    if not isinstance(payload, (bytes, bytearray)):
+        return (
+            execution_error(
+                "file_read_unexpected_payload",
+                "Expected bytes from board.",
+                tool=tool,
+                tool_name=tool,
+                implemented=True,
+                port=selected_port,
+                backend="raw_repl",
+                remote_path=remote_path,
+                max_bytes=limit,
+            ),
+            None,
+        )
+
+    raw = bytes(payload)
+    truncated = len(raw) > limit
+    if truncated:
+        raw = raw[:limit]
+    result["bytes_read"] = len(raw)
+    result["truncated"] = truncated
+    return result, raw
+
+
 @logged_task(
     task_type="file_upload",
     selected_port_arg="port",
@@ -177,8 +250,17 @@ def esp_file_download(
         return result
     if backend != "raw_repl":
         return not_implemented("esp_file_download")
+    if not remote_path:
+        return execution_error(
+            "missing_remote_path",
+            "No remote path was provided.",
+            tool="esp_file_download",
+        )
     if not local_path:
         return execution_error("missing_local_path", "No local path was provided.", tool="esp_file_download")
+    selected_port = _resolve_port("esp_file_download", port)
+    if isinstance(selected_port, dict):
+        return selected_port
     target_path = Path(local_path)
     if target_path.exists():
         return execution_error(
@@ -188,28 +270,68 @@ def esp_file_download(
             suggested_next_actions=["Choose a new output path"],
         )
 
-    read_result = esp_file_read(port=port, backend=backend, remote_path=remote_path, max_bytes=20000)
+    read_result, raw = _read_raw_repl_bytes(
+        tool="esp_file_download",
+        selected_port=selected_port,
+        remote_path=remote_path,
+        max_bytes=20000,
+    )
     if not read_result.get("ok"):
         read_result["tool"] = "esp_file_download"
         read_result["tool_name"] = "esp_file_download"
         read_result["tools鍚嶇О"] = "esp_file_download"
         return read_result
 
+    if raw is None:
+        return execution_error(
+            "file_download_missing_payload",
+            "Raw REPL returned no file bytes.",
+            tool="esp_file_download",
+            tool_name="esp_file_download",
+            implemented=True,
+            port=selected_port,
+            backend=backend,
+            remote_path=remote_path,
+            local_path=str(target_path),
+        )
+    if read_result.get("truncated"):
+        return execution_error(
+            "file_download_truncated",
+            "Raw REPL download exceeded the 20000-byte limit; no local file was written.",
+            tool="esp_file_download",
+            tool_name="esp_file_download",
+            implemented=True,
+            port=selected_port,
+            backend=backend,
+            remote_path=remote_path,
+            local_path=str(target_path),
+            max_bytes=20000,
+            bytes_read=len(raw),
+            truncated=True,
+            suggested_next_actions=[
+                "Use the mpremote backend for files larger than 20000 bytes",
+            ],
+        )
+
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    content = read_result.get("content", "")
-    target_path.write_text(content, encoding="utf-8")
+    target_path.write_bytes(raw)
     return {
         "ok": True,
         "tool": "esp_file_download",
         "tool_name": "esp_file_download",
         "tools鍚嶇О": "esp_file_download",
         "implemented": True,
-        "port": read_result.get("port"),
+        "port": selected_port,
         "backend": backend,
         "remote_path": remote_path,
         "local_path": str(target_path),
-        "bytes_written": len(content.encode("utf-8")),
-        "data": {"local_path": str(target_path), "bytes_written": len(content.encode("utf-8"))},
+        "bytes_written": len(raw),
+        "truncated": False,
+        "data": {
+            "local_path": str(target_path),
+            "bytes_written": len(raw),
+            "truncated": False,
+        },
         "message": "Downloaded file through MicroPython raw REPL.",
     }
 

@@ -106,6 +106,7 @@ def test_file_read_raw_repl_parses_bytes(monkeypatch):
     assert result["ok"] is True
     assert result["implemented"] is True
     assert result["tool_name"] == "esp_file_read"
+    assert isinstance(result["content"], str)
     assert result["content"] == "abc\n"
     assert result["bytes_read"] == 4
     assert result["truncated"] is False
@@ -135,26 +136,93 @@ def test_file_upload_raw_repl_writes_bytes(monkeypatch, tmp_path):
     assert result["bytes_written"] == 5
 
 
-def test_file_download_raw_repl_writes_local_file(monkeypatch, tmp_path):
+def test_file_download_raw_repl_preserves_binary_bytes(monkeypatch, tmp_path):
     from esp_mcp_toolchain.tools import file_tools
 
-    def fake_file_read(port: str, backend: str, remote_path: str, max_bytes: int):
-        return {"ok": True, "content": "downloaded", "port": port}
+    payload = b"\x00\xff\n\r\n"
 
-    monkeypatch.setattr(file_tools, "esp_file_read", fake_file_read)
-    target = tmp_path / "downloaded.txt"
+    def fake_execute_code(port: str, code: str, timeout_ms: int):
+        return {
+            "ok": True,
+            "stdout": f"{payload!r}\r\n",
+            "stderr": "",
+            "message": code,
+        }
 
+    monkeypatch.setattr(file_tools, "execute_code", fake_execute_code)
+    target = tmp_path / "downloaded.bin"
     result = esp_file_download(
         port="COM_TEST",
         backend="raw_repl",
-        remote_path="/probe.txt",
+        remote_path="/probe.bin",
         local_path=str(target),
     )
 
     assert result["ok"] is True
     assert result["implemented"] is True
     assert result["tool_name"] == "esp_file_download"
-    assert target.read_text(encoding="utf-8") == "downloaded"
+    assert result["bytes_written"] == len(payload)
+    assert target.read_bytes() == payload
+
+
+def test_file_download_raw_repl_rejects_truncated_content(monkeypatch, tmp_path):
+    from esp_mcp_toolchain.tools import file_tools
+
+    payload = b"x" * 20001
+
+    def fake_execute_code(port: str, code: str, timeout_ms: int):
+        return {
+            "ok": True,
+            "stdout": f"{payload!r}\r\n",
+            "stderr": "",
+            "message": code,
+        }
+
+    monkeypatch.setattr(file_tools, "execute_code", fake_execute_code)
+    target = tmp_path / "not-created" / "downloaded.bin"
+
+    result = esp_file_download(
+        port="COM_TEST",
+        backend="raw_repl",
+        remote_path="/large.bin",
+        local_path=str(target),
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "file_download_truncated"
+    assert result["truncated"] is True
+    assert target.exists() is False
+    assert target.parent.exists() is False
+
+
+def test_file_download_raw_repl_accepts_exact_size_limit(monkeypatch, tmp_path):
+    from esp_mcp_toolchain.tools import file_tools
+
+    payload = bytes(range(256)) * 78 + bytes(range(32))
+    assert len(payload) == 20000
+
+    def fake_execute_code(port: str, code: str, timeout_ms: int):
+        return {
+            "ok": True,
+            "stdout": f"{payload!r}\r\n",
+            "stderr": "",
+            "message": code,
+        }
+
+    monkeypatch.setattr(file_tools, "execute_code", fake_execute_code)
+    target = tmp_path / "limit.bin"
+
+    result = esp_file_download(
+        port="COM_TEST",
+        backend="raw_repl",
+        remote_path="/limit.bin",
+        local_path=str(target),
+    )
+
+    assert result["ok"] is True
+    assert result["truncated"] is False
+    assert result["bytes_written"] == 20000
+    assert target.read_bytes() == payload
 
 
 def test_file_delete_requires_confirmation_by_default():
