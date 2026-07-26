@@ -297,7 +297,7 @@ MicroPython 方向：
 - `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。2026-07-26 没有重新核验当前安装缓存；新 48/12/12 候选仍待只更新个人 marketplace 源并由用户重启后验收。
+- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。当前 48/12/12 候选已同步到个人 marketplace 源 `0.1.0+codex.20260726165544`；安装缓存仍是旧版，待用户重启后验收。
 - 初始测试集。
 - 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；门禁从 `index-test` 加载 `index` 的主线源码执行。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
@@ -305,7 +305,7 @@ MicroPython 方向：
 - 后台串口 Monitor 已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
 - 历史实板记录（2026-07-13）：后台串口 Monitor 曾完成 `COM3` 启动、游标读取、停止清理和同端口重新打开验收；当时固件的 UART0 运行时控制台 `115200` 实测事实已写入项目硬件映射。
 - 历史修复记录（2026-07-13）：后台串口 Monitor 针对 CH9102 稀疏输出改为非阻塞读取、先查询 `in_waiting`、单次最多 1024 字节并有界休眠；当时回归和真实按键门禁通过。
-- 历史发布记录（2026-07-20）：SQLite 日志闭环曾接通本地主线、GitHub 和个人 marketplace 源。当前 48/12/12 候选的 P0 与 `erase_flash` P1 均已分别取得 main/test 共 8 个远端成功 job；个人 marketplace 和安装缓存尚未更新。
+- 历史发布记录（2026-07-20）：SQLite 日志闭环曾接通本地主线、GitHub 和个人 marketplace 源。当前 48/12/12 候选的 P0 与 `erase_flash` P1 均已分别取得 main/test 共 8 个远端成功 job；个人 marketplace 源已更新，安装缓存尚未重载。
 
 最近一次本地验证：
 
@@ -323,7 +323,7 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite/原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema，以及既有 SQLite/Monitor/项目隔离合同
 真实硬件：本次 2026-07-26 软件门禁全部使用模拟串口和临时项目，没有读取或操作当前板卡；历史实板结果保留在下方对应日期的开发日志中
 未完成硬件门禁：MicroPython 执行类能力仍需在明确的板端固件和操作步骤下单独验收，不能由软件测试推断
-远端与插件：main/test 已公开原子推送。首次远端矩阵暴露 main 旧串口测试桩和 Linux `os.name` 测试污染；P0 修复已通过本地 main `104 passed`、test `226 passed`、跨工作树 `226 passed`，以及 main/test 共 8 个远端 job。`erase_flash` P1 已通过本地 main `104 passed`、同步 test `228 passed`，以及 main/test 共 8 个 Windows/Linux、Python 3.10/3.12 远端 job；cachebuster、个人 marketplace 源同步和重启后安装缓存验收仍待完成
+远端与插件：main/test 已公开原子推送。首次远端矩阵暴露 main 旧串口测试桩和 Linux `os.name` 测试污染；P0 修复已通过本地 main `104 passed`、test `226 passed`、跨工作树 `226 passed`，以及 main/test 共 8 个远端 job。`erase_flash` P1 已通过本地 main `104 passed`、同步 test `228 passed`，以及 main/test 共 8 个 Windows/Linux、Python 3.10/3.12 远端 job。个人 marketplace 源已更新为 `0.1.0+codex.20260726165544`，validator、源目录 `104 passed` 和 `48 tools / 12 resources / 12 prompts` 直接枚举通过；安装缓存仍为 `0.1.0+codex.20260722153803`，待用户重启后验收
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -642,6 +642,13 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - main [run 30211040021](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211040021) 与 test [run 30211040067](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211040067) 的 Windows/Linux、Python 3.10/3.12 共 8 个 job 全部成功。
 - 远端结果验证了受管擦除后端、确认门和 test 分支丰富回归在四种环境组合下兼容；它不构成真实板卡擦除或复位证据。
 - 下一步只更新个人 marketplace 源并运行 validator/cachebuster；安装缓存由用户重启 Codex 后另行验收。
+
+### 2026-07-27 00:57 - 更新个人 Marketplace 源
+
+- 从已推送的 `main@2271e13` 精确同步 30 个 tracked 文件到 `C:\Users\16224\plugins\esp-mcp-toolchain`；没有镜像删除，也没有触碰 Marketplace 源的 `.git`、`data`、缓存、板卡产物或 Codex 安装缓存。
+- Marketplace 源在项目专属 Conda Python 3.12.13 下运行 main 发布测试，结果为 `104 passed in 14.19s`；直接创建 FastMCP Server 枚举得到 `48 tools / 12 resources / 12 prompts`。
+- `plugin-creator` validator 在同步前后均通过；唯一一次 cachebuster 更新把源版本从 `0.1.0+codex.20260722153803` 改为 `0.1.0+codex.20260726165544`，版本只含一个 `+codex` 后缀。
+- 已安装缓存仍为旧版 `0.1.0+codex.20260722153803`。按约定不直接覆盖缓存、不代替用户重启；新任务需先核对安装插件的 48/12/12 工具面。
 
 ## 协作约定
 
