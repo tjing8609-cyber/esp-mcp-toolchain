@@ -10,11 +10,10 @@
 6. 后台串口 Monitor：状态机、不可变项目绑定、游标读取、有界缓冲、分块落盘、跨进程串口锁和退出清理。软件测试、四平台 CI、插件缓存验证和历史真实 ESP 串口验收已完成。
 7. SQLite schema 与仓储层：SQLite 已成为 runs/events 正式查询源；project-scoped schema、v1/JSONL 迁移、事务序号、UUID 幂等和 run 生命周期已完成并发布。
 8. 日志查询增强：`run_id`、phase、level、tool、source、时间和 sequence 过滤已接通；后续导出和聚合属于非阻断增强。
-9. 任务书 12 项能力：6 项基础和 6 项提高均已有正式工具或闭环实现；公开提示词重组为 12 套，工具面目标为 48 tools / 12 resources / 12 prompts。独立 Conda 启动器已绑定 `esp-mcp-toolchain` 环境，其中 `mpremote 1.28.0` 已验证。提示词/提高工具/架构专项为 `25 passed`，串口与执行关联门禁为 `62 passed`；P0 与 `erase_flash` P1 均已分别通过 main/test 共 8 个远端 job，P1 同步 test 全量为 `228 passed in 28.76s`。本轮没有重新读取板端状态，MicroPython 执行类能力仍待实板验收。插件 cachebuster/重启后验收尚待完成。
+9. 任务书 12 项能力：6 项基础和 6 项提高均已有正式工具或闭环实现；公开提示词重组为 12 套，工具面目标为 48 tools / 12 resources / 12 prompts。独立 Conda 启动器已绑定 `esp-mcp-toolchain` 环境，其中 `mpremote 1.28.0` 已验证。提示词/提高工具/架构专项为 `25 passed`，串口与执行关联门禁为 `62 passed`；P0 与 `erase_flash` P1 均已分别通过 main/test 共 8 个远端 job，P1 同步 test 全量为 `228 passed in 28.76s`。个人 marketplace 源 `0.1.0+codex.20260726165544` 已通过 validator、`104 passed` 和 48/12/12 直接枚举；本轮没有重新读取板端状态，安装缓存重载与 MicroPython 执行类实板验收仍待完成。
 10. 项目数据迁移体系：工程路径重绑定、项目合并、导出、导入和完整性校验。与数据库 schema 迁移是两类任务，继续排在本轮任务书能力发布之后。
 
 当前优先顺序：
 
-1. 运行 plugin validator，按 `plugin-creator` 流程只更新个人 marketplace 源和单一 cachebuster；由用户重启 Codex。
-2. 在新 Codex 任务核对安装插件的 48 tools / 12 resources / 12 prompts。
-3. 在不扩大授权的前提下完成可做的实板门禁；执行擦除、烧录或其他高风险动作前必须按具体动作重新确认。
+1. 由用户重启 Codex，在新任务核对安装插件版本和 48 tools / 12 resources / 12 prompts。
+2. 在不扩大授权的前提下完成可做的实板门禁；执行擦除、烧录或其他高风险动作前必须按具体动作重新确认。
