@@ -187,7 +187,7 @@ MicroPython 方向：
 - `esp_serial_capture`
 - `esp_error_parse_log`
 
-历史状态（截至 2026-07-20）：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已接入统一子进程管理、超时清理、`.part` 原子写入和精确长度校验，4 MiB 实板备份已通过；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成当时板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload` 和 `esp_file_download` 已通过 MicroPython raw REPL 与 `mpremote` 在当时的 `COM3` 上完成烟测；旧版 `esp_reset` 的 hard 模式曾捕获启动日志；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。后台串口 Monitor 已完成当时的软件、CI、插件缓存和 `COM3` 门禁。2026-07-26 新增的 reset/Raw REPL 安全改动尚未重新实板验收，`erase_flash` 的受管进程树清理和显式复位参数也仍待补齐，因此历史结果不能作为当前候选的实板结论。
+历史状态（截至 2026-07-20）：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已接入统一子进程管理、超时清理、`.part` 原子写入和精确长度校验，4 MiB 实板备份已通过；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成当时板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload` 和 `esp_file_download` 已通过 MicroPython raw REPL 与 `mpremote` 在当时的 `COM3` 上完成烟测；旧版 `esp_reset` 的 hard 模式曾捕获启动日志；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。后台串口 Monitor 已完成当时的软件、CI、插件缓存和 `COM3` 门禁。2026-07-26 新增的 reset/Raw REPL 安全改动尚未重新实板验收；`erase_flash` 的受管进程树清理和显式复位参数已于 2026-07-27 通过本地软件门禁，但 P1 远端 CI 与真实擦除仍待验证，因此历史结果不能作为当前候选的实板结论。
 
 ### 第 4 阶段：hardwork 硬件资料上下文
 
@@ -305,7 +305,7 @@ MicroPython 方向：
 - 后台串口 Monitor 已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
 - 历史实板记录（2026-07-13）：后台串口 Monitor 曾完成 `COM3` 启动、游标读取、停止清理和同端口重新打开验收；当时固件的 UART0 运行时控制台 `115200` 实测事实已写入项目硬件映射。
 - 历史修复记录（2026-07-13）：后台串口 Monitor 针对 CH9102 稀疏输出改为非阻塞读取、先查询 `in_waiting`、单次最多 1024 字节并有界休眠；当时回归和真实按键门禁通过。
-- 历史发布记录（2026-07-20）：SQLite 日志闭环曾接通本地主线、GitHub 和个人 marketplace 源。2026-07-26 的 48/12/12 候选尚未同步个人 marketplace，也未取得新的远端 CI 或安装缓存证据。
+- 历史发布记录（2026-07-20）：SQLite 日志闭环曾接通本地主线、GitHub 和个人 marketplace 源。当前 48/12/12 候选的 P0 已取得 main/test 共 8 个远端成功 job；P1 尚未推送验证，个人 marketplace 和安装缓存也尚未更新。
 
 最近一次本地验证：
 

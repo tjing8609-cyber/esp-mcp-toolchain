@@ -15,7 +15,7 @@
 
 当前优先顺序：
 
-1. 提交并推送 `erase_flash` 实现、契约和学习记录，同步 main/test 后检查 Windows/Linux、Python 3.10/3.12 共 8 个远端 job。
+1. 推送已本地提交并同步的 `erase_flash` 实现、契约和学习记录，检查 Windows/Linux、Python 3.10/3.12 共 8 个远端 job。
 2. 运行 plugin validator，按 `plugin-creator` 流程只更新个人 marketplace 源和单一 cachebuster；由用户重启 Codex。
 3. 在新 Codex 任务核对安装插件的 48 tools / 12 resources / 12 prompts。
 4. 在不扩大授权的前提下完成可做的实板门禁；执行擦除、烧录或其他高风险动作前必须按具体动作重新确认。

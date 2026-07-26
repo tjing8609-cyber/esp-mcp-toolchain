@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-27 00:37（Asia/Shanghai）
+更新时间：2026-07-27 00:42（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。P0 跨平台修复已通过 main/test 共 8 个远端 job；`erase_flash` 已完成受管进程、显式复位参数和本地失败契约，main 全量为 `104 passed in 13.89s`，test 加载 main 源码的跨工作树门禁为 `228 passed in 27.76s`。P1 提交/推送、远端 CI、插件源更新和执行类实板验收尚未完成。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。P0 跨平台修复已通过 main/test 共 8 个远端 job；`erase_flash` 已完成受管进程、显式复位参数、本地失败契约和 main→test 同步，main 全量为 `104 passed in 13.89s`，同步后 test 标准全量为 `228 passed in 28.76s`。P1 推送与远端 CI、插件源更新和执行类实板验收尚未完成。
 
 ## 本轮已完成实现
 
@@ -58,7 +58,7 @@
 
 ## 待完成
 
-1. 提交并推送 `erase_flash` 的 main 实现/文档和 test 契约，同步分支后确认 Windows/Linux、Python 3.10/3.12 共 8 个远端 job。
+1. 推送已本地提交并同步的 `erase_flash` main 实现/文档和 test 契约，确认 Windows/Linux、Python 3.10/3.12 共 8 个远端 job。
 2. 只更新个人 marketplace 源，运行 validator 并生成单一 cachebuster；由用户重启，不直接改安装缓存。
 3. 用户重启后，在新任务核对安装插件的 48 tools / 12 resources / 12 prompts。
 4. MicroPython 执行类专项只在明确当前固件和操作步骤后做实板门禁；擦除和烧录仍需按具体动作单独确认。
