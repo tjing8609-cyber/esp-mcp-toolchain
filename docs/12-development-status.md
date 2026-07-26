@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-27 00:05（Asia/Shanghai）
+更新时间：2026-07-27 00:37（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已拆为 5 个本地 `main` 实现提交；对应测试拆为 4 个本地 `test` 提交，文档独立提交。main 已合并到 test；test 分支自身源码的标准全量门禁为 `226 passed in 27.66s`。公开推送、远端 CI、擦除后端进程清理、插件更新和执行类实板验收尚未完成。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。P0 跨平台修复已通过 main/test 共 8 个远端 job；`erase_flash` 已完成受管进程、显式复位参数和本地失败契约，main 全量为 `104 passed in 13.89s`，test 加载 main 源码的跨工作树门禁为 `228 passed in 27.76s`。P1 提交/推送、远端 CI、插件源更新和执行类实板验收尚未完成。
 
 ## 本轮已完成实现
 
@@ -29,6 +29,7 @@
 - 日志完成 payload 增加异常、停止、回归和性能摘要字段，便于 SQLite 审计。
 - 串口基础层统一采用打开前/后压低 DTR/RTS 的生命周期；reset 分离记录打开副作用、动作、输出和清理证据。
 - Raw REPL 只在确认严格 `OK + stdout EOT + stderr EOT + >` 帧后报告完成，并验证源码、Ctrl-C 与退出写入没有短写。
+- `erase_flash` 改为复用统一受管子进程执行器，显式固定 `--before default_reset --after hard_reset`；失败映射保留子进程输出和清理元数据，`confirm=True` 高风险门不变。
 
 ## 本地验证
 
@@ -37,6 +38,8 @@
 - 串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：`62 passed`。
 - 显式加载 `main` 源码的完整候选门禁：`226 passed in 29.35s`。
 - main→test 同步后，test 分支自身源码的标准全量门禁：`226 passed in 27.66s`。
+- P0 main 本地全量：`104 passed in 14.70s`；main/test 共 8 个远端矩阵 job 全部成功。
+- `erase_flash` P1 修复后：后端专项 `6 passed`、擦除工具专项 `8 passed`、main 全量 `104 passed in 13.89s`、跨工作树全量 `228 passed in 27.76s`。
 - 源码注册目标为 `48 tools / 12 resources / 12 prompts`；安装缓存枚举仍待 cachebuster、重装和新任务验证。
 - 测试使用 fake serial、raw REPL mock、临时项目目录和临时 SQLite；不访问真实开发板。
 
@@ -49,13 +52,13 @@
 
 ## 插件发布状态
 
-- 当前仓库插件 cachebuster 和个人 marketplace 源尚未更新。
+- 当前仓库的既有本地插件 manifest 差异不属于本次提交；个人 marketplace 源及其 cachebuster 尚未更新。
 - 按用户约定，后续只更新个人 marketplace 中的插件源；由用户重启 Codex，不直接改安装缓存。
 - 更新前必须读取 `plugin-creator` 流程、运行 validator，并核对 48 tools / 12 resources / 12 prompts；本状态页不把源码枚举冒充为已安装插件枚举。
 
 ## 待完成
 
-1. 推送 main/test 并确认 GitHub Actions Windows/Linux、Python 3.10/3.12 矩阵。
-2. 为 `erase_flash` 增加受管进程树清理、显式 `--before default_reset --after hard_reset` 和对应失败测试；不得在单元测试中实际擦除板卡。
-3. 更新个人 marketplace 源、validator 和 cachebuster；用户重启后再核对安装缓存的 48/12/12 工具面。
-4. MicroPython 执行类专项只在明确确认当前固件和操作步骤后做实板门禁。
+1. 提交并推送 `erase_flash` 的 main 实现/文档和 test 契约，同步分支后确认 Windows/Linux、Python 3.10/3.12 共 8 个远端 job。
+2. 只更新个人 marketplace 源，运行 validator 并生成单一 cachebuster；由用户重启，不直接改安装缓存。
+3. 用户重启后，在新任务核对安装插件的 48 tools / 12 resources / 12 prompts。
+4. MicroPython 执行类专项只在明确当前固件和操作步骤后做实板门禁；擦除和烧录仍需按具体动作单独确认。

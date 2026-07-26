@@ -34,6 +34,7 @@
 
 ### Fixed
 
+- `erase_flash` 改用统一受管子进程执行器，显式固定 `--before default_reset --after hard_reset`，超时或启动失败时保留 stdout、stderr、returncode 和进程树清理证据；`confirm=True` 高风险确认门保持不变。
 - ACK 后缺少完整 Raw REPL 终止帧不再误报执行成功；stderr 以 `>` 开头时不会被第一个 EOT 提前截断。
 - 源码、Ctrl-C 和 Raw REPL 退出的串口短写不再被记录为完整发送；cleanup 异常会保留原始 operation/protocol 错误类型和已收到输出。
 - reset 不再清空打开串口时的输出；打开前后控制线状态、动作前输出、reset 动作、输出捕获和最终清理均分别记录。
@@ -51,6 +52,7 @@
 
 ### Validation
 
+- 2026-07-27 P0 跨平台修复已通过 main/test 共 8 个 Windows/Linux、Python 3.10/3.12 远端 job；`erase_flash` P1 修复后后端专项 `6 passed`、擦除工具专项 `8 passed`、main 全量 `104 passed in 13.89s`、跨工作树全量 `228 passed in 27.76s`。P1 远端 CI 与真实板卡擦除尚未执行。
 - 2026-07-26 提示词/提高工具/架构专项为 `25 passed`，串口/reset/Raw REPL/停止/错误检测关联门禁为 `62 passed`；显式跨工作树候选门禁为 `226 passed in 29.35s`。main→test 同步后，test 分支自身源码的标准全量门禁为 `226 passed in 27.66s`。
 - 本次 2026-07-26 软件门禁使用模拟串口和临时项目目录，没有读取或操作真实板卡；MicroPython 执行类能力仍需独立实板验收。
 

@@ -1,5 +1,4 @@
 from pathlib import Path
-from types import SimpleNamespace
 
 from esp_mcp_toolchain.backends import esptool_backend
 
@@ -92,18 +91,42 @@ def test_read_flash_rejects_incomplete_output(monkeypatch, tmp_path):
 
 
 def test_erase_flash_backend_remains_callable(monkeypatch, tmp_path):
-    _prepare_backend(monkeypatch, tmp_path)
+    _idf_path, python_path = _prepare_backend(monkeypatch, tmp_path)
     observed = {}
 
-    def fake_run(command, **kwargs):
-        observed.update(command=command, kwargs=kwargs)
-        return SimpleNamespace(returncode=0, stdout="erased", stderr="")
+    def fake_run(command, *, cwd, timeout_s):
+        observed.update(command=command, cwd=cwd, timeout_s=timeout_s)
+        return {
+            "ok": True,
+            "returncode": 0,
+            "stdout": "erased",
+            "stderr": "",
+            "process_tree_termination_attempted": False,
+            "process_tree_terminated": None,
+            "cleanup_completed": True,
+            "cleanup_errors": [],
+        }
 
-    monkeypatch.setattr(esptool_backend.subprocess, "run", fake_run)
+    monkeypatch.setattr(esptool_backend, "run_managed_command", fake_run)
 
     result = esptool_backend.run_erase_flash(port="COM_TEST")
 
     assert result["ok"] is True
-    assert "erase_flash" in observed["command"]
-    assert observed["kwargs"]["capture_output"] is True
-    assert observed["kwargs"]["timeout"] == 180
+    assert observed["command"] == [
+        str(python_path),
+        "-m",
+        "esptool",
+        "--chip",
+        "esp32",
+        "-p",
+        "COM_TEST",
+        "--before",
+        "default_reset",
+        "--after",
+        "hard_reset",
+        "erase_flash",
+    ]
+    assert observed["cwd"] == Path.cwd()
+    assert observed["timeout_s"] == 180
+    assert result["cleanup_completed"] is True
+    assert result["message"] == "Flash erase completed."

@@ -76,3 +76,52 @@ monkeypatch。Linux 清理代码此时调用 `pathlib.Path(...)`，`Path` 根据
 
 本次结论只覆盖软件测试和 CI。它没有重新验证 MicroPython 实板执行、蜂鸣器供电稳定性、
 擦除、烧录或新版 Marketplace 缓存。
+
+## 2026-07-27：erase_flash 超时路径绕过受管进程
+
+### 症状
+
+- `run_erase_flash()` 直接调用 `subprocess.run()`；其他构建、烧录路径已经使用统一的
+  `run_managed_command()`。
+- 超时只能返回一个领域错误，不能证明子进程树是否终止，也不保留统一的清理字段。
+- 命令依赖 esptool 的默认复位行为，没有在命令中固定擦除前后的复位语义。
+- 原测试只检查命令中出现 `erase_flash`，不能阻止上述安全合同回退。
+
+### 根因
+
+擦除功能早于统一子进程管理器实现，后续迁移时漏掉了这个入口。旧测试又只验证“函数可调用”
+和最终返回值，没有验证进程生命周期、精确参数、失败映射与确认门，因此代码长期保持可用但
+不可充分审计的状态。
+
+### 修复
+
+- test 分支先定义精确命令合同，要求：
+  `python -m esptool --chip esp32 -p <port> --before default_reset
+  --after hard_reset erase_flash`。
+- 后端改用 `run_managed_command()`，统一处理超时、启动失败、returncode、stdout、
+  stderr 和进程树终止/清理证据。
+- 公共错误 `managed_command_timeout`、`managed_command_spawn_failed` 映射为
+  `erase_timeout`、`erase_spawn_failed`，但不重建结果字典，避免丢失诊断字段。
+- `esp_erase_flash(confirm=False)` 的测试让后端一旦被调用就立即失败，证明未确认时
+  不会启动 esptool；生产确认门没有放宽。
+
+### 验证
+
+- 测试先行证据：旧 main 面对新增后端契约时为 `3 failed, 3 passed`；确认门专项
+  `2 passed`。
+- 修复后后端专项：`6 passed`。
+- 修复后擦除工具专项：`8 passed`。
+- main 全量：`104 passed in 13.89s`。
+- test 加载 main 源码的跨工作树全量：`228 passed in 27.76s`。
+
+### 经验
+
+- “设置了 timeout”不等于“超时后进程树一定清理”；外部工具必须统一走受管执行器。
+- 依赖第三方工具默认值会降低可审计性。影响复位或设备状态的参数应显式写入命令并由测试锁定。
+- 高风险工具的测试既要验证 `confirm=True` 路径，也要证明 `confirm=False` 不会进入后端。
+- 领域错误映射应在保留底层诊断字段的基础上完成，不能为了改错误名而丢掉清理证据。
+
+### 剩余风险
+
+本节只覆盖模拟进程的软件合同。尚未执行本次 P1 的远端四平台 CI，也没有连接 `COM3` 或真实
+擦除板卡；因此不能据此声称板端复位、电源稳定性或真实擦除已经通过。
