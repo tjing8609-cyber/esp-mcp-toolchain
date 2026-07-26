@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-26 23:57（Asia/Shanghai）
+更新时间：2026-07-27 00:05（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已拆为 5 个本地 `main` 实现提交；对应测试已拆为 4 个本地 `test` 提交，文档独立提交。显式跨工作树完整候选门禁为 `226 passed in 29.35s`。main→test 同步、公开推送、远端 CI、擦除后端进程清理、插件更新和执行类实板验收尚未完成。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已拆为 5 个本地 `main` 实现提交；对应测试拆为 4 个本地 `test` 提交，文档独立提交。main 已合并到 test；test 分支自身源码的标准全量门禁为 `226 passed in 27.66s`。公开推送、远端 CI、擦除后端进程清理、插件更新和执行类实板验收尚未完成。
 
 ## 本轮已完成实现
 
@@ -35,7 +35,8 @@
 - 测试工作树通过 `ESP_MCP_SOURCE_ROOT` 显式加载实现工作树源码。
 - 提示词/提高工具/架构专项：`25 passed`。
 - 串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：`62 passed`。
-- 当前 `main` 已提交源码的完整候选门禁：`226 passed in 29.35s`；main→test 同步后的标准全量复跑仍待完成。
+- 显式加载 `main` 源码的完整候选门禁：`226 passed in 29.35s`。
+- main→test 同步后，test 分支自身源码的标准全量门禁：`226 passed in 27.66s`。
 - 源码注册目标为 `48 tools / 12 resources / 12 prompts`；安装缓存枚举仍待 cachebuster、重装和新任务验证。
 - 测试使用 fake serial、raw REPL mock、临时项目目录和临时 SQLite；不访问真实开发板。
 
@@ -54,8 +55,7 @@
 
 ## 待完成
 
-1. 将最新 `main` 合并到 `test`，再以 test 分支自身源码运行标准 `python -m pytest`。
-2. 推送 main/test 并确认 GitHub Actions Windows/Linux、Python 3.10/3.12 矩阵。
-3. 为 `erase_flash` 增加受管进程树清理、显式 `--before default_reset --after hard_reset` 和对应失败测试；不得在单元测试中实际擦除板卡。
-4. 更新个人 marketplace 源、validator 和 cachebuster；用户重启后再核对安装缓存的 48/12/12 工具面。
-5. MicroPython 执行类专项只在明确确认当前固件和操作步骤后做实板门禁。
+1. 推送 main/test 并确认 GitHub Actions Windows/Linux、Python 3.10/3.12 矩阵。
+2. 为 `erase_flash` 增加受管进程树清理、显式 `--before default_reset --after hard_reset` 和对应失败测试；不得在单元测试中实际擦除板卡。
+3. 更新个人 marketplace 源、validator 和 cachebuster；用户重启后再核对安装缓存的 48/12/12 工具面。
+4. MicroPython 执行类专项只在明确确认当前固件和操作步骤后做实板门禁。
