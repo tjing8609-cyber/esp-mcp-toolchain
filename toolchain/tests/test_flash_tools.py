@@ -53,7 +53,12 @@ def test_flash_confirmed_calls_espidf_backend(monkeypatch):
     assert result["stdout"] == "flashed"
 
 
-def test_erase_flash_requires_confirmation_by_default():
+def test_erase_flash_requires_confirmation_by_default(monkeypatch):
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("erase backend must not run without confirmation")
+
+    monkeypatch.setattr(flash_tools, "run_erase_flash", fail_if_called)
+
     result = flash_tools.esp_erase_flash(port="COM_TEST")
 
     assert result["ok"] is False
