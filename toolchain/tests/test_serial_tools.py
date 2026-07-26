@@ -20,6 +20,7 @@ class FakeSerial:
     queue: Queue = Queue()
     instances: list["FakeSerial"] = []
     open_gate: threading.Event | None = None
+    open_started: threading.Event = threading.Event()
     open_error: BaseException | None = None
 
     def __init__(self):
@@ -36,6 +37,7 @@ class FakeSerial:
         type(self).instances.append(self)
 
     def open(self):
+        type(self).open_started.set()
         if type(self).open_gate is not None:
             type(self).open_gate.wait(3)
         if type(self).open_error is not None:
@@ -92,6 +94,7 @@ def fake_monitor(monkeypatch):
     FakeSerial.queue = Queue()
     FakeSerial.instances = []
     FakeSerial.open_gate = None
+    FakeSerial.open_started = threading.Event()
     FakeSerial.open_error = None
     monkeypatch.setattr(serial_tools, "get_serial_module", lambda: FakeSerialModule)
     monkeypatch.setattr(serial_tools, "describe_serial_port", _identity)
@@ -395,26 +398,24 @@ def test_monitor_stop_while_starting_is_bounded():
         target=lambda: starts.append(serial_tools.esp_serial_monitor_start("COM_STARTING", session_name="starting"))
     )
     start_thread.start()
-    deadline = time.monotonic() + 1
-    monitors = []
-    while time.monotonic() < deadline:
-        monitors = serial_tools.esp_serial_monitor_status()["monitors"]
-        if monitors:
-            break
-        time.sleep(0.01)
+    assert FakeSerial.open_started.wait(3), "monitor worker did not reach serial open"
+    monitors = serial_tools.esp_serial_monitor_status()["monitors"]
+    assert len(monitors) == 1
     assert monitors[0]["state"] == "STARTING"
     stopped: list[dict] = []
     stop_thread = threading.Thread(
         target=lambda: stopped.append(serial_tools.esp_serial_monitor_stop(monitors[0]["run_id"], timeout_ms=1000))
     )
     stop_thread.start()
-    time.sleep(0.05)
+    _wait_for_state(monitors[0]["run_id"], {"STOPPING"})
     gate.set()
     start_thread.join(2)
     stop_thread.join(2)
 
     assert not start_thread.is_alive()
     assert not stop_thread.is_alive()
+    assert len(starts) == 1
+    assert len(stopped) == 1
     assert stopped[0]["ok"] is True
     assert stopped[0]["monitor"]["state"] == "STOPPED"
 

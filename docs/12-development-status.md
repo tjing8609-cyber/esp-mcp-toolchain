@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-27 00:57（Asia/Shanghai）
+更新时间：2026-07-27 01:02（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。P0 与 `erase_flash` P1 均已分别通过 main/test 共 8 个远端 job；P1 本地 main 全量为 `104 passed in 13.89s`，同步后 test 标准全量为 `228 passed in 28.76s`。个人 marketplace 源已更新并通过发布前验证，安装缓存重载和执行类实板验收尚未完成。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。P0 与 `erase_flash` P1 均已分别通过 main/test 共 8 个远端 job；个人 marketplace 源已更新并通过发布前验证。最终纯文档收口 run 暴露一个 Monitor STARTING 测试调度竞态，已完成确定性事件同步和本地验证；该修复的远端矩阵、安装缓存重载和执行类实板验收尚未完成。
 
 ## 本轮已完成实现
 
@@ -41,6 +41,7 @@
 - P0 main 本地全量：`104 passed in 14.70s`；main/test 共 8 个远端矩阵 job 全部成功。
 - `erase_flash` P1 修复后：后端专项 `6 passed`、擦除工具专项 `8 passed`、main 全量 `104 passed in 13.89s`、跨工作树全量 `228 passed in 27.76s`。
 - `erase_flash` P1 远端：[main run 30211040021](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211040021) 与 [test run 30211040067](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211040067) 共 8 个 job 全部成功。
+- Monitor STARTING 测试修复：失败用例独立进程重复 `20/20` 通过；main 全量 `104 passed in 16.67s`。失败证据为 [main run 30211564537](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211564537) 的 Windows/Python 3.10 job；修复后远端矩阵待当前提交验证。
 - Marketplace 源直接枚举为 `48 tools / 12 resources / 12 prompts`；安装缓存枚举仍待用户重启和新任务验证。
 - 测试使用 fake serial、raw REPL mock、临时项目目录和临时 SQLite；不访问真实开发板。
 
@@ -59,5 +60,6 @@
 
 ## 待完成
 
-1. 用户重启后，在新任务核对安装插件版本和 48 tools / 12 resources / 12 prompts。
-2. MicroPython 执行类专项只在明确当前固件和操作步骤后做实板门禁；擦除和烧录仍需按具体动作单独确认。
+1. 推送 Monitor STARTING 测试同步修复并确认双分支远端矩阵。
+2. 用户重启后，在新任务核对安装插件版本和 48 tools / 12 resources / 12 prompts。
+3. MicroPython 执行类专项只在明确当前固件和操作步骤后做实板门禁；擦除和烧录仍需按具体动作单独确认。
