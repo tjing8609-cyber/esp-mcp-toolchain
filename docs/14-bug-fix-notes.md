@@ -113,6 +113,12 @@ monkeypatch。Linux 清理代码此时调用 `pathlib.Path(...)`，`Path` 根据
 - 修复后擦除工具专项：`8 passed`。
 - main 全量：`104 passed in 13.89s`。
 - test 加载 main 源码的跨工作树全量：`228 passed in 27.76s`。
+- main Actions：
+  [run 30211040021](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211040021)，
+  Windows/Linux、Python 3.10/3.12 全部成功。
+- test Actions：
+  [run 30211040067](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211040067)，
+  Windows/Linux、Python 3.10/3.12 全部成功。
 
 ### 经验
 
@@ -123,5 +129,5 @@ monkeypatch。Linux 清理代码此时调用 `pathlib.Path(...)`，`Path` 根据
 
 ### 剩余风险
 
-本节只覆盖模拟进程的软件合同。尚未执行本次 P1 的远端四平台 CI，也没有连接 `COM3` 或真实
-擦除板卡；因此不能据此声称板端复位、电源稳定性或真实擦除已经通过。
+本节只覆盖模拟进程的软件合同及四平台 CI。没有连接 `COM3` 或真实擦除板卡；因此不能据此
+声称板端复位、电源稳定性或真实擦除已经通过。
