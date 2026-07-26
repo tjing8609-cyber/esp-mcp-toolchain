@@ -187,7 +187,7 @@ MicroPython 方向：
 - `esp_serial_capture`
 - `esp_error_parse_log`
 
-历史状态（截至 2026-07-20）：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已接入统一子进程管理、超时清理、`.part` 原子写入和精确长度校验，4 MiB 实板备份已通过；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成当时板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload` 和 `esp_file_download` 已通过 MicroPython raw REPL 与 `mpremote` 在当时的 `COM3` 上完成烟测；旧版 `esp_reset` 的 hard 模式曾捕获启动日志；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。后台串口 Monitor 已完成当时的软件、CI、插件缓存和 `COM3` 门禁。2026-07-26 新增的 reset/Raw REPL 安全改动尚未重新实板验收；`erase_flash` 的受管进程树清理和显式复位参数已于 2026-07-27 通过本地软件门禁，但 P1 远端 CI 与真实擦除仍待验证，因此历史结果不能作为当前候选的实板结论。
+历史状态（截至 2026-07-20）：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已接入统一子进程管理、超时清理、`.part` 原子写入和精确长度校验，4 MiB 实板备份已通过；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成当时板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload` 和 `esp_file_download` 已通过 MicroPython raw REPL 与 `mpremote` 在当时的 `COM3` 上完成烟测；旧版 `esp_reset` 的 hard 模式曾捕获启动日志；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。后台串口 Monitor 已完成当时的软件、CI、插件缓存和 `COM3` 门禁。2026-07-26 新增的 reset/Raw REPL 安全改动尚未重新实板验收；`erase_flash` 的受管进程树清理和显式复位参数已于 2026-07-27 通过本地及远端软件门禁，但真实擦除仍待验证，因此历史结果不能作为当前候选的实板结论。
 
 ### 第 4 阶段：hardwork 硬件资料上下文
 
@@ -305,7 +305,7 @@ MicroPython 方向：
 - 后台串口 Monitor 已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
 - 历史实板记录（2026-07-13）：后台串口 Monitor 曾完成 `COM3` 启动、游标读取、停止清理和同端口重新打开验收；当时固件的 UART0 运行时控制台 `115200` 实测事实已写入项目硬件映射。
 - 历史修复记录（2026-07-13）：后台串口 Monitor 针对 CH9102 稀疏输出改为非阻塞读取、先查询 `in_waiting`、单次最多 1024 字节并有界休眠；当时回归和真实按键门禁通过。
-- 历史发布记录（2026-07-20）：SQLite 日志闭环曾接通本地主线、GitHub 和个人 marketplace 源。当前 48/12/12 候选的 P0 已取得 main/test 共 8 个远端成功 job；P1 尚未推送验证，个人 marketplace 和安装缓存也尚未更新。
+- 历史发布记录（2026-07-20）：SQLite 日志闭环曾接通本地主线、GitHub 和个人 marketplace 源。当前 48/12/12 候选的 P0 与 `erase_flash` P1 均已分别取得 main/test 共 8 个远端成功 job；个人 marketplace 和安装缓存尚未更新。
 
 最近一次本地验证：
 
@@ -323,7 +323,7 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite/原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema，以及既有 SQLite/Monitor/项目隔离合同
 真实硬件：本次 2026-07-26 软件门禁全部使用模拟串口和临时项目，没有读取或操作当前板卡；历史实板结果保留在下方对应日期的开发日志中
 未完成硬件门禁：MicroPython 执行类能力仍需在明确的板端固件和操作步骤下单独验收，不能由软件测试推断
-远端与插件：main/test 已公开原子推送。首次远端矩阵暴露 main 旧串口测试桩和 Linux `os.name` 测试污染；P0 修复已通过本地 main `104 passed`、test `226 passed`、跨工作树 `226 passed`，以及 main/test 共 8 个 Windows/Linux、Python 3.10/3.12 远端 job。`erase_flash` 已完成受管进程、显式复位参数和本地回归，P1 远端矩阵仍待推送验证；cachebuster、个人 marketplace 源同步和重启后安装缓存验收仍待完成
+远端与插件：main/test 已公开原子推送。首次远端矩阵暴露 main 旧串口测试桩和 Linux `os.name` 测试污染；P0 修复已通过本地 main `104 passed`、test `226 passed`、跨工作树 `226 passed`，以及 main/test 共 8 个远端 job。`erase_flash` P1 已通过本地 main `104 passed`、同步 test `228 passed`，以及 main/test 共 8 个 Windows/Linux、Python 3.10/3.12 远端 job；cachebuster、个人 marketplace 源同步和重启后安装缓存验收仍待完成
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -636,6 +636,12 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - main 改为复用 `run_managed_command()`，显式传入 `--before default_reset --after hard_reset`，把公共错误映射为擦除领域错误，同时保留 stdout、stderr、returncode 和进程树清理字段。
 - 修复后后端专项为 `6 passed`、擦除工具专项为 `8 passed`、main 全量为 `104 passed in 13.89s`，test 加载 main 源码的跨工作树门禁为 `228 passed in 27.76s`。
 - 以上只证明模拟进程的软件合同；本步骤未连接串口、未实际擦除板卡，P1 远端矩阵也仍待推送验证。
+
+### 2026-07-27 00:46 - 确认 erase_flash P1 远端矩阵
+
+- main [run 30211040021](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211040021) 与 test [run 30211040067](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211040067) 的 Windows/Linux、Python 3.10/3.12 共 8 个 job 全部成功。
+- 远端结果验证了受管擦除后端、确认门和 test 分支丰富回归在四种环境组合下兼容；它不构成真实板卡擦除或复位证据。
+- 下一步只更新个人 marketplace 源并运行 validator/cachebuster；安装缓存由用户重启 Codex 后另行验收。
 
 ## 协作约定
 
