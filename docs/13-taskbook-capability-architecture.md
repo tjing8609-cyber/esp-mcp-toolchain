@@ -66,7 +66,7 @@ MicroPython 自动错误检测是在现有 exec、capture、Monitor 和 error pa
 - 独立 Conda 解释器：`C:\Users\16224\anaconda3\envs\esp-mcp-toolchain\python.exe`。
 - `mpremote 1.28.0` 已在该环境中通过模块版本和 CLI 版本核验；`.mcp.json` 经
   `scripts/run_mcp_server.py` 定位专用环境，定位失败时不会静默运行全局 Python。
-- 提示词/提高工具/架构专项：`25 passed`；串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：`62 passed`；当前完整候选门禁：`226 passed in 29.35s`，均显式加载 `index` 主线源码。main→test 同步后的标准全量复跑仍待完成。
+- 提示词/提高工具/架构专项：`25 passed`；串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：`62 passed`；显式加载 `index` 的完整候选门禁为 `226 passed in 29.35s`。main→test 同步后，test 分支自身源码的标准全量门禁为 `226 passed in 27.66s`。
 - 源码注册目标为 `48 tools / 12 resources / 12 prompts`；安装缓存仍待重装后在新任务枚举。
 - 新硬件工具通过 fake serial、raw REPL 模拟和临时 SQLite/日志目录测试；测试不会访问真实开发板。
 - 本次 2026-07-26 软件门禁没有重新读取或操作当前板卡；历史 COM3/CH9102 验收记录不能代替当前固件状态。MicroPython 程序停止、GPIO raw REPL、回归和性能执行类能力仍需独立实板验收。
@@ -75,9 +75,8 @@ MicroPython 自动错误检测是在现有 exec、capture、Monitor 和 error pa
 
 源码和测试完成后仍需依次通过：
 
-1. 将 main 合并到 test，以 test 分支自身源码再次通过标准全量门禁。
-2. 推送 main/test 并通过 GitHub Actions 矩阵。
-3. 补齐 `erase_flash` 受管进程清理和复位参数的软件合同。
-4. 通过 `plugin-creator` validator，只更新个人 marketplace 源和单一 cachebuster，由用户重启 Codex。
-5. 在新 Codex 任务中核对 48/12/12 工具面。
-6. MicroPython 执行类能力在明确当前固件和步骤后完成真实板卡验收。
+1. 推送 main/test 并通过 GitHub Actions 矩阵。
+2. 补齐 `erase_flash` 受管进程清理和复位参数的软件合同。
+3. 通过 `plugin-creator` validator，只更新个人 marketplace 源和单一 cachebuster，由用户重启 Codex。
+4. 在新 Codex 任务中核对 48/12/12 工具面。
+5. MicroPython 执行类能力在明确当前固件和步骤后完成真实板卡验收。

@@ -51,7 +51,7 @@
 
 ### Validation
 
-- 2026-07-26 提示词/提高工具/架构专项为 `25 passed`，串口/reset/Raw REPL/停止/错误检测关联门禁为 `62 passed`；当前完整候选门禁为 `226 passed in 29.35s`，均通过 `ESP_MCP_SOURCE_ROOT` 显式加载 `index` 主线源码。
+- 2026-07-26 提示词/提高工具/架构专项为 `25 passed`，串口/reset/Raw REPL/停止/错误检测关联门禁为 `62 passed`；显式跨工作树候选门禁为 `226 passed in 29.35s`。main→test 同步后，test 分支自身源码的标准全量门禁为 `226 passed in 27.66s`。
 - 本次 2026-07-26 软件门禁使用模拟串口和临时项目目录，没有读取或操作真实板卡；MicroPython 执行类能力仍需独立实板验收。
 
 以下条目是 2026-07-13 至 2026-07-20 既有 Unreleased 切片的历史验证，不代表 2026-07-26 候选已重新执行硬件、Marketplace 或远端 CI 操作：

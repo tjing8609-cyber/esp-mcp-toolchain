@@ -317,12 +317,12 @@ mpremote：1.28.0（仅在项目专属 Conda 环境中验证）
 实现源码：index / main（由 ESP_MCP_SOURCE_ROOT 显式加载）
 任务书提示词/提高工具/架构专项：25 passed
 串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：62 passed
-跨工作树全量门禁：226 passed in 29.35s
+main→test 同步后标准全量门禁：226 passed in 27.66s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite/原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema，以及既有 SQLite/Monitor/项目隔离合同
 真实硬件：本次 2026-07-26 软件门禁全部使用模拟串口和临时项目，没有读取或操作当前板卡；历史实板结果保留在下方对应日期的开发日志中
 未完成硬件门禁：MicroPython 执行类能力仍需在明确的板端固件和操作步骤下单独验收，不能由软件测试推断
-远端与插件：main 已形成 5 个本地实现提交，当前文档作为独立提交；test 已形成 4 个本地回归提交。main→test 同步、main/test 公开推送、远端 CI、cachebuster、个人 marketplace 源同步和重装仍待完成
+远端与插件：main 的 5 个实现提交和独立文档提交已合并到 test，test 同时包含 4 个回归提交；main/test 公开推送、远端 CI、cachebuster、个人 marketplace 源同步和重装仍待完成
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -608,6 +608,12 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 公开提示词固定为 6 项基础能力加 6 项提高能力，每套提示词声明工具顺序、确认要求、成功证据和失败分支。
 - 新增 GPIO 状态、硬件信息、板上回归与性能分析工具；执行型能力保留程序中断与重复副作用确认。
 - 提示词、提高工具和任务书架构专项为 `25 passed`；本步骤仍只验证软件合同，未触发板端执行。
+
+### 2026-07-27 00:05 - 完成 main/test 同步后的标准软件门禁
+
+- `main` 的已确认实现与文档合并到 `test` 提交 `381c5cc`，未覆盖 test 分支的 4 个回归提交。
+- 清除跨工作树源码覆盖后，直接在 test 分支自身源码运行标准 `python -m pytest`，结果为 `226 passed in 27.66s`。
+- 本门禁仍是软件结论；本步骤未访问真实板卡、未更新个人 marketplace，也尚未取得本轮远端 CI。
 
 ## 协作约定
 
