@@ -163,7 +163,7 @@ esp-mcp-toolchain/
 - `prompts/get`
 - `shutdown`
 
-当前状态：已改用官方 MCP Python SDK 的 `FastMCP` 和 stdio transport。入口仍为 `python toolchain/mcp_server.py`，协议解析、初始化、能力协商、tools/resources/prompts 路由由 SDK 接管。Codex 插件 manifest 已补齐展示元数据，并通过个人 marketplace 加载到本机 Codex 插件目录。
+当前状态：已改用官方 MCP Python SDK 的 `FastMCP` 和 stdio transport。Codex 从 `.mcp.json` 启动标准库 bootstrap `scripts/run_mcp_server.py`，它严格定位 `esp-mcp-toolchain` Conda 解释器后再运行 `toolchain/mcp_server.py`；定位失败会明确退出，不静默使用全局 Python。协议解析、初始化、能力协商、tools/resources/prompts 路由由 SDK 接管。
 
 ### 第 3 阶段：基础 ESP 调试闭环
 
@@ -292,7 +292,7 @@ MicroPython 方向：
 - SQLite schema v2 与正式日志仓储：project-scoped runs/events、复合外键、查询索引、事务 sequence、UUID/时间戳严格幂等、终态约束和可重复迁移。
 - Codex skill 文件和示例工作流。
 - Codex 插件 manifest 补齐 `name`、`version`、`description`、`author`、`homepage`、`repository`、`license`、`keywords`、`skills`、`apps`、`mcpServers` 和 `interface`。`hooks.json` 已创建；`hooks` 未写入 `plugin.json`，因为当前插件验证器会拒绝该字段，优先保证插件可见和可验证。
-- `.mcp.json` 改为 Codex 插件标准的 `mcpServers` 包裹结构。
+- `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
 - 本机个人 marketplace 位于 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源位于 `C:\Users\16224\plugins\esp-mcp-toolchain`。SQLite 已同步到源版本 `0.1.0+codex.20260720110129`，validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过；当前 Codex 缓存仍为上一个 Monitor 版本，需通过 Plugin Management 重载后在新任务验收。
