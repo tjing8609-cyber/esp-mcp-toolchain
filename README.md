@@ -650,6 +650,13 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - `plugin-creator` validator 在同步前后均通过；唯一一次 cachebuster 更新把源版本从 `0.1.0+codex.20260722153803` 改为 `0.1.0+codex.20260726165544`，版本只含一个 `+codex` 后缀。
 - 已安装缓存仍为旧版 `0.1.0+codex.20260722153803`。按约定不直接覆盖缓存、不代替用户重启；新任务需先核对安装插件的 48/12/12 工具面。
 
+### 2026-07-27 01:02 - 修复 Monitor STARTING 测试竞态
+
+- 最终发布记录提交的 main Windows/Python 3.10 job 在 `test_monitor_stop_while_starting_is_bounded` 偶发失败；同次 test 四组和 main 另外三组均成功。
+- 根因不是生产 Monitor 状态机，而是测试用“1 秒内轮询到会话”代替线程同步。慢 runner 可能仍在执行 SQLite 初始化或尚未调度启动线程，`monitors` 为空时测试直接索引并产生 `IndexError`。
+- 假串口现在进入 `open()` 时设置 `open_started` 事件；测试等待该确定性事件后断言唯一会话处于 `STARTING`，启动 stop 线程后再明确等待 `STOPPING`，最后才释放 open gate。两个等待都保留 3 秒有界失败，不依赖机器速度。
+- 修复后该用例独立进程重复 `20/20` 通过，main 全量为 `104 passed in 16.67s`。本修改未访问串口，也没有改变生产 Monitor 行为；远端复跑仍待当前提交验证。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

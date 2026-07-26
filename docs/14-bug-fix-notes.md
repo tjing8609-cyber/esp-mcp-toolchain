@@ -131,3 +131,54 @@ monkeypatch。Linux 清理代码此时调用 `pathlib.Path(...)`，`Path` 根据
 
 本节只覆盖模拟进程的软件合同及四平台 CI。没有连接 `COM3` 或真实擦除板卡；因此不能据此
 声称板端复位、电源稳定性或真实擦除已经通过。
+
+## 2026-07-27：Monitor STARTING 测试在慢速 Windows runner 偶发为空
+
+### 症状
+
+- 最终发布记录的 main Windows/Python 3.10 job 在
+  `test_monitor_stop_while_starting_is_bounded` 失败。
+- 失败位置不是 Monitor 返回错误，而是测试执行 `monitors[0]` 时得到
+  `IndexError: list index out of range`。
+- 同一提交的 main 另外三组和 test 四组全部成功；此前多轮相同生产代码也通过。
+
+### 根因
+
+测试启动后台线程后，只给它 1 秒时间完成 SQLite run 初始化、日志 prepare、Manager 会话注册
+和 worker 调度，然后轮询全局状态。`FakeSerial.open_gate` 能阻塞 `open()`，却没有通知测试
+“worker 已经进入 open”。在负载较高的 Windows runner 上，启动线程可能在会话注册前尚未取得
+足够调度时间，轮询超时后 `monitors` 仍为空。
+
+因此问题是测试同步错误：它用墙钟速度假设代替了线程间确定性事件；生产 Monitor 状态机并未
+在该失败中返回错误。
+
+### 修复
+
+- `FakeSerial` 增加每个测试重新创建的 `open_started` 事件。
+- 假串口进入 `open()` 的第一步就设置事件，再等待原有 `open_gate`。
+- 测试等待 `open_started` 后再读取状态。Manager 在启动 worker 前已经把会话写入
+  `_sessions`，因此事件成立时唯一会话必须可见并处于 `STARTING`。
+- stop 线程启动后使用既有 `_wait_for_state(..., {"STOPPING"})` 确认状态转换，再释放
+  `open_gate`；删除另一个依赖调度速度的 `sleep(0.05)`。
+- 仍保留 3 秒有界等待和明确失败消息，避免真正的死锁让测试无限等待。
+
+### 验证
+
+- 原始失败：
+  [main run 30211564537](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211564537)，
+  Windows/Python 3.10 为 `1 failed, 103 passed`。
+- 修复后单项测试用独立 pytest 进程重复：`20/20` 通过。
+- main 本地全量：`104 passed in 16.67s`。
+
+### 经验
+
+- 并发测试应等待“阶段已到达”的事件，而不是假设线程会在固定时间内被调度。
+- 超时仍然必要，但应作为死锁上限和诊断边界，不能代替同步原语。
+- 单个平台的一次偶发失败应先看失败状态和其他矩阵证据，不能直接回退生产状态机。
+
+### 剩余风险
+
+修复后的远端四平台矩阵仍待当前提交验证。本修改只改变假串口和测试同步，没有读取真实串口，
+也没有重新验证真实 Monitor 启停或板卡断电行为。真实串口驱动若让 `open()` 阻塞超过 stop
+超时，API 仍会按既有合同报告 `monitor_cleanup_timeout`，并在 `open()` 最终返回后继续清理；
+这个边界不是本次 CI 失败的原因，也没有在本修复中改变。
