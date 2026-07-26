@@ -6,6 +6,9 @@
 
 ### Added
 
+- 新增任务书 6 项基础 + 6 项提高的 12 套公开 prompts；公共名称严格固定为 12 个，保持 `debug_error`、`build_flash_monitor`、`review_hardware_context`，不注册其余旧名称。
+- 新增 `esp_program_stop`、`esp_gpio_status`、`esp_hardware_info`、`esp_regression_test`、`esp_performance_profile`，源码工具面目标为 48 tools / 12 resources / 12 prompts。
+- 新增独立 Conda 启动器；MCP Server 使用 `esp-mcp-toolchain` 环境及其中已验证的 `mpremote 1.28.0`，找不到专用解释器时不静默退回全局 Python。
 - 新增后台串口 Monitor 候选实现：`esp_serial_monitor_start`、`esp_serial_monitor_stop`、`esp_serial_monitor_status` 和 `esp_serial_monitor_read`。
 - Monitor 使用正式状态机、不可变项目绑定、单调递增 `seq`、`after_seq` 游标、有界环形缓冲和分块原始字节日志。
 - 新增跨进程串口锁、进程所有权与端口身份记录、只针对已结束进程的陈旧锁恢复，以及 MCP Server 退出清理。
@@ -13,10 +16,15 @@
 
 - 新增 SQLite schema v2 与 runs/events 仓储，包含 project-scoped 复合键、外键、JSON 对象约束、规范 UUID、事务 sequence 和结构化查询索引。
 - 新增 v1 数据库重建迁移、legacy JSONL 稳定快照与可重复导入，以及 `docs/adr/0003-sqlite-log-authority.md`。
-- `esp_logs_query` 新增 `run_id`、`phase`、`level`、`tool`、`source`、时间和 sequence 范围过滤，并同步 CLI、FastMCP schema 和静态工具注册资源。
+- `esp_logs_query` 新增 `run_id`、phase、level、tool、source、时间和 sequence 范围过滤，并同步 CLI、FastMCP schema 和静态工具注册资源。
 
 ### Changed
 
+- 串口统一采用零参构造，打开前关闭流控并将 DTR/RTS 置为非活动态，打开后再次压低控制线；端口探测同时报告生命周期阶段和清理结果。
+- Raw REPL 只有在严格收到 `OK + stdout EOT + stderr EOT + >` 后才确认完成，并分别记录 ACK、两个 EOT、提示符、退出发送和退出确认。
+- 程序停止只在观察到 `>>>` 后确认；仅声明 `reset_command_sent=false`，并保留 `physical_reset_excluded=false`。
+- GPIO 和 MicroPython runtime 硬件探测要求 `allow_program_interrupt=true`；回归执行要求 `confirm_execution=true`；性能重复执行要求 `confirm_repeated_execution=true`。
+- passive 硬件信息只接受当前已枚举串口，并将 host USB descriptor 与 reviewed mapping 一起作为有来源标记的信息返回。
 - `main` 维护产品实现和文档；`test` 分支的分支专属提交维护测试文件和测试规则，门禁由测试工作树加载主线源码执行。
 - GitHub Actions 的 push 触发分支增加 `test`，使测试分支也执行 Windows/Linux、Python 3.10/3.12 矩阵。
 - README、CHANGELOG、开发状态页和 ADR 分工记录不同层级的信息。
@@ -26,6 +34,9 @@
 
 ### Fixed
 
+- ACK 后缺少完整 Raw REPL 终止帧不再误报执行成功；stderr 以 `>` 开头时不会被第一个 EOT 提前截断。
+- 源码、Ctrl-C 和 Raw REPL 退出的串口短写不再被记录为完整发送；cleanup 异常会保留原始 operation/protocol 错误类型和已收到输出。
+- reset 不再清空打开串口时的输出；打开前后控制线状态、动作前输出、reset 动作、输出捕获和最终清理均分别记录。
 - Monitor 串口改为非阻塞读取，先查询实际待收字节，单次最多读取 1024 字节；避免 Windows CH9102 稀疏输出场景中固定 `read(4096)` 产生污染记录。
 - 无串口数据时使用 5 ms 有界等待，避免非阻塞轮询占满 CPU，同时保持停止清理及时响应。
 
@@ -39,6 +50,11 @@
 - 动作或状态变更完成后的日志故障保留真实业务结果，并通过 `logging_persisted=false` 和 `logging_warning` 报告审计缺口。
 
 ### Validation
+
+- 2026-07-26 提示词/提高工具/架构专项为 `25 passed`，串口/reset/Raw REPL/停止/错误检测关联门禁为 `62 passed`；当前完整候选门禁为 `226 passed in 29.35s`，均通过 `ESP_MCP_SOURCE_ROOT` 显式加载 `index` 主线源码。
+- 本次 2026-07-26 软件门禁使用模拟串口和临时项目目录，没有读取或操作真实板卡；MicroPython 执行类能力仍需独立实板验收。
+
+以下条目是 2026-07-13 至 2026-07-20 既有 Unreleased 切片的历史验证，不代表 2026-07-26 候选已重新执行硬件、Marketplace 或远端 CI 操作：
 
 - Monitor 假串口、存储和进程级专项测试通过，包括 stdin EOF、强制终止恢复、跨进程冲突、断连、缓冲区淘汰、UTF-8 分片、二进制日志和磁盘故障。
 - 两条污染读取回归在修复前失败、修复后通过；跨分支全量门禁为 `101 passed`，Monitor 专项为 `29 passed`。

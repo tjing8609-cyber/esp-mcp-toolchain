@@ -99,3 +99,84 @@ Hardware mapping entries use structured FastMCP schemas:
 - Every serial entry requires `interface`.
 - Optional evidence must be one of `schematic_confirmed`, `board_test_confirmed`, `model_inference`, or `unconfirmed`.
 - Invalid entries are rejected atomically before Markdown, JSON, or review state is written.
+
+## Task-book completion tools
+
+The completed task-book surface adds five tools to the previous 43-tool registry:
+
+```text
+esp_program_stop(port=None, baudrate=115200, timeout_ms=1500)
+esp_gpio_status(
+    port=None,
+    backend="raw_repl",
+    pins=None,
+    capture_ms=3000,
+    allow_program_interrupt=False,
+)
+esp_hardware_info(
+    port=None,
+    mode="passive",
+    backend="raw_repl",
+    capture_ms=3000,
+    allow_program_interrupt=False,
+)
+esp_regression_test(
+    port=None,
+    backend="raw_repl",
+    tests=None,
+    fail_fast=True,
+    capture_ms=5000,
+    confirm_execution=False,
+)
+esp_performance_profile(
+    port=None,
+    backend="raw_repl",
+    code="",
+    remote_path="",
+    iterations=5,
+    capture_ms=10000,
+    confirm_repeated_execution=False,
+)
+```
+
+All five are project-scoped and hardware-gated.
+
+- `esp_program_stop` sends Ctrl-C twice and does not send Ctrl-D or any reset command. It can
+  report `stop_confirmed=true` only after observing the friendly REPL prompt `>>>`. Its evidence is
+  limited to `reset_command_sent=false`; because opening a serial port may still affect control
+  lines at driver or hardware level, `physical_reset_excluded` remains `false`.
+- `esp_gpio_status` requires explicit GPIO numbers and reads `Pin.value()` without passing a mode
+  or calling `init`. Entering raw REPL can interrupt the current application, so the call is blocked
+  until `allow_program_interrupt=true` is supplied.
+- `esp_hardware_info` defaults to passive collection and accepts only a port present in the current
+  serial enumeration. Passive results combine the enumerated host USB descriptor with the reviewed
+  project hardware mapping. `mode=micropython` additionally interrupts the running program and is
+  blocked until `allow_program_interrupt=true`; it does not imply a reset was excluded.
+- `esp_regression_test` runs at most 32 explicit remote MicroPython files and reports passed,
+  failed, skipped, stdout, error, and duration for each result. No target is executed until
+  `confirm_execution=true` is supplied for those exact paths.
+- `esp_performance_profile` accepts exactly one inline-code or remote-file target and at most 50
+  iterations. It is blocked until `confirm_repeated_execution=true`, because repeated execution can
+  repeat application side effects. It reports `ticks_us` wall-time and `gc.mem_free` deltas; it is
+  not a sampling profiler.
+
+MicroPython error detection is an enhancement to existing tools rather than a sixth new tool:
+
+- raw REPL exec parses stdout/stderr;
+- fixed serial capture detects Tracebacks split across reads;
+- background Monitor keeps a bounded incremental detector, exposes `detected_error`, and writes one structured SQLite error event;
+- `esp_error_parse_log(run_id, max_bytes=262144)` reads SQLite reports and only bounded raw paths under the active project's logs root.
+
+The resulting public MCP source-registration surface is 48 tools, 12 resources, and 12 prompts.
+The installed personal Marketplace cache must be enumerated separately after its source is updated
+and Codex is restarted.
+
+## Independent Conda runtime
+
+The public `.mcp.json` starts the standard-library bootstrap
+`scripts/run_mcp_server.py`. The bootstrap locates the dedicated
+`esp-mcp-toolchain` Conda interpreter (or an explicit `ESP_MCP_PYTHON` override) and then replaces
+the bootstrap process with that interpreter. It fails clearly when no dedicated interpreter can be
+found instead of silently starting the server with global Python. The selected environment contains
+`mpremote 1.28.0`, so file and MicroPython execution backends use the same isolated runtime as the
+MCP server.

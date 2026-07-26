@@ -4,12 +4,12 @@
 
 ## 分支规则
 
-- `main` 是受保护的稳定分支，只接收已经验证通过的功能和文档。
+- `main` 是受保护的软件稳定分支，只接收已经通过对应软件门禁的实现和文档；未完成实板验收的硬件能力必须保持 `[Unreleased]` 和明确的“未实板验证”状态。
 - 产品实现和文档在 `index` 工作树提交到 `main`；提交前必须先通过计划审核和对应门禁。
 - `test` 分支的分支专属提交只允许修改测试文件、测试目录和验证规则；先同步最新 `main`，再补充能复现问题或约束新功能的测试。
 - 门禁从 `index-test` 运行测试，并显式加载 `index` 中待提交的主线源码；修复前测试应能稳定失败，修复后必须全量通过。
-- `main` 提交后再次同步到 `test` 并运行全量测试；依赖真实硬件的功能还必须通过对应硬件门禁。
-- 不在功能尚未通过门禁时把它直接提交或合并到 `main`。
+- `main` 提交后再次同步到 `test` 并运行全量测试；依赖真实硬件的能力在声明硬件稳定或发布插件前还必须通过对应硬件门禁。
+- 不在功能尚未通过对应软件门禁时把它直接提交或合并到 `main`；mock 门禁只能确认软件合同，不能生成实板结论。
 
 ## 测试规则
 
@@ -90,7 +90,27 @@ python -m pytest
 
 - `main` 工作树包含实现和必要文档，`test` 工作树包含对应回归测试；两个工作树都没有无关改动。
 - `python -m pytest` 本地全量通过，GitHub Actions 通过。
-- 依赖真实硬件的功能已经在目标板卡上完成验收；未连接或未枚举硬件时只能保留在功能分支。
+- 软件候选可以在完整 mock/跨工作树门禁通过且明确标注“未实板验证”后进入 `main`；依赖真实硬件的能力在发布插件或声明硬件稳定前必须完成目标板卡验收。
 - README、CHANGELOG、开发状态页和必要 ADR 已同步。
 - 高风险工具仍保留确认机制。
 - 运行时产物、日志、备份、构建目录和板端临时文件没有被提交。
+
+## 任务书能力与插件发布规则
+
+- 任务书公开 prompt 固定为 6 项基础 + 6 项提高，共 12 套；既有公开名
+  `debug_error`、`build_flash_monitor`、`review_hardware_context` 保持，其余旧名称不注册，
+  也不通过隐藏兼容表解析。
+- 每套 prompt 必须绑定明确工具、成功证据和安全边界，不能只写通用说明。
+- `esp_program_stop` 不能发送 Ctrl-D 或复位命令；只有观察到 `>>>` 时才能确认停止。
+  返回值只能证明 `reset_command_sent=false`，必须同时保留
+  `physical_reset_excluded=false`，不得把串口打开过程描述为物理复位不可能发生。
+- GPIO 状态查询不得切换 pin 模式，并且进入 raw REPL 前必须取得
+  `allow_program_interrupt=true`。硬件信息默认 passive，只接受当前已枚举串口并合并
+  reviewed mapping；MicroPython runtime 探测同样需要 `allow_program_interrupt=true`。
+- 板上回归只运行显式路径，执行前必须取得 `confirm_execution=true`；性能分析必须取得
+  `confirm_repeated_execution=true` 并提示重复副作用，同时标明不是 sampling profiler。
+- 原始错误日志读取必须限定在活动项目的 logs 根目录，并设置最大扫描字节数。
+- `.mcp.json` 只能通过 `scripts/run_mcp_server.py` 定位独立
+  `esp-mcp-toolchain` Conda 解释器；找不到时应失败，不得静默退回全局 Python。
+- 插件更新只修改个人 marketplace 源，使用 `plugin-creator/scripts/update_plugin_cachebuster.py` 和 `validate_plugin.py`；不得直接覆盖安装缓存、同时改仓库 manifest，或重复追加 cachebuster。
+- 本地 marketplace 重装后必须在新 Codex 任务核对工具、资源和 prompt 数量，旧任务中的 MCP 工具面不作为新版缓存证据。
