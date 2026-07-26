@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..backends.pyserial_backend import list_serial_ports, port_can_open
+from ..backends.pyserial_backend import list_serial_ports, probe_serial_port
 from ..config import get_selected_port, set_selected_port
 from .log_tools import logged_task
 
@@ -37,14 +37,17 @@ def esp_port_status() -> dict:
             "selected_port": None,
             "available": False,
             "busy": False,
+            "backend_available": None,
+            "control_lines_preconfigured": False,
+            "physical_reset_excluded": True,
+            "cleanup_completed": True,
+            "cleanup_errors": [],
             "message": "No selected port.",
         }
-    available, busy, message = port_can_open(selected_port)
+    probe = probe_serial_port(selected_port)
     return {
         "ok": True,
         "selected_port": selected_port,
-        "available": available,
-        "busy": busy,
-        "message": message,
+        **probe,
     }
 
