@@ -317,12 +317,13 @@ mpremote：1.28.0（仅在项目专属 Conda 环境中验证）
 实现源码：index / main（由 ESP_MCP_SOURCE_ROOT 显式加载）
 任务书提示词/提高工具/架构专项：25 passed
 串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：62 passed
-main→test 同步后标准全量门禁：226 passed in 27.66s
+P0 修复后 main 全量门禁：104 passed in 14.70s
+erase_flash 修复后跨工作树全量门禁：228 passed in 27.76s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite/原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema，以及既有 SQLite/Monitor/项目隔离合同
 真实硬件：本次 2026-07-26 软件门禁全部使用模拟串口和临时项目，没有读取或操作当前板卡；历史实板结果保留在下方对应日期的开发日志中
 未完成硬件门禁：MicroPython 执行类能力仍需在明确的板端固件和操作步骤下单独验收，不能由软件测试推断
-远端与插件：main 的 5 个实现提交和独立文档提交已合并到 test，test 同时包含 4 个回归提交；main/test 公开推送、远端 CI、cachebuster、个人 marketplace 源同步和重装仍待完成
+远端与插件：main/test 已公开原子推送。首次远端矩阵暴露 main 旧串口测试桩和 Linux `os.name` 测试污染；P0 修复已通过本地 main `104 passed`、test `226 passed`、跨工作树 `226 passed`，以及 main/test 共 8 个 Windows/Linux、Python 3.10/3.12 远端 job。`erase_flash` 已完成受管进程、显式复位参数和本地回归，P1 远端矩阵仍待推送验证；cachebuster、个人 marketplace 源同步和重启后安装缓存验收仍待完成
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -615,6 +616,27 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 清除跨工作树源码覆盖后，直接在 test 分支自身源码运行标准 `python -m pytest`，结果为 `226 passed in 27.66s`。
 - 本门禁仍是软件结论；本步骤未访问真实板卡、未更新个人 marketplace，也尚未取得本轮远端 CI。
 
+### 2026-07-27 00:26 - 修复 GitHub Actions 测试隔离问题
+
+- 首次公开推送后的 main 四组 CI 均在旧串口测试桩失败；test 的 Windows 3.10/3.12 已通过，Linux 3.10/3.12 因测试修改全局 `os.name` 后在项目上下文清理阶段实例化 `WindowsPath` 失败。
+- main 保留并验证已有的 Raw REPL/reset 假串口适配；Windows 进程树测试改用局部 `monkeypatch.context()`，在测试返回前恢复平台状态。
+- 项目专属 Conda Python 3.12.13 下，main 为 `104 passed in 14.70s`，test 为 `226 passed in 28.08s`，test 加载 main 源码的跨工作树门禁为 `226 passed in 27.36s`。
+- 这些结果只证明本地软件门禁；远端矩阵复跑、`erase_flash` 受管进程改造、个人 marketplace 同步和新版插件验收仍待完成。
+
+### 2026-07-27 00:31 - 确认 P0 远端矩阵并补充 Bug 学习记录
+
+- main [run 30210462578](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30210462578) 与 test [run 30210462530](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30210462530) 的 Windows/Linux、Python 3.10/3.12 共 8 个 job 全部成功。
+- 新增 `docs/14-bug-fix-notes.md`，记录旧测试桩失配、共享 `os.name` 污染、局部 monkeypatch 修复方式和本地/远端验证证据；后续 Bug 修复提交继续记录 Cause、Fix、Verification 和 Residual risk。
+- P0 已完成；下一步是测试先行改造 `erase_flash` 受管进程。本阶段仍未访问板卡，也未更新个人 marketplace。
+
+### 2026-07-27 00:37 - 完成 erase_flash 受管进程软件门禁
+
+- 根因是擦除后端仍直接调用 `subprocess.run()`，绕过已有的受管子进程树终止和清理证据；命令还依赖 esptool 默认复位行为，没有把前后复位语义固定在可审计参数中。
+- test 分支先增加精确命令、超时、启动失败、清理元数据和 `confirm=False` 不调用后端的契约；旧 main 在新增后端契约下得到 `3 failed, 3 passed`，确认门专项为 `2 passed`。
+- main 改为复用 `run_managed_command()`，显式传入 `--before default_reset --after hard_reset`，把公共错误映射为擦除领域错误，同时保留 stdout、stderr、returncode 和进程树清理字段。
+- 修复后后端专项为 `6 passed`、擦除工具专项为 `8 passed`、main 全量为 `104 passed in 13.89s`，test 加载 main 源码的跨工作树门禁为 `228 passed in 27.76s`。
+- 以上只证明模拟进程的软件合同；本步骤未连接串口、未实际擦除板卡，P1 远端矩阵也仍待推送验证。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。
@@ -648,6 +670,7 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - `docs/11-development-rules.md`
 - `docs/12-development-status.md`
 - `docs/13-taskbook-capability-architecture.md`
+- `docs/14-bug-fix-notes.md`
 - `docs/adr/0001-feature-branch-workflow.md`
 - `docs/adr/0002-serial-monitor-architecture.md`
 - `docs/adr/0003-sqlite-log-authority.md`
