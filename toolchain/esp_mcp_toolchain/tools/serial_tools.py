@@ -4,13 +4,20 @@ import time
 from pathlib import Path
 import re
 
-from ..backends.pyserial_backend import describe_serial_port, get_serial_module
+from ..backends.pyserial_backend import (
+    deactivate_and_close_serial,
+    describe_serial_port,
+    get_serial_module,
+    open_serial_with_inactive_control_lines,
+    serial_lifecycle_details,
+)
 from ..backends.serial_monitor_backend import MonitorBinding, MonitorConflictError, SERIAL_MONITOR_MANAGER
 from ..backends.serial_monitor_store import SerialLogQuotaError, SerialLogStoreError
 from ..config import get_selected_port
 from ..errors import execution_error
 from ..paths import logs_dir
 from ..project_context import get_project_context
+from ..utils.error_detection import MicroPythonErrorDetector
 from ..utils.time_utils import now_compact
 from .log_tools import LogScope, finish_run, logged_task, new_run_id, start_run, write_event
 
@@ -132,26 +139,82 @@ def esp_serial_capture(
 
     end_at = time.monotonic() + max(duration_ms, 0) / 1000
     chunks: list[str] = []
+    detector = MicroPythonErrorDetector()
+    ser = None
+    operation_error: Exception | None = None
+    cleanup_errors: list[str] = []
+    control_lines_preconfigured = False
+    open_attempted = False
+    failure_stage: str | None = None
     try:
-        with serial_mod.Serial(selected_port, baudrate=baudrate, timeout=0.1) as ser:
-            while time.monotonic() < end_at:
-                data = ser.read(4096)
-                if not data:
-                    continue
-                text = data.decode(errors="replace")
-                chunks.append(text)
-                if stop_on_traceback and "Traceback (most recent call last)" in text:
-                    break
+        open_attempted = True
+        ser = open_serial_with_inactive_control_lines(
+            serial_mod,
+            selected_port,
+            baudrate=baudrate,
+            timeout=0.1,
+            write_timeout=1.0,
+        )
+        control_lines_preconfigured = True
+        while time.monotonic() < end_at:
+            data = ser.read(4096)
+            if not data:
+                continue
+            text = data.decode(errors="replace")
+            chunks.append(text)
+            error_report = detector.feed(text)
+            if (
+                stop_on_traceback
+                and error_report is not None
+                and error_report.get("error_kind") == "micropython_traceback"
+                and error_report.get("exception_type")
+            ):
+                break
     except Exception as exc:
+        operation_error = exc
+        failure_stage = "capture"
+        lifecycle = serial_lifecycle_details(exc)
+        if lifecycle is not None:
+            open_attempted = lifecycle["open_attempted"]
+            failure_stage = lifecycle["stage"]
+            control_lines_preconfigured = lifecycle["stage"] in {
+                "open",
+                "post_open_control_lines",
+            }
+            cleanup_errors.extend(lifecycle["cleanup_errors"])
+    finally:
+        if ser is not None:
+            cleanup_errors.extend(deactivate_and_close_serial(ser))
+
+    if operation_error is not None or cleanup_errors:
+        if operation_error is not None:
+            message = f"{type(operation_error).__name__}: {operation_error}"
+        else:
+            message = "Serial capture completed, but serial cleanup failed."
+            failure_stage = "cleanup"
+        if cleanup_errors:
+            message += f" Cleanup: {'; '.join(cleanup_errors)}"
+        captured_text = "".join(chunks)
         return execution_error(
             "serial_capture_failed",
-            str(exc),
+            message,
             tool="esp_serial_capture",
-            suggested_next_actions=["Check port name", "Close other serial monitors", "Run port-status"],
+            text=captured_text,
+            bytes_read=len(captured_text.encode("utf-8")),
+            control_lines_preconfigured=control_lines_preconfigured,
+            physical_reset_excluded=not open_attempted,
+            failure_stage=failure_stage,
+            cleanup_completed=not cleanup_errors,
+            cleanup_errors=cleanup_errors,
+            suggested_next_actions=[
+                "Check the port name against esp_port_list",
+                "Close other serial monitors",
+            ],
         )
 
     text = "".join(chunks)
     raw_path.write_text(text, encoding="utf-8")
+    error_report = detector.report
     return {
         "ok": True,
         "port": selected_port,
@@ -159,6 +222,12 @@ def esp_serial_capture(
         "raw_path": str(Path(raw_path)),
         "bytes_read": len(text.encode("utf-8")),
         "text": text,
+        "has_error": error_report is not None,
+        "error_report": error_report,
+        "control_lines_preconfigured": True,
+        "physical_reset_excluded": False,
+        "cleanup_completed": True,
+        "cleanup_errors": [],
         "message": f"Captured {len(text)} characters from {selected_port}.",
     }
 

@@ -4,7 +4,7 @@
       "cwd": ".",
       "command": "python",
       "args": [
-        "./toolchain/mcp_server.py"
+        "./scripts/run_mcp_server.py"
       ]
     }
   }

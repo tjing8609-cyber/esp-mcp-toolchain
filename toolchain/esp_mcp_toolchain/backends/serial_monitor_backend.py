@@ -12,6 +12,10 @@ import time
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from .pyserial_backend import (
+    deactivate_and_close_serial,
+    open_serial_with_inactive_control_lines,
+)
 from .serial_monitor_lock import PortLease, PortLockError, current_process_owner, identity_key
 from .serial_monitor_store import (
     MAX_RECORD_BYTES,
@@ -25,6 +29,7 @@ from .serial_monitor_store import (
 )
 from ..database import log_repository
 from ..tools.log_tools import LogScope, finish_run, write_event
+from ..utils.error_detection import MicroPythonErrorDetector
 from ..utils.time_utils import now_utc_iso
 
 
@@ -122,27 +127,13 @@ def _looks_disconnected(exc: BaseException) -> bool:
 
 
 def _open_serial(serial_module: Any, binding: MonitorBinding) -> Any:
-    serial_port = serial_module.Serial()
-    try:
-        serial_port.port = binding.port
-        serial_port.baudrate = binding.baudrate
-        serial_port.timeout = 0
-        for name, value in (("rtscts", False), ("dsrdtr", False), ("xonxoff", False)):
-            if hasattr(serial_port, name):
-                setattr(serial_port, name, value)
-        for name in ("dtr", "rts"):
-            try:
-                setattr(serial_port, name, False)
-            except (AttributeError, OSError, ValueError):
-                pass
-        serial_port.open()
-        return serial_port
-    except BaseException:
-        try:
-            serial_port.close()
-        except Exception:
-            pass
-        raise
+    return open_serial_with_inactive_control_lines(
+        serial_module,
+        binding.port,
+        baudrate=binding.baudrate,
+        timeout=0,
+        write_timeout=1.0,
+    )
 
 
 def _read_serial_chunk(serial_port: Any) -> bytes:
@@ -168,6 +159,9 @@ class MonitorSession:
         self.dropped_bytes = 0
         self.unpersisted_bytes = 0
         self.last_error: dict | None = None
+        self.detected_error: dict | None = None
+        self._detected_error_announced = False
+        self._error_detector = MicroPythonErrorDetector()
         self._next_seq = 1
         self._dropped_before_seq: int | None = None
         self._records: deque[SerialRecord] = deque()
@@ -227,6 +221,23 @@ class MonitorSession:
         except OSError as exc:
             self.last_error = _error_payload("monitor_manifest_write_failed", exc)
 
+    def _record_serial_cleanup_errors(self, cleanup_errors: list[str]) -> None:
+        if not cleanup_errors:
+            return
+        with self._condition:
+            if self.last_error is None:
+                self.last_error = _error_payload(
+                    "serial_close_failed",
+                    RuntimeError("; ".join(cleanup_errors)),
+                )
+                self.last_error["cleanup_errors"] = list(cleanup_errors)
+                self.last_error["cleanup_completed"] = False
+            else:
+                existing = list(self.last_error.get("cleanup_errors") or [])
+                self.last_error["cleanup_errors"] = [*existing, *cleanup_errors]
+                self.last_error["cleanup_completed"] = False
+            self._condition.notify_all()
+
     def _log_scope(self) -> LogScope:
         return LogScope.bound(
             project_id=self.binding.project_id,
@@ -254,6 +265,26 @@ class MonitorSession:
             )
         except Exception:
             pass
+
+    def _detect_error(self, text: str) -> None:
+        report = self._error_detector.feed(text)
+        if report is None:
+            return
+        with self._condition:
+            self.detected_error = report
+            should_emit = (
+                not self._detected_error_announced
+                and bool(report.get("exception_type"))
+            )
+            if should_emit:
+                self._detected_error_announced = True
+            self._condition.notify_all()
+        if should_emit:
+            self._emit(
+                "error",
+                "MicroPython runtime error detected.",
+                {"has_error": True, "error_report": report},
+            )
 
     def _append_record(self, raw: bytes) -> None:
         if not raw:
@@ -292,16 +323,20 @@ class MonitorSession:
         for offset in range(0, len(data), _INPUT_SLICE_BYTES):
             current = data[offset : offset + _INPUT_SLICE_BYTES]
             combined = self._pending_raw + current
-            self._decoder.decode(current, final=False)
+            decoded = self._decoder.decode(current, final=False)
             pending, _flag = self._decoder.getstate()
             consumed_length = len(combined) - len(pending)
             consumed = combined[:consumed_length]
             self._pending_raw = bytes(pending)
             if consumed:
                 self._append_record(consumed)
+            if decoded:
+                self._detect_error(decoded)
 
     def _flush_decoder(self) -> None:
-        self._decoder.decode(b"", final=True)
+        decoded = self._decoder.decode(b"", final=True)
+        if decoded:
+            self._detect_error(decoded)
         pending = self._pending_raw
         self._pending_raw = b""
         if pending:
@@ -381,11 +416,8 @@ class MonitorSession:
         finally:
             serial_port = self._serial
             if serial_port is not None:
-                try:
-                    serial_port.close()
-                except Exception as exc:
-                    if self.last_error is None:
-                        self.last_error = _error_payload("serial_close_failed", exc)
+                cleanup_errors = deactivate_and_close_serial(serial_port)
+                self._record_serial_cleanup_errors(cleanup_errors)
             if self._lease is not None:
                 self._lease.release()
             if self.state == MonitorState.STARTING:
@@ -442,10 +474,8 @@ class MonitorSession:
                     pass
         self._thread.join(max(timeout, 0))
         if self._thread.is_alive() and serial_port is not None:
-            try:
-                serial_port.close()
-            except Exception:
-                pass
+            cleanup_errors = deactivate_and_close_serial(serial_port)
+            self._record_serial_cleanup_errors(cleanup_errors)
             self._thread.join(0.25)
         result = self.status()
         result["cleanup_complete"] = not self._thread.is_alive()
@@ -470,6 +500,7 @@ class MonitorSession:
                 "dropped_bytes": self.dropped_bytes,
                 "unpersisted_bytes": self.unpersisted_bytes,
                 "last_error": self.last_error,
+                "detected_error": self.detected_error,
                 "worker_alive": self._thread.is_alive(),
                 "log_dir": str(self._store.run_dir),
                 "next_seq": self._next_seq,
@@ -517,6 +548,7 @@ class MonitorSession:
                 "next_seq": self._next_seq,
                 "dropped_before_seq": self._dropped_before_seq,
                 "state": self.state.value,
+                "detected_error": self.detected_error,
             }
 
 

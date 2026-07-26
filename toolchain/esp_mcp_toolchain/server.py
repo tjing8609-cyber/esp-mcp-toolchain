@@ -19,6 +19,7 @@ from .prompts.prompt_registry import PROMPTS, get_prompt
 from .resources.resource_registry import RESOURCES, read_resource
 from .schemas import ToolSpec
 from .tools import (
+    advanced_tools,
     build_tools,
     error_tools,
     exec_tools,
@@ -68,6 +69,11 @@ HARDWARE_GATED_TOOLS = {
     "esp_reset",
     "esp_exec_code",
     "esp_run_file",
+    "esp_program_stop",
+    "esp_gpio_status",
+    "esp_hardware_info",
+    "esp_regression_test",
+    "esp_performance_profile",
 }
 
 
@@ -208,7 +214,23 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
         log_tools.esp_logs_query,
     ),
     "esp_error_parse_log": (
-        ToolSpec("esp_error_parse_log", "Parse errors from a stored run log."),
+        ToolSpec(
+            "esp_error_parse_log",
+            "Parse MicroPython errors from SQLite events and bounded project-scoped raw serial logs.",
+            {
+                "type": "object",
+                "properties": {
+                    "run_id": {"type": "string"},
+                    "max_bytes": {
+                        "type": "integer",
+                        "default": 262144,
+                        "minimum": 4096,
+                        "maximum": 1048576,
+                    },
+                },
+                "required": ["run_id"],
+            },
+        ),
         error_tools.esp_error_parse_log,
     ),
     "esp_error_parse_text": (
@@ -396,6 +418,141 @@ TOOL_REGISTRY: dict[str, tuple[ToolSpec, ToolFunc]] = {
     "esp_run_file": (
         ToolSpec("esp_run_file", "Run a remote file or local file on the board."),
         exec_tools.esp_run_file,
+    ),
+    "esp_program_stop": (
+        ToolSpec(
+            "esp_program_stop",
+            "Send Ctrl-C to interrupt MicroPython without issuing a reset command; physical reset cannot be excluded.",
+            {
+                "type": "object",
+                "properties": {
+                    "port": {"type": ["string", "null"]},
+                    "baudrate": {
+                        "type": "integer",
+                        "default": 115200,
+                        "minimum": 1,
+                        "maximum": 10000000,
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "default": 1500,
+                        "minimum": 100,
+                        "maximum": 30000,
+                    },
+                },
+            },
+        ),
+        exec_tools.esp_program_stop,
+    ),
+    "esp_gpio_status": (
+        ToolSpec(
+            "esp_gpio_status",
+            "Read explicit GPIO levels without changing GPIO modes; requires permission to interrupt the current MicroPython program.",
+            {
+                "type": "object",
+                "properties": {
+                    "port": {"type": ["string", "null"]},
+                    "backend": {"type": "string", "enum": ["raw_repl"], "default": "raw_repl"},
+                    "pins": {
+                        "type": ["array", "null"],
+                        "items": {"type": "integer", "minimum": 0, "maximum": 48},
+                        "minItems": 1,
+                        "maxItems": 32,
+                    },
+                    "capture_ms": {
+                        "type": "integer",
+                        "default": 3000,
+                        "minimum": 100,
+                        "maximum": 30000,
+                    },
+                    "allow_program_interrupt": {"type": "boolean", "default": False},
+                },
+            },
+        ),
+        advanced_tools.esp_gpio_status,
+    ),
+    "esp_hardware_info": (
+        ToolSpec(
+            "esp_hardware_info",
+            "Collect enumerated USB and reviewed hardware facts; optional runtime facts require permission to interrupt MicroPython.",
+            {
+                "type": "object",
+                "properties": {
+                    "port": {"type": ["string", "null"]},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["passive", "micropython"],
+                        "default": "passive",
+                    },
+                    "backend": {"type": "string", "enum": ["raw_repl"], "default": "raw_repl"},
+                    "capture_ms": {
+                        "type": "integer",
+                        "default": 3000,
+                        "minimum": 100,
+                        "maximum": 30000,
+                    },
+                    "allow_program_interrupt": {"type": "boolean", "default": False},
+                },
+            },
+        ),
+        advanced_tools.esp_hardware_info,
+    ),
+    "esp_regression_test": (
+        ToolSpec(
+            "esp_regression_test",
+            "Run an explicit bounded set of remote MicroPython regression files after execution confirmation.",
+            {
+                "type": "object",
+                "properties": {
+                    "port": {"type": ["string", "null"]},
+                    "backend": {"type": "string", "enum": ["raw_repl"], "default": "raw_repl"},
+                    "tests": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string", "minLength": 1, "maxLength": 256},
+                        "minItems": 1,
+                        "maxItems": 32,
+                    },
+                    "fail_fast": {"type": "boolean", "default": True},
+                    "capture_ms": {
+                        "type": "integer",
+                        "default": 5000,
+                        "minimum": 100,
+                        "maximum": 30000,
+                    },
+                    "confirm_execution": {"type": "boolean", "default": False},
+                },
+            },
+        ),
+        advanced_tools.esp_regression_test,
+    ),
+    "esp_performance_profile": (
+        ToolSpec(
+            "esp_performance_profile",
+            "Measure wall time and heap deltas by repeatedly executing a confirmed MicroPython target.",
+            {
+                "type": "object",
+                "properties": {
+                    "port": {"type": ["string", "null"]},
+                    "backend": {"type": "string", "enum": ["raw_repl"], "default": "raw_repl"},
+                    "code": {"type": "string", "default": ""},
+                    "remote_path": {"type": "string", "default": ""},
+                    "iterations": {
+                        "type": "integer",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 50,
+                    },
+                    "capture_ms": {
+                        "type": "integer",
+                        "default": 10000,
+                        "minimum": 100,
+                        "maximum": 30000,
+                    },
+                    "confirm_repeated_execution": {"type": "boolean", "default": False},
+                },
+            },
+        ),
+        advanced_tools.esp_performance_profile,
     ),
 }
 

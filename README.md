@@ -163,7 +163,7 @@ esp-mcp-toolchain/
 - `prompts/get`
 - `shutdown`
 
-当前状态：已改用官方 MCP Python SDK 的 `FastMCP` 和 stdio transport。入口仍为 `python toolchain/mcp_server.py`，协议解析、初始化、能力协商、tools/resources/prompts 路由由 SDK 接管。Codex 插件 manifest 已补齐展示元数据，并通过个人 marketplace 加载到本机 Codex 插件目录。
+当前状态：已改用官方 MCP Python SDK 的 `FastMCP` 和 stdio transport。Codex 从 `.mcp.json` 启动标准库 bootstrap `scripts/run_mcp_server.py`，它严格定位 `esp-mcp-toolchain` Conda 解释器后再运行 `toolchain/mcp_server.py`；定位失败会明确退出，不静默使用全局 Python。协议解析、初始化、能力协商、tools/resources/prompts 路由由 SDK 接管。
 
 ### 第 3 阶段：基础 ESP 调试闭环
 
@@ -187,7 +187,7 @@ MicroPython 方向：
 - `esp_serial_capture`
 - `esp_error_parse_log`
 
-当前状态：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已接入统一子进程管理、超时清理、`.part` 原子写入和精确长度校验，4 MiB 实板备份已通过；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成真实板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload` 和 `esp_file_download` 已通过 MicroPython raw REPL 与 `mpremote` 在 `COM3` 上完成烟测；`esp_reset` 已支持 MicroPython `soft` 和 ESP-IDF/通用固件 `hard` 两种模式，硬复位已捕获真实启动日志；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。后台串口 Monitor 已完成软件测试、四平台 CI、Codex 插件缓存验证和 `COM3` 真实板卡门禁，并已合入 `main`。更多工程化查询能力仍待后续开发。
+历史状态（截至 2026-07-20）：ESP-IDF 和 MicroPython 基础调试闭环已进入可运行封装阶段，不再只是占位声明。`esp_project_build` 已封装本机 ESP-IDF 5.2.1 构建流程；`esp_backup_flash` 已接入统一子进程管理、超时清理、`.part` 原子写入和精确长度校验，4 MiB 实板备份已通过；`esp_flash_firmware`、`esp_erase_flash`、`esp_project_clean`、`esp_file_delete` 已保留显式 `confirm=True` 高风险确认门并完成当时板卡验证；`esp_exec_code`、`esp_file_list`、`esp_file_read`、`esp_file_upload` 和 `esp_file_download` 已通过 MicroPython raw REPL 与 `mpremote` 在当时的 `COM3` 上完成烟测；旧版 `esp_reset` 的 hard 模式曾捕获启动日志；`esp_run_file` 已支持运行设备上已有的远程 `.py` 文件。后台串口 Monitor 已完成当时的软件、CI、插件缓存和 `COM3` 门禁。2026-07-26 新增的 reset/Raw REPL 安全改动尚未重新实板验收，`erase_flash` 的受管进程树清理和显式复位参数也仍待补齐，因此历史结果不能作为当前候选的实板结论。
 
 ### 第 4 阶段：hardwork 硬件资料上下文
 
@@ -274,13 +274,15 @@ MicroPython 方向：
 
 ## 当前进度
 
-截至 2026-07-20，已完成：
+截至 2026-07-26，已完成：
 
 - 仓库结构初始化。
 - GitHub 远端同步，主分支为 `main`。
 - Python 包结构和 CLI 入口。
 - 官方 MCP Python SDK 接入，使用 `FastMCP` + stdio transport。
-- tools / resources / prompts 注册骨架。
+- tools / resources / prompts 注册骨架；当前源码面为 `48 tools / 12 resources / 12 prompts`。
+- 按任务书形成 6 项基础 + 6 项提高共 12 套公开提示词，每套绑定明确工具顺序、成功证据、安全边界和失败处理；公开提示词数量严格为 12。
+- 新增 `esp_program_stop`、`esp_gpio_status`、`esp_hardware_info`、`esp_regression_test`、`esp_performance_profile`，并把实时/持久日志异常检测接入执行、固定采集和后台 Monitor。
 - 通过官方 MCP client 完成 stdio 连接烟测。
 - 新增 conda 环境文件 `environment.yml`，环境名为 `esp-mcp-toolchain`。
 - 串口枚举、串口选择、串口状态检查。
@@ -292,32 +294,35 @@ MicroPython 方向：
 - SQLite schema v2 与正式日志仓储：project-scoped runs/events、复合外键、查询索引、事务 sequence、UUID/时间戳严格幂等、终态约束和可重复迁移。
 - Codex skill 文件和示例工作流。
 - Codex 插件 manifest 补齐 `name`、`version`、`description`、`author`、`homepage`、`repository`、`license`、`keywords`、`skills`、`apps`、`mcpServers` 和 `interface`。`hooks.json` 已创建；`hooks` 未写入 `plugin.json`，因为当前插件验证器会拒绝该字段，优先保证插件可见和可验证。
-- `.mcp.json` 改为 Codex 插件标准的 `mcpServers` 包裹结构。
+- `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 本机个人 marketplace 位于 `C:\Users\16224\.agents\plugins\marketplace.json`，插件源位于 `C:\Users\16224\plugins\esp-mcp-toolchain`。SQLite 已同步到源版本 `0.1.0+codex.20260720110129`，validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过；当前 Codex 缓存仍为上一个 Monitor 版本，需通过 Plugin Management 重载后在新任务验收。
+- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。2026-07-26 没有重新核验当前安装缓存；新 48/12/12 候选仍待只更新个人 marketplace 源并由用户重启后验收。
 - 初始测试集。
 - 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；门禁从 `index-test` 加载 `index` 的主线源码执行。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
 - 已实现 `project_migrate_legacy_data`：支持只读预览、显式确认、SHA-256 比对、冲突不覆盖、复制或审计失败回滚和原子 JSONL 审计；不会递归迁移旧 `data/projects/`。
 - 后台串口 Monitor 已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
-- 后台串口 Monitor 已完成 `COM3` 真实板卡启动、游标读取、停止清理和同端口重新打开验收；本次固件的 UART0 运行时控制台 `115200` 实测事实已增量写入当前项目硬件映射。
-- 后台串口 Monitor 已修复 CH9102 实板稀疏输出下固定 `read(4096)` 可能返回污染缓冲的问题：串口改为非阻塞，先读取 `in_waiting`，单次最多读取 1024 字节，无数据时有界休眠；新增回归和真实按键门禁均通过。
-- SQLite 日志闭环已在本地主线、GitHub 和 marketplace 源接通：build/flash/file/exec/capture/port select 等同步工具使用统一 run 生命周期；Monitor worker 使用启动时绑定的 LogScope 写终态；`esp_logs_latest/get/query`、CLI 和 MCP schema 统一读取/暴露 SQLite。JSONL/latest 镜像故障只返回 warning，native run 拒绝外部新事件，stale Monitor 可重复对账，默认端口在审计与动作间冻结一致。当前 Codex 缓存重载完成前，不视为已发布到当前工具面。
+- 历史实板记录（2026-07-13）：后台串口 Monitor 曾完成 `COM3` 启动、游标读取、停止清理和同端口重新打开验收；当时固件的 UART0 运行时控制台 `115200` 实测事实已写入项目硬件映射。
+- 历史修复记录（2026-07-13）：后台串口 Monitor 针对 CH9102 稀疏输出改为非阻塞读取、先查询 `in_waiting`、单次最多 1024 字节并有界休眠；当时回归和真实按键门禁通过。
+- 历史发布记录（2026-07-20）：SQLite 日志闭环曾接通本地主线、GitHub 和个人 marketplace 源。2026-07-26 的 48/12/12 候选尚未同步个人 marketplace，也未取得新的远端 CI 或安装缓存证据。
 
 最近一次本地验证：
 
 ```text
 Conda 环境：esp-mcp-toolchain
 Python：3.12.13
+mpremote：1.28.0（仅在项目专属 Conda 环境中验证）
 测试工作树：index-test / test
-实现源码：index / main（由 ESP_MCP_SOURCE_ROOT 和跨工作树脚本显式加载）
-SQLite 定向契约：33 passed
-跨工作树全量门禁：134 passed in 21.44s
-覆盖：schema v2、v1 hardwork/memory 重建、首次并发建库、并发 sequence/import、UUID/时间戳、run 终态、selected_port、JSONL 增长/复制去重、native run 冲突隔离、stale Monitor 对账、Monitor 跨项目绑定、MCP schema 和前后置镜像故障
-当前项目正式迁移：首轮 19 files / 32 events，第二轮 0 / 0 / 0；12 cancelled、2 failed、5 succeeded；19 markers；foreign_key_check 为空
-真实硬件：本轮未执行烧录、擦除、删除、full clean 或其他板卡动作
-远端与插件：main/test 已同步公开 GitHub，两个 push workflow 的 Windows/Linux、Python 3.10/3.12 共 8 个 job 全部成功；marketplace 源已同步，Codex 缓存重载待完成
+实现源码：index / main（由 ESP_MCP_SOURCE_ROOT 显式加载）
+任务书提示词/提高工具/架构专项：25 passed
+串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：62 passed
+跨工作树全量门禁：226 passed in 29.35s
+MCP 源码枚举：48 tools / 12 resources / 12 prompts
+覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite/原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema，以及既有 SQLite/Monitor/项目隔离合同
+真实硬件：本次 2026-07-26 软件门禁全部使用模拟串口和临时项目，没有读取或操作当前板卡；历史实板结果保留在下方对应日期的开发日志中
+未完成硬件门禁：MicroPython 执行类能力仍需在明确的板端固件和操作步骤下单独验收，不能由软件测试推断
+远端与插件：main 已形成 5 个本地实现提交，当前文档作为独立提交；test 已形成 4 个本地回归提交。main→test 同步、main/test 公开推送、远端 CI、cachebuster、个人 marketplace 源同步和重装仍待完成
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -576,6 +581,34 @@ SQLite 定向契约：33 passed
 - Windows/Linux、Python 3.10/3.12 共 8 个 job 全部成功；每个 job 的依赖安装和完整 `python -m pytest` 步骤均成功，没有失败、跳过或取消步骤。
 - SQLite 本地实现、正式迁移、marketplace 源同步和 GitHub 远端门禁均已完成；剩余发布边界仅为通过 Plugin Management 重载插件，并在新任务核对新缓存工具面。
 
+### 2026-07-22 23:26 - 完成任务书 12 套提示词与工具架构软件门禁
+
+- 在独立 Conda 环境 `esp-mcp-toolchain` 中补齐并验证 `mpremote 1.28.0`；新增严格的 Conda bootstrap，插件服务不会静默落到全局 Python。
+- 将公开提示词固定为 6 项基础 + 6 项提高共 12 套，源码面为 `48 tools / 12 resources / 12 prompts`；不通过隐藏别名扩张 prompt 数量。
+- 新增程序 Ctrl-C 停止、GPIO 查询、硬件信息、板上回归、插桩性能分析，以及执行/采集/Monitor 自动异常报告。GPIO 和 runtime 要求接受程序中断；回归与性能分别要求显式确认执行和重复副作用。
+- FastMCP 实际生成的枚举、数值范围、数组上下限和确认字段已测试；当时任务书专项为 `48 passed`，当时完整跨工作树门禁为 `182 passed in 28.88s`。
+- COM3 已恢复枚举；只读串口采样为 0 字节，源码版 passive `esp_hardware_info` 成功读取 CH9102 描述和 reviewed mapping，`esp_error_parse_log` 对该 run 返回 `has_error=false`。
+- 当时板上为 ESP-IDF 固件；MicroPython 程序停止、GPIO raw REPL、运行时采集、回归和性能执行尚未实板验收。当时没有明确烧录授权，因此未烧录、擦除、删除、复位、full clean 或驱动蜂鸣器。
+- 本条记录只说明本地候选状态；提交、公开推送、远端 CI 和新版插件缓存验收尚未完成。
+
+### 2026-07-26 - 完成安全串口生命周期基础层
+
+- 串口统一改为零参构造，先禁用流控并将 DTR/RTS 置为非活动态，再显式打开；驱动打开后会再次压低控制线。
+- 端口探测保留原始异常，并报告打开阶段、是否可能发生物理复位以及关闭清理结果；兼容原有 `port_can_open` 返回合同。
+- 独立 Conda 环境中的串口生命周期专项为 `7 passed`；测试使用模拟串口，本步骤未访问板卡。
+
+### 2026-07-26 - 完成 Raw REPL、程序停止和错误检测闭环
+
+- Raw REPL 仅在严格确认 `OK + stdout EOT + stderr EOT + >` 完整帧后报告执行完成，保留不完整 stdout/stderr 和逐阶段协议证据。
+- Ctrl-C 程序停止、源码发送和 Raw REPL 退出均检查串口短写；`sent` 与 `confirmed` 分开记录，不把主机写入成功冒充板端状态。
+- 执行、固定采集和后台 Monitor 共用增量 MicroPython 异常检测；该错误检测子集为 `45 passed`，包含串口生命周期与 reset 的较宽关联门禁为 `62 passed`，完整候选门禁为 `226 passed`。
+
+### 2026-07-26 - 完成 12 套任务书提示词和提高能力工具面
+
+- 公开提示词固定为 6 项基础能力加 6 项提高能力，每套提示词声明工具顺序、确认要求、成功证据和失败分支。
+- 新增 GPIO 状态、硬件信息、板上回归与性能分析工具；执行型能力保留程序中断与重复副作用确认。
+- 提示词、提高工具和任务书架构专项为 `25 passed`；本步骤仍只验证软件合同，未触发板端执行。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。
@@ -601,12 +634,14 @@ SQLite 定向契约：33 passed
 - `docs/00-overview.md`
 - `docs/01-mcp-lifecycle.md`
 - `docs/02-tool-spec.md`
+- `docs/04-prompt-spec.md`
 - `docs/05-hardwork-module.md`
 - `docs/06-memory-module.md`
 - `docs/07-database-design.md`
 - `docs/10-development-roadmap.md`
 - `docs/11-development-rules.md`
 - `docs/12-development-status.md`
+- `docs/13-taskbook-capability-architecture.md`
 - `docs/adr/0001-feature-branch-workflow.md`
 - `docs/adr/0002-serial-monitor-architecture.md`
 - `docs/adr/0003-sqlite-log-authority.md`
