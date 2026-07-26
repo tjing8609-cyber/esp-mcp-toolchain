@@ -5,15 +5,23 @@ from esp_mcp_toolchain.tools import exec_tools
 
 
 class FakeSerial:
-    def __init__(self, port: str, baudrate: int = 115200, timeout: float = 0.1):
-        self.port = port
-        self.baudrate = baudrate
-        self.timeout = timeout
+    def __init__(self):
+        self.port = None
+        self.baudrate = None
+        self.timeout = None
+        self.write_timeout = None
+        self.rtscts = True
+        self.dsrdtr = True
+        self.xonxoff = True
         self.dtr = True
         self.rts = True
+        self.is_open = False
         self.closed = False
         self._reads: list[bytes] = []
         self.writes: list[bytes] = []
+
+    def open(self) -> None:
+        self.is_open = True
 
     def reset_input_buffer(self) -> None:
         self._reads.clear()

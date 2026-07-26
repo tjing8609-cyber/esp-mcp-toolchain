@@ -72,18 +72,19 @@ def test_managed_timeout_has_bounded_cleanup_and_kill_fallback(monkeypatch):
 def test_windows_tree_termination_uses_bounded_taskkill(monkeypatch):
     process = FakeProcess()
     calls: list[tuple[list[str], dict]] = []
-    monkeypatch.setattr(subprocess_utils.os, "name", "nt")
-    monkeypatch.setattr(
-        subprocess_utils.subprocess,
-        "run",
-        lambda command, **kwargs: calls.append((command, kwargs))
-        or subprocess.CompletedProcess(command, returncode=0),
-    )
+    with monkeypatch.context() as platform_patch:
+        platform_patch.setattr(subprocess_utils.os, "name", "nt")
+        platform_patch.setattr(
+            subprocess_utils.subprocess,
+            "run",
+            lambda command, **kwargs: calls.append((command, kwargs))
+            or subprocess.CompletedProcess(command, returncode=0),
+        )
 
-    cleanup_error = subprocess_utils.terminate_process_tree(
-        process,
-        timeout_s=2.5,
-    )
+        cleanup_error = subprocess_utils.terminate_process_tree(
+            process,
+            timeout_s=2.5,
+        )
 
     assert cleanup_error is None
     assert calls[0][0] == ["taskkill", "/PID", "4321", "/T", "/F"]
