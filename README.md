@@ -807,6 +807,20 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `33 passed in 2.33s`，全量门禁为 `320 passed, 1 skipped in 34.56s`；
   skip 仍是既有 Windows 目录 symlink 权限用例，不是 SQLite 失败。
 
+### 2026-07-28 00:06 - 修复固定串口 capture 的覆盖与字节失真
+
+- 原 capture 文件名只有秒级时间；同一 `session_name` 在同一秒执行两次时会复用路径，
+  后一次可能覆盖前一次证据。
+- 原实现先把串口 bytes 用替换模式解码为文本，再把文本编码后写盘；非法 UTF-8 字节会变成
+  U+FFFD，`bytes_read` 也会统计替换文本的 UTF-8 长度，不能代表真实串口字节。
+- 现在文件名加入随机 UUID 后缀并以排他 `xb` 模式创建，写入后 flush + fsync；原始文件
+  直接保存收到的 bytes，文本只作为可读视图，`bytes_read` 精确统计原始长度。
+- 新增合同先稳定复现“15 个原始字节被报告为 19”和同秒路径相同两个红灯；修复后定向
+  `20 passed`，main 全量 `119 passed`，test 显式加载 main 全量
+  `322 passed, 1 skipped`。测试使用假串口和临时目录，没有访问 COM3。
+- 这一小步只修复 v3-B 入库前的文件证据正确性；`raw_logs` / `errors` 原子投影、
+  Monitor chunk 对账与正式查询仍按后续小提交完成。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。
