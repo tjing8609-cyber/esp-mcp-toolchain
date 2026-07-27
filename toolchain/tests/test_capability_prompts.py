@@ -92,6 +92,9 @@ def test_high_risk_prompts_keep_confirmation_and_evidence_boundaries():
     assert "confirm_execution=True" in regression
     assert "confirm_repeated_execution=True" in performance
     assert "sampling_profiler=False" in performance
+    assert "SQLite completion" in performance
+    assert "不持久化 stdout" in performance
+    assert "凭据写入异常信息" in performance
 
 
 

@@ -699,6 +699,13 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 合同还要求示例 README 说明物理 4 MiB、single-app 不扩容，以及 defaults 不会覆盖已有的 ignored `sdkconfig`。
 - 修复前为预期的 `2 failed`；main 新增 defaults 和说明后为 `2 passed in 0.43s`。随后普通 ESP-IDF build 生成 4 MB / 40 MHz / DIO bootloader；main 全量为 `119 passed in 13.99s`，test 跨工作树全量为 `249 passed in 28.88s`，但没有烧录或访问 `COM3`。
 
+### 2026-07-27 21:14 - 建立性能结果持久化与输入边界合同
+
+- test 分支先证明成功和失败样本未进入 SQLite completion，旧实现得到预期 `2 failed`；随后增加异常截断、128 KiB marker、固定字段、样本数/序号/类型/差值和巨整数合同。
+- 未补强实现对新增安全合同得到预期 `7 failed, 16 passed in 2.90s`；复审还复现约 4000 位整数触发 `statistics.fmean` 的 `OverflowError`，因此增加时长与 32 位堆范围门禁。
+- 最终性能专项为 `24 passed in 3.47s`，相关定向门禁为 `65 passed in 6.64s`；test 显式加载 main 源码的全量门禁为 `256 passed in 29.70s`，main 自身全量为 `119 passed in 13.97s`。
+- 测试使用模拟 Raw REPL 和临时 SQLite，没有访问 `COM3` 或重复执行真实目标；异常前 256 字符仍是诊断数据，不等于自动脱敏。
+
 ### 2026-07-27 20:55 - 持久化 reset 有界原始输出证据
 
 - 根因是 `esp_reset` 虽然读取动作后串口字节，却只把解码后的兼容字段 `text` 返回给调用方；`logged_task` 的完成事件白名单不会保存该字段，因此调用结束后无法从 SQLite 复核原始输出。

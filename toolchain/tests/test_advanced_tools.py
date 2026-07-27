@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 
-from esp_mcp_toolchain.tools import advanced_tools
+import pytest
+
+from esp_mcp_toolchain.tools import advanced_tools, log_tools
 
 
 def _raw_result(marker: str, payload: object, prefix: str = "") -> dict:
@@ -273,6 +275,7 @@ def test_performance_profile_returns_wall_time_and_heap_statistics(monkeypatch):
             "memory_after_bytes": 990,
             "memory_delta_bytes": -10,
             "error": None,
+            "error_truncated": False,
         },
         {
             "iteration": 2,
@@ -282,6 +285,7 @@ def test_performance_profile_returns_wall_time_and_heap_statistics(monkeypatch):
             "memory_after_bytes": 970,
             "memory_delta_bytes": -30,
             "error": None,
+            "error_truncated": False,
         },
         {
             "iteration": 3,
@@ -291,6 +295,7 @@ def test_performance_profile_returns_wall_time_and_heap_statistics(monkeypatch):
             "memory_after_bytes": 980,
             "memory_delta_bytes": -20,
             "error": None,
+            "error_truncated": False,
         },
     ]
     observed: dict[str, object] = {}
@@ -326,6 +331,20 @@ def test_performance_profile_returns_wall_time_and_heap_statistics(monkeypatch):
     assert result["stdout"] == "profile output"
     assert "time.ticks_us()" in str(observed["code"])
     assert "gc.mem_free()" in str(observed["code"])
+    assert "error_truncated" in str(observed["code"])
+    assert f"[:{advanced_tools._MAX_PROFILE_ERROR_CHARS}]" in str(observed["code"])
+
+    logs = log_tools.esp_logs_get(result["run_id"], tail=10)
+    complete = next(event for event in logs["events"] if event["phase"] == "complete")
+    assert complete["payload_json"]["samples"] == samples
+    assert complete["payload_json"]["timing_us"] == result["timing_us"]
+    assert (
+        complete["payload_json"]["memory_delta_bytes"]
+        == result["memory_delta_bytes"]
+    )
+    assert complete["payload_json"]["sampling_profiler"] is False
+    assert "stdout" not in complete["payload_json"]
+    assert "code" not in complete["payload_json"]
 
 
 def test_performance_profile_rejects_ambiguous_target_and_iteration_bounds(monkeypatch):
@@ -372,6 +391,7 @@ def test_performance_profile_reports_failed_samples_without_hiding_results(monke
                     "memory_after_bytes": 1000,
                     "memory_delta_bytes": 0,
                     "error": "ValueError('bad')",
+                    "error_truncated": False,
                 }
             ],
         ),
@@ -388,6 +408,213 @@ def test_performance_profile_reports_failed_samples_without_hiding_results(monke
     assert result["error_kind"] == "performance_sample_failed"
     assert result["samples"][0]["error"] == "ValueError('bad')"
     assert result["timing_us"] is None
+
+    logs = log_tools.esp_logs_get(result["run_id"], tail=10)
+    complete = next(event for event in logs["events"] if event["phase"] == "complete")
+    assert complete["payload_json"]["samples"] == result["samples"]
+    assert complete["payload_json"]["timing_us"] is None
+    assert complete["payload_json"]["memory_delta_bytes"] is None
+    assert complete["payload_json"]["sampling_profiler"] is False
+
+
+def test_performance_profile_bounds_sample_errors_before_persisting(monkeypatch):
+    oversized_error = ("\x00" * 300) + "💥-sensitive-tail"
+    samples = [
+        {
+            "iteration": index,
+            "ok": False,
+            "duration_us": 50,
+            "memory_before_bytes": 1000,
+            "memory_after_bytes": 1000,
+            "memory_delta_bytes": 0,
+            "error": oversized_error,
+            "error_truncated": False,
+            "unexpected": "drop-me",
+        }
+        for index in range(1, 51)
+    ]
+    monkeypatch.setattr(
+        advanced_tools,
+        "execute_code",
+        lambda *_args, **_kwargs: _raw_result(
+            advanced_tools._PERFORMANCE_MARKER,
+            samples,
+        ),
+    )
+
+    result = advanced_tools.esp_performance_profile(
+        port="COM3",
+        code="raise ValueError('x')",
+        iterations=50,
+        confirm_repeated_execution=True,
+    )
+
+    assert result["ok"] is False
+    assert len(result["samples"]) == 50
+    assert all(
+        len(item["error"]) == advanced_tools._MAX_PROFILE_ERROR_CHARS
+        for item in result["samples"]
+    )
+    assert all(item["error_truncated"] is True for item in result["samples"])
+    assert all("sensitive-tail" not in item["error"] for item in result["samples"])
+    assert all("unexpected" not in item for item in result["samples"])
+
+    logs = log_tools.esp_logs_get(result["run_id"], tail=10)
+    complete = next(event for event in logs["events"] if event["phase"] == "complete")
+    serialized = json.dumps(
+        complete["payload_json"],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    assert len(serialized) <= advanced_tools._MAX_PROFILE_MARKER_BYTES
+    assert b"sensitive-tail" not in serialized
+    assert b"drop-me" not in serialized
+
+
+def test_performance_profile_rejects_unbounded_integer_fields(monkeypatch):
+    samples = [
+        {
+            "iteration": 1,
+            "ok": True,
+            "duration_us": 10**4000,
+            "memory_before_bytes": 1000,
+            "memory_after_bytes": 990,
+            "memory_delta_bytes": -10,
+            "error": None,
+            "error_truncated": False,
+        }
+    ]
+    monkeypatch.setattr(
+        advanced_tools,
+        "execute_code",
+        lambda *_args, **_kwargs: _raw_result(
+            advanced_tools._PERFORMANCE_MARKER,
+            samples,
+        ),
+    )
+
+    result = advanced_tools.esp_performance_profile(
+        port="COM3",
+        code="pass",
+        iterations=1,
+        capture_ms=1000,
+        confirm_repeated_execution=True,
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "probe_result_invalid"
+    assert "samples" not in result
+
+
+def test_performance_profile_rejects_oversized_marker_before_json_decode(monkeypatch):
+    oversized_payload = json.dumps(
+        {"secret": "oversized-marker-secret" + ("x" * advanced_tools._MAX_PROFILE_MARKER_BYTES)}
+    )
+    monkeypatch.setattr(
+        advanced_tools,
+        "execute_code",
+        lambda *_args, **_kwargs: {
+            "ok": True,
+            "stdout": advanced_tools._PERFORMANCE_MARKER + oversized_payload,
+            "stderr": "",
+            "message": "ok",
+        },
+    )
+
+    result = advanced_tools.esp_performance_profile(
+        port="COM3",
+        code="pass",
+        iterations=1,
+        confirm_repeated_execution=True,
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "probe_result_too_large"
+    assert result["structured_payload_limit_bytes"] == advanced_tools._MAX_PROFILE_MARKER_BYTES
+
+    logs = log_tools.esp_logs_get(result["run_id"], tail=10)
+    complete = next(event for event in logs["events"] if event["phase"] == "complete")
+    serialized = json.dumps(complete["payload_json"], ensure_ascii=False)
+    assert complete["payload_json"]["error_kind"] == "probe_result_too_large"
+    assert "samples" not in complete["payload_json"]
+    assert "oversized-marker-secret" not in serialized
+
+
+@pytest.mark.parametrize(
+    ("samples", "iterations"),
+    [
+        ([{"iteration": 1, "ok": True}], 1),
+        (
+            [
+                {
+                    "iteration": True,
+                    "ok": True,
+                    "duration_us": 1,
+                    "memory_before_bytes": 10,
+                    "memory_after_bytes": 9,
+                    "memory_delta_bytes": -1,
+                    "error": None,
+                    "error_truncated": False,
+                }
+            ],
+            1,
+        ),
+        (
+            [
+                {
+                    "iteration": 1,
+                    "ok": True,
+                    "duration_us": 1,
+                    "memory_before_bytes": 10,
+                    "memory_after_bytes": 9,
+                    "memory_delta_bytes": 0,
+                    "error": None,
+                    "error_truncated": False,
+                }
+            ],
+            1,
+        ),
+        (
+            [
+                {
+                    "iteration": 1,
+                    "ok": True,
+                    "duration_us": 1,
+                    "memory_before_bytes": 10,
+                    "memory_after_bytes": 9,
+                    "memory_delta_bytes": -1,
+                    "error": None,
+                    "error_truncated": False,
+                }
+            ],
+            2,
+        ),
+    ],
+)
+def test_performance_profile_rejects_invalid_sample_contract(
+    monkeypatch,
+    samples,
+    iterations,
+):
+    monkeypatch.setattr(
+        advanced_tools,
+        "execute_code",
+        lambda *_args, **_kwargs: _raw_result(
+            advanced_tools._PERFORMANCE_MARKER,
+            samples,
+        ),
+    )
+
+    result = advanced_tools.esp_performance_profile(
+        port="COM3",
+        code="pass",
+        iterations=iterations,
+        confirm_repeated_execution=True,
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "probe_result_invalid"
+    assert "samples" not in result
 
 def test_gpio_status_requires_interrupt_confirmation_before_board_access(monkeypatch):
     monkeypatch.setattr(
