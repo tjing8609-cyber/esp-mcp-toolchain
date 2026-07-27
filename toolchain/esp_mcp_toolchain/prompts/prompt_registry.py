@@ -53,10 +53,10 @@ PROMPT_DEFINITIONS = {
             goal="根据用户明确选择执行 soft 或 hard reset，并收集复位后的串口启动证据。",
             prechecks="调用 project_context_select/project_context_status 选择项目上下文、读取 hardwork 串口映射、核对当前端口；在执行前说明 soft/hard 对运行状态的影响。",
             tool_order="调用 esp_reset(mode=soft|hard)，先检查 pre_action_output_observed/pre_action_text，再检查该调用在同一串口句柄内返回的 text 和动作状态；如需观察后续输出，可另开 esp_serial_capture 或 esp_serial_monitor_start/read/stop，但必须标注为独立串口会话。",
-            success_evidence="ok=True 只证明主机侧软复位命令或硬复位脉冲流程完成；pre_action_text 记录动作前 250 ms 的有界输出，用于发现打开串口时的可能副作用。更晚出现的启动字节仍可能与本次动作存在因果歧义，因此 output_causality_confirmed=False、reset_confirmed=False；独立重新打开串口得到的日志不能反向证明原复位，没有日志时不得虚构启动成功。",
+            success_evidence="ok=True 只证明主机侧软复位命令或硬复位脉冲流程完成；pre_action_text 记录动作前 250 ms 的有界输出，用于发现打开串口时的可能副作用。复位后的有界原始字节以 reset_output_raw_base64、reset_output_sha256、reset_output_bytes、reset_output_text、reset_output_capture_completed 和解码/捕获上限状态写入项目 SQLite completion 事件，供后续按 run_id 复核；capture_completed=False 时不能把默认的 0 字节解释为一次成功的空捕获。持久化不消除因果歧义，因此 output_causality_confirmed=False、reset_confirmed=False；独立重新打开串口得到的日志不能反向证明原复位，没有日志时不得虚构启动成功。",
             safety_boundary="只执行用户指定模式；打开串口仍可能产生驱动控制线效应，因此 physical_reset_excluded=False。不得借复位进入 bootloader、烧录、擦除或 full clean；端口忙时不强制抢占。",
             failure_handling="端口消失时重新 esp_port_list；若疑似供电瞬断，只报告 USB/串口证据，不能据此证明 LED、蜂鸣器等物理状态。",
-            final_report="报告复位模式、端口、pre_action_text/字节数、reset_command_sent 或硬复位脉冲状态、reset_confirmed、output_causality_confirmed、physical_reset_excluded、动作后 text 摘要、证据边界和 run_id。",
+            final_report="报告复位模式、端口、pre_action_text/字节数、reset_command_sent 或硬复位脉冲状态、reset_output_bytes/reset_output_sha256/reset_output_raw_base64 的持久化状态、reset_output_capture_completed、解码/捕获上限、reset_confirmed、output_causality_confirmed、physical_reset_excluded、动作后 text 摘要、证据边界和 run_id。",
         ),
     },
     "serial_monitor": {

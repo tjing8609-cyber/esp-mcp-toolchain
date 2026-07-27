@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import time
 from typing import Literal
 
@@ -38,7 +40,20 @@ def _read_for(ser: object, duration_s: float, *, max_bytes: int) -> tuple[bytes,
     return bytes(buffer), len(buffer) >= max_bytes
 
 
-@logged_task(task_type="reset", selected_port_arg="port", payload_args=("mode",))
+@logged_task(
+    task_type="reset",
+    selected_port_arg="port",
+    payload_args=("mode",),
+    result_payload_keys=(
+        "reset_output_bytes",
+        "reset_output_sha256",
+        "reset_output_raw_base64",
+        "reset_output_text",
+        "reset_output_decode_error",
+        "reset_output_capture_completed",
+        "reset_output_capture_limit_reached",
+    ),
+)
 def esp_reset(port: str | None = None, mode: Literal["soft", "hard"] = "soft") -> dict:
     state = {
         "serial_opened": False,
@@ -54,6 +69,13 @@ def esp_reset(port: str | None = None, mode: Literal["soft", "hard"] = "soft") -
         "pre_action_output_observed": False,
         "pre_action_capture_limit_reached": False,
         "output_capture_limit_reached": False,
+        "reset_output_bytes": 0,
+        "reset_output_sha256": None,
+        "reset_output_raw_base64": "",
+        "reset_output_text": "",
+        "reset_output_decode_error": False,
+        "reset_output_capture_completed": False,
+        "reset_output_capture_limit_reached": False,
         "output_causality_confirmed": False,
         "cleanup_required": False,
         "cleanup_attempted": False,
@@ -187,9 +209,20 @@ def esp_reset(port: str | None = None, mode: Literal["soft", "hard"] = "soft") -
 
         failure_stage = "capture"
         output_raw, output_limit_reached = _read_for(ser, 2.0, max_bytes=65536)
+        state["reset_output_capture_completed"] = True
         state["output_capture_limit_reached"] = output_limit_reached
-        if output_raw:
-            chunks.append(output_raw.decode("utf-8", errors="replace"))
+        state["reset_output_bytes"] = len(output_raw)
+        state["reset_output_sha256"] = hashlib.sha256(output_raw).hexdigest() if output_raw else None
+        state["reset_output_raw_base64"] = base64.b64encode(output_raw).decode("ascii")
+        state["reset_output_capture_limit_reached"] = output_limit_reached
+        try:
+            output_text = output_raw.decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            output_text = output_raw.decode("utf-8", errors="replace")
+            state["reset_output_decode_error"] = True
+        state["reset_output_text"] = output_text
+        if output_text:
+            chunks.append(output_text)
     except Exception as exc:
         operation_error = exc
     finally:

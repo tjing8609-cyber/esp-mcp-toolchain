@@ -679,6 +679,14 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 修复后 main 专项为 `32 passed in 4.15s`，test 跨工作树专项为 `48 passed in 9.26s`，提交前 main 全量为 `119 passed in 17.64s`，test 加载 main 源码的全量门禁为 `243 passed in 31.50s`。
 - 以上仅是本地软件结论；新提交、GitHub CI、Marketplace 同步、cachebuster 和重启后实板相对下载复验仍待完成。
 
+### 2026-07-27 21:40 - 持久化 reset 有界原始输出证据
+
+- 根因是 `esp_reset` 虽然读取动作后串口字节，却只把解码后的兼容字段 `text` 返回给调用方；`logged_task` 的完成事件白名单不会保存该字段，因此调用结束后无法从 SQLite 复核原始输出。
+- `logged_task` 新增按工具声明的静态 `result_payload_keys` 白名单，并拒绝非 tuple 或空字符串键；没有把所有工具的 `text` 全局写入日志，避免扩大输出或敏感数据落库范围。
+- `esp_reset` 现在把最多 65,536 字节的长度、SHA-256、Base64、替换解码文本、严格 UTF-8 解码状态、捕获是否完成和是否达到上限写入当前 run 的 completion 事件。`reset_output_capture_completed=false` 明确区分捕获失败与成功捕获到 0 字节。
+- 本地定向门禁为 `58 passed in 5.71s`，main 全量为 `119 passed in 15.18s`，test 加载 main 源码的全量门禁为 `247 passed in 28.82s`。本切片只使用假串口和临时 SQLite，没有访问 `COM3`、复位、擦除或烧录板卡。
+- 剩余边界不变：持久化输出不能独立证明输出由本次复位导致，`reset_confirmed=false` 与 `output_causality_confirmed=false` 仍被保留；Monitor 持有串口时的同句柄复位取证属于后续独立切片。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

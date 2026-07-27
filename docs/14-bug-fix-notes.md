@@ -258,3 +258,55 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   范围重构；它不影响已选端口下的工作区安全边界。
 - 远程文件管理和其余 12 项实板能力必须在新版插件重载后继续验证；本次软件门禁不能替代
   真实下载落盘证据，也不能把 Raw BIN 恢复冒充为 `build_flash_monitor`。
+
+## 2026-07-27：reset 动作后输出返回成功但未写入 SQLite
+
+### 症状
+
+- `esp_reset` 能在返回值 `text` 中给出动作后的有界串口输出，但该次 run 的 SQLite
+  completion 事件只有动作、清理和确认状态，没有可复核的原始输出。
+- 调用结束后无法证明当时到底读取了哪些字节，也无法区分“成功捕获 0 字节”和“捕获阶段
+  抛错后保留默认 0 字节”。
+
+### 根因
+
+`esp_reset` 只把原始字节替换解码为通用 `text`。`logged_task` 为避免把任意工具 stdout
+或潜在敏感内容写入数据库，只持久化固定的 `_RESULT_LOG_KEYS`；`text` 不在该白名单中。
+因此工具返回和正式审计记录之间出现信息缺口。直接把 `text` 加入全局白名单会影响全部工具，
+不是一个足够窄的修复。
+
+### 修复
+
+- `logged_task` 增加静态 `result_payload_keys` 参数，只允许装饰器为当前工具声明额外完成
+  字段；参数必须是由非空字符串组成的 tuple。
+- `esp_reset` 局部声明并写入：
+  `reset_output_bytes`、`reset_output_sha256`、`reset_output_raw_base64`、
+  `reset_output_text`、`reset_output_decode_error`、
+  `reset_output_capture_completed` 和 `reset_output_capture_limit_reached`。
+- 原始输出仍限制在 65,536 字节；Base64 可无损恢复字节，SHA-256 用于一致性核对，文本只用于
+  阅读。捕获调用成功返回后才设置 `reset_output_capture_completed=true`。
+- 兼容字段 `text` 和原有确认语义不变；默认工具没有获得通用 `text` 落库权限。
+
+### 验证
+
+- 测试先行时，新增合同分别暴露 `KeyError: reset_output_bytes` 和
+  `logged_task() got an unexpected keyword argument 'result_payload_keys'`。
+- reset、SQLite 和任务书 prompt 定向门禁：`58 passed in 5.71s`。
+- main 全量门禁：`119 passed in 15.18s`。
+- test 工作树显式加载 main 源码的全量门禁：`247 passed in 28.82s`。
+- 覆盖正常 UTF-8、非法 UTF-8、原始 Base64/SHA-256 一致性、65,536 字节上限、捕获失败
+  默认状态、默认不保存 `text`、显式白名单保存和非法白名单拒绝。
+
+### 经验
+
+- 返回给调用方的数据不等于正式审计数据；需要分别验证接口结果和 SQLite completion 事件。
+- 原始字节证据应使用有界 Base64 与摘要，不能只存替换解码文本。
+- 新增日志字段应按工具最小授权，不能为了修一个工具扩大所有工具的持久化范围。
+- “0 字节”必须带捕获完成状态，否则不能判断它是有效测量还是失败后的默认值。
+
+### 剩余风险
+
+- 这些测试使用假串口和临时 SQLite，没有访问真实 `COM3`，不能作为新的板端复位证据。
+- `reset_confirmed=false` 与 `output_causality_confirmed=false` 继续保留。当前 reset 会自行
+  打开串口；活动 Monitor 已占用同一端口时，仍不能在 Monitor 的唯一句柄内完成复位和建立
+  动作前后序列边界。该能力需要后续独立设计和测试，不能由本次持久化修复代替。
