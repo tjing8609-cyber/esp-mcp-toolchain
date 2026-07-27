@@ -364,3 +364,63 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   只有后续经单独确认烧录并捕获启动日志，才能确认 2 MB/4 MB 启动警告消失。
 - single-app 分区仍只有 1 MiB，剩余物理容量没有自动分配。若未来需要 OTA 或更大 app，
   必须作为独立分区设计评审，不能把本次修复当作已经完成。
+
+## 2026-07-27：性能分析返回样本但 SQLite 无法复核
+
+### 症状
+
+- `esp_performance_profile` 返回完整 `samples`、`timing_us` 和 `memory_delta_bytes`，
+  但同一 run 的 SQLite completion 事件只有 `iterations`、`profile_kind` 等通用字段。
+- 历史 run `performance_profile_20260727_175838_8bcce968` 即使执行成功，也不能通过
+  `esp_logs_get` 恢复当时各次迭代的时长、堆变化或失败信息。
+
+### 根因
+
+`logged_task` 为控制日志范围，只持久化 `_RESULT_LOG_KEYS`。性能工具的详细字段没有在该
+通用白名单中；reset 切片虽然已经提供按工具声明 `result_payload_keys` 的能力，性能工具尚未
+使用它。因此返回合同和正式审计合同不一致。
+
+仅增加白名单仍不安全：板端 `repr(exception)` 原先没有长度上限，marker 也会直接进入
+`json.loads`；主机只检查样本是对象，没有检查字段类型、数量、序号或数值范围。这样既可能把
+任意长异常永久写入 SQLite，也允许 128 KiB 以下的巨整数进入 `statistics.fmean` 并触发
+`OverflowError`。
+
+### 修复
+
+- `esp_performance_profile` 局部声明持久化 `samples`、`timing_us`、
+  `memory_delta_bytes` 和 `sampling_profiler`。
+- 板端异常文本最多保留 256 字符，并用 `error_truncated` 明确标记；主机再次截断，防止伪造
+  或旧版结果绕过板端边界。
+- 在 `json.loads` 前按 UTF-8 字节拒绝超过 128 KiB 的 marker；主机只重建固定样本字段，
+  丢弃额外键，并核对样本数、连续序号、状态类型、时长上限、32 位堆范围和堆差值。
+- completion 事件不保存 stdout、原始 marker 或内联 code，避免把目标源码和人类输出引入
+  SQLite；没有扩大所有工具的通用白名单。
+- 任务书性能提示词明确成功/失败样本和统计值可按 run_id 复核，同时说明截断不是秘密检测，
+  目标代码不得把凭据写入异常信息。
+
+### 验证
+
+- 新增成功与失败样本 SQLite 合同时，旧实现均以 `KeyError: samples` 失败。
+- 增加异常长度、marker 上限和样本结构合同时，未补强实现得到预期
+  `7 failed, 16 passed in 2.90s`。
+- 只读复审进一步用约 4000 位 JSON 整数复现 `OverflowError`；加入时长和堆值上限后，
+  巨整数合同返回 `probe_result_invalid`。
+- 最终性能专项为 `24 passed in 3.47s`，性能、任务书 prompt 和 SQLite 定向门禁为
+  `65 passed in 6.64s`。
+- main 全量为 `119 passed in 13.97s`；test 工作树显式加载 main 源码的全量门禁为
+  `256 passed in 29.70s`。
+
+### 经验
+
+- 分析结果要能在调用结束后复核；仅把统计打印或返回给当前调用方不等于审计闭环。
+- 结构化样本应局部落库，stdout 和待执行源码不应跟随一起持久化。
+- 失败样本也属于结果证据，不能只保存成功子集的汇总。
+- 输入总大小限制不能替代字段范围验证；一个体积不大的合法 JSON 巨整数仍可能击穿后续统计。
+
+### 剩余风险
+
+- 历史 completion 事件不会被自动补写；旧 run 缺少的样本不能从现有 SQLite 凭空恢复。
+- 失败异常的前 256 字符仍可能包含用户数据；这是受限诊断片段，不是脱敏器。目标程序不得把
+  口令、令牌或其他凭据写进异常信息。
+- 本次测试没有访问板卡或重复执行用户目标。真实性能仍受 MicroPython 版本、GC 状态和目标
+  副作用影响；该工具是插桩 wall-time/heap delta，不是采样 profiler，也不能测量电流或功耗。
