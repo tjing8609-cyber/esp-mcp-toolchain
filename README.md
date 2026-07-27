@@ -752,6 +752,19 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 初始静态/SQLite 合同在旧实现上得到预期 `2 failed`；补充安全合同后为预期 `9 failed, 3 passed`；复审发现的深层 JSON 崩溃也先由单测复现再修复。最终相关定向门禁为 `74 passed in 7.30s`，main 全量为 `119 passed in 14.06s`，test 加载 main 源码的全量门禁为 `265 passed in 30.57s`。
 - 以上均为软件合同和模拟 Raw REPL 结果；没有访问 `COM3`、上传或执行板端脚本，也没有驱动 GPIO。真实 safe/只读/stateful/negative 验收须在板上恢复 MicroPython 后分别确认。
 
+### 2026-07-27 22:27 - Flash 路径安全回归合同
+
+- 旧实现定向红灯为 `8 failed, 15 passed`，证明外部绝对输出、`..` 逃逸、缺失父目录、
+  已有 final/partial、默认备份恢复和发布竞态均有未满足合同。
+- 最终合同覆盖 canonical 双根边界、reparse 拒绝、确认门优先、项目私有 backup/restore
+  staging、输出父目录替换、UUID partial 所有权、no-replace 发布、完整 recovery 镜像、
+  清理失败证据、恢复源变化和只读 staging。
+- 定向门禁为 `36 passed, 1 skipped in 2.67s`；跨工作树全量为
+  `287 passed, 1 skipped in 33.01s`。skip 是本机缺少创建目录 symlink 的权限，
+  同一 reparse 分支另有确定性用例。
+- 这些测试只使用临时文件和模拟 esptool，没有连接 COM3，也没有执行真实 Flash 备份、
+  擦除、烧录或恢复。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。
