@@ -815,9 +815,14 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   U+FFFD，`bytes_read` 也会统计替换文本的 UTF-8 长度，不能代表真实串口字节。
 - 现在文件名加入随机 UUID 后缀并以排他 `xb` 模式创建，写入后 flush + fsync；原始文件
   直接保存收到的 bytes，文本只作为可读视图，`bytes_read` 精确统计原始长度。
+- `logs/raw` 在打开串口前准备；目录不可用时不触碰串口。写入、flush、fsync 或 close
+  失败时返回 `serial_capture_persist_failed`，保留真实字节数、文本、清理事实和
+  属于本次调用的 `recovery_path`，不把未确认持久化的文件称为正式 `raw_path`；open
+  失败或碰撞耗尽不会把不存在的路径、别人的既有文件误报为 recovery。
 - 新增合同先稳定复现“15 个原始字节被报告为 19”和同秒路径相同两个红灯；修复后定向
-  `20 passed`，main 全量 `119 passed`，test 显式加载 main 全量
-  `322 passed, 1 skipped`。测试使用假串口和临时目录，没有访问 COM3。
+  `25 passed`，main 全量 `119 passed`，test 显式加载 main 全量
+  `327 passed, 1 skipped`。合同还强制 UUID 碰撞/耗尽、fsync/close 失败和读取失败；
+  测试使用假串口和临时目录，没有访问 COM3。
 - 这一小步只修复 v3-B 入库前的文件证据正确性；`raw_logs` / `errors` 原子投影、
   Monitor chunk 对账与正式查询仍按后续小提交完成。
 

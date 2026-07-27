@@ -49,7 +49,9 @@
   约束失败或晚阶段外键失败会完整回滚。v1 raw/error 也改为严格复制，避免
   `INSERT OR IGNORE` 静默丢行。
 - 固定 capture 现在保留精确串口 bytes；文件名带 UUID 后缀并以排他模式创建，写入后
-  flush + fsync。同 session 同秒重复执行不会覆盖，`bytes_read` 不再统计替换文本长度。
+  flush + fsync。同 session 同秒重复执行不会覆盖，`bytes_read` 不再统计替换文本长度；
+  raw 目录在打开串口前准备，持久化失败返回结构化阶段；只有本次确实创建的文件才可作为
+  recovery path，文件 close 失败单独标记持久化清理未完成。
 
 ## 本地验证
 
@@ -76,9 +78,10 @@
   `119 passed in 14.89s`、test 显式加载 main 全量 `320 passed, 1 skipped in 34.84s`。
 - v3-A 测试仅使用临时 SQLite；正式项目 v2 数据库没有迁移，当前安装插件没有更新，
   串口和 COM3 没有访问。
-- capture 两个新合同在旧实现上均失败；修复后错误检测文件定向 `20 passed in 3.10s`、
-  main 全量 `119 passed in 15.16s`、test 显式加载 main 全量
-  `322 passed, 1 skipped in 34.84s`。测试使用假串口和临时目录，没有访问 COM3。
+- capture 两个初始合同在旧实现上均失败；复审增加的 fsync 失败合同也先得到未捕获
+  `OSError`。最终错误检测文件定向 `25 passed in 3.57s`、main 全量
+  `119 passed in 15.21s`、test 显式加载 main 全量
+  `327 passed, 1 skipped in 35.56s`。测试使用假串口和临时目录，没有访问 COM3。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态

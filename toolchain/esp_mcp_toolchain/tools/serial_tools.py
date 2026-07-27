@@ -28,19 +28,66 @@ _SESSION_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _MONITOR_RUN_ID_PATTERN = re.compile(r"^monitor_\d{8}_\d{6}_[0-9a-f]{8}$")
 
 
+class SerialCapturePersistError(OSError):
+    def __init__(
+        self,
+        path: Path | None,
+        stage: str,
+        cause: OSError,
+        *,
+        close_error: OSError | None = None,
+    ):
+        super().__init__(f"Serial capture persistence failed during {stage}: {cause}")
+        self.path = path
+        self.stage = stage
+        self.cause = cause
+        self.close_error = close_error
+
+
 def _write_raw_capture(raw_dir: Path, session_name: str, payload: bytes) -> Path:
-    raw_dir.mkdir(parents=True, exist_ok=True)
     for _ in range(10):
         candidate = raw_dir / f"{session_name}_{now_compact()}_{uuid4().hex[:12]}.log"
         try:
-            with candidate.open("xb") as handle:
-                handle.write(payload)
-                handle.flush()
-                os.fsync(handle.fileno())
-            return candidate
+            handle = candidate.open("xb")
         except FileExistsError:
             continue
-    raise FileExistsError("Could not allocate a unique serial capture path.")
+        except OSError as exc:
+            raise SerialCapturePersistError(None, "open", exc) from exc
+
+        failure: tuple[str, OSError] | None = None
+        stage = "write"
+        try:
+            written = handle.write(payload)
+            if written != len(payload):
+                raise OSError(
+                    f"short raw log write: wrote {written} of {len(payload)} bytes"
+                )
+            stage = "flush"
+            handle.flush()
+            stage = "fsync"
+            os.fsync(handle.fileno())
+        except OSError as exc:
+            failure = (stage, exc)
+
+        close_error: OSError | None = None
+        try:
+            handle.close()
+        except OSError as exc:
+            close_error = exc
+            if failure is None:
+                failure = ("close", exc)
+
+        if failure is not None:
+            stage, cause = failure
+            raise SerialCapturePersistError(
+                candidate,
+                stage,
+                cause,
+                close_error=close_error,
+            ) from cause
+        return candidate
+    allocation_error = FileExistsError("Could not allocate a unique serial capture path.")
+    raise SerialCapturePersistError(None, "allocate", allocation_error) from allocation_error
 
 
 def _validate_session_name(session_name: str, tool: str) -> dict | None:
@@ -121,6 +168,11 @@ def _finish_monitor_start_failure(
     task_type="serial_capture",
     selected_port_arg="port",
     payload_args=("baudrate", "duration_ms", "stop_on_traceback", "session_name"),
+    result_payload_keys=(
+        "recovery_path",
+        "persistence_cleanup_completed",
+        "persistence_close_error",
+    ),
 )
 def esp_serial_capture(
     port: str | None = None,
@@ -148,6 +200,28 @@ def esp_serial_capture(
             "No serial port was provided or selected.",
             tool="esp_serial_capture",
             suggested_next_actions=["Run port-list", "Run port-select COMx"],
+        )
+
+    try:
+        raw_dir = logs_dir() / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return execution_error(
+            "serial_capture_persist_failed",
+            f"Could not prepare the serial capture log directory: {type(exc).__name__}: {exc}",
+            tool="esp_serial_capture",
+            text="",
+            bytes_read=0,
+            failure_stage="prepare_log_directory",
+            control_lines_preconfigured=False,
+            physical_reset_excluded=True,
+            cleanup_completed=True,
+            cleanup_errors=[],
+            persistence_cleanup_completed=True,
+            suggested_next_actions=[
+                "Check the active project log path and directory permissions",
+                "Resolve the filesystem error before retrying the serial action",
+            ],
         )
 
     end_at = time.monotonic() + max(duration_ms, 0) / 1000
@@ -228,8 +302,41 @@ def esp_serial_capture(
 
     raw_bytes = b"".join(chunks)
     text = raw_bytes.decode(errors="replace")
-    raw_path = _write_raw_capture(logs_dir() / "raw", session_name, raw_bytes)
     error_report = detector.report
+    try:
+        raw_path = _write_raw_capture(raw_dir, session_name, raw_bytes)
+    except SerialCapturePersistError as exc:
+        details = {
+            "text": text,
+            "bytes_read": len(raw_bytes),
+            "failure_stage": exc.stage,
+            "has_error": error_report is not None,
+            "error_report": error_report,
+            "control_lines_preconfigured": True,
+            "physical_reset_excluded": False,
+            "cleanup_completed": True,
+            "cleanup_errors": [],
+            "persistence_cleanup_completed": exc.close_error is None,
+        }
+        if exc.path is not None:
+            details["recovery_path"] = str(exc.path)
+        if exc.close_error is not None:
+            details["persistence_close_error"] = (
+                f"{type(exc.close_error).__name__}: {exc.close_error}"
+            )
+        suggested_next_actions = ["Check free space and filesystem health"]
+        if exc.path is not None:
+            suggested_next_actions.insert(
+                0,
+                "Preserve the reported recovery_path before retrying",
+            )
+        return execution_error(
+            "serial_capture_persist_failed",
+            str(exc),
+            tool="esp_serial_capture",
+            suggested_next_actions=suggested_next_actions,
+            **details,
+        )
     return {
         "ok": True,
         "port": selected_port,
