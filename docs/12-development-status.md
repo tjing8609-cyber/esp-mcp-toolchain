@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-27 23:28（Asia/Shanghai）
+更新时间：2026-07-28 00:06（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。Flash main/test 远端矩阵已通过；当前完成 SQLite v3-A 的 schema、底层仓储和可回滚迁移，尚未进入运行时写入与查询集成。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。Flash 与 SQLite v3-A 的 main/test 远端矩阵已通过；v3-B 已先完成固定 capture 的原始字节保真和不可覆盖前置修复，尚未接入 raw/error 原子写入。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡。
 
 ## 本轮已完成实现
 
@@ -48,6 +48,8 @@
 - 显式 v2→v3 迁移只在事务中重建 raw/error 两表，严格复制并核对行数和外键后才写版本；
   约束失败或晚阶段外键失败会完整回滚。v1 raw/error 也改为严格复制，避免
   `INSERT OR IGNORE` 静默丢行。
+- 固定 capture 现在保留精确串口 bytes；文件名带 UUID 后缀并以排他模式创建，写入后
+  flush + fsync。同 session 同秒重复执行不会覆盖，`bytes_read` 不再统计替换文本长度。
 
 ## 本地验证
 
@@ -74,6 +76,9 @@
   `119 passed in 14.89s`、test 显式加载 main 全量 `320 passed, 1 skipped in 34.84s`。
 - v3-A 测试仅使用临时 SQLite；正式项目 v2 数据库没有迁移，当前安装插件没有更新，
   串口和 COM3 没有访问。
+- capture 两个新合同在旧实现上均失败；修复后错误检测文件定向 `20 passed in 3.10s`、
+  main 全量 `119 passed in 15.16s`、test 显式加载 main 全量
+  `322 passed, 1 skipped in 34.84s`。测试使用假串口和临时目录，没有访问 COM3。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -93,8 +98,7 @@
 
 ## 待完成
 
-1. 提交并推送 SQLite v3-A 的 main 实现/文档和 test 合同，合并后复跑 test 自身源码全量，
-   再确认 main/test 各四个 Windows/Linux、Python 3.10/3.12 远端 job。
+1. 提交 capture 原始字节与不可覆盖修复，并确认 main/test 远端四矩阵。
 2. v3-B：把 capture、Monitor chunk 和结构化异常写入 raw/error 仓储，并为已有
    event/manifest/JSONL 增加独立、可重复的历史对账，不复用旧 JSONL marker。
 3. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，

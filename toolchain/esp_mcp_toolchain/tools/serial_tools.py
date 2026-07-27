@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 import re
+from uuid import uuid4
 
 from ..backends.pyserial_backend import (
     deactivate_and_close_serial,
@@ -24,6 +26,21 @@ from .log_tools import LogScope, finish_run, logged_task, new_run_id, start_run,
 
 _SESSION_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _MONITOR_RUN_ID_PATTERN = re.compile(r"^monitor_\d{8}_\d{6}_[0-9a-f]{8}$")
+
+
+def _write_raw_capture(raw_dir: Path, session_name: str, payload: bytes) -> Path:
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    for _ in range(10):
+        candidate = raw_dir / f"{session_name}_{now_compact()}_{uuid4().hex[:12]}.log"
+        try:
+            with candidate.open("xb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            return candidate
+        except FileExistsError:
+            continue
+    raise FileExistsError("Could not allocate a unique serial capture path.")
 
 
 def _validate_session_name(session_name: str, tool: str) -> dict | None:
@@ -133,12 +150,8 @@ def esp_serial_capture(
             suggested_next_actions=["Run port-list", "Run port-select COMx"],
         )
 
-    raw_dir = logs_dir() / "raw"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    raw_path = raw_dir / f"{session_name}_{now_compact()}.log"
-
     end_at = time.monotonic() + max(duration_ms, 0) / 1000
-    chunks: list[str] = []
+    chunks: list[bytes] = []
     detector = MicroPythonErrorDetector()
     ser = None
     operation_error: Exception | None = None
@@ -161,7 +174,7 @@ def esp_serial_capture(
             if not data:
                 continue
             text = data.decode(errors="replace")
-            chunks.append(text)
+            chunks.append(data)
             error_report = detector.feed(text)
             if (
                 stop_on_traceback
@@ -194,13 +207,14 @@ def esp_serial_capture(
             failure_stage = "cleanup"
         if cleanup_errors:
             message += f" Cleanup: {'; '.join(cleanup_errors)}"
-        captured_text = "".join(chunks)
+        captured_bytes = b"".join(chunks)
+        captured_text = captured_bytes.decode(errors="replace")
         return execution_error(
             "serial_capture_failed",
             message,
             tool="esp_serial_capture",
             text=captured_text,
-            bytes_read=len(captured_text.encode("utf-8")),
+            bytes_read=len(captured_bytes),
             control_lines_preconfigured=control_lines_preconfigured,
             physical_reset_excluded=not open_attempted,
             failure_stage=failure_stage,
@@ -212,15 +226,16 @@ def esp_serial_capture(
             ],
         )
 
-    text = "".join(chunks)
-    raw_path.write_text(text, encoding="utf-8")
+    raw_bytes = b"".join(chunks)
+    text = raw_bytes.decode(errors="replace")
+    raw_path = _write_raw_capture(logs_dir() / "raw", session_name, raw_bytes)
     error_report = detector.report
     return {
         "ok": True,
         "port": selected_port,
         "baudrate": baudrate,
         "raw_path": str(Path(raw_path)),
-        "bytes_read": len(text.encode("utf-8")),
+        "bytes_read": len(raw_bytes),
         "text": text,
         "has_error": error_report is not None,
         "error_report": error_report,
