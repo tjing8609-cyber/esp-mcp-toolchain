@@ -657,6 +657,13 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 假串口现在进入 `open()` 时设置 `open_started` 事件；测试等待该确定性事件后断言唯一会话处于 `STARTING`，启动 stop 线程后再明确等待 `STOPPING`，最后才释放 open gate。两个等待都保留 3 秒有界失败，不依赖机器速度。
 - 修复后该用例独立进程重复 `20/20` 通过，main 全量为 `104 passed in 16.67s`。本修改未访问串口，也没有改变生产 Monitor 行为；远端复跑仍待当前提交验证。
 
+### 2026-07-27 13:47 - 建立本地路径工作区边界红灯合同
+
+- MicroPython 实板验收中，`esp_file_download` 对相对 `local_path` 报告成功并写入 21 字节，但文件没有出现在已选择的项目工作区，而是落入当前已安装插件缓存目录。生产代码直接使用 `Path(...)`，因此本地上传、下载和 `esp_run_file(path_type="local")` 都受 MCP 进程当前目录影响。
+- test 分支新增 15 个路径域合同，模拟插件缓存作为当前目录，覆盖 mpremote / Raw REPL 上传下载、本地脚本执行、`..` 逃逸、工作区外绝对路径、后端不调用和下载不落盘。
+- 使用项目专属 Conda Python 3.12.13、由 test 跨工作树加载旧 `main@5985230` 运行专项，结果为预期的 `15 failed in 2.60s`；失败均对应上述路径域缺陷，证明测试不是假绿。
+- 本步骤只增加验证合同，没有修改生产实现、插件 Marketplace 或安装缓存，也没有访问 COM3。红灯 test 提交不会单独推送；下一步在 main 复用 `safe_project_path()` 修复后，将同一合同转为绿灯。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。
