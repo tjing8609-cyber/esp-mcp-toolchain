@@ -39,6 +39,23 @@
 
 ### Fixed
 
+- `esp_backup_flash` 与 `esp_restore_flash` 现在共用规范路径边界：只接受当前 workspace
+  或当前项目经校验的 `artifacts/flash`，拒绝越界路径以及 artifact/staging 中的
+  symlink/junction。备份先写项目私有 UUID staging，再以不覆盖方式发布；已有 final、
+  未知旧 `.part`、输出父目录替换和发布竞态均不会被覆盖或删除。
+- Flash 备份发布冲突或底层文件系统不支持原子 hard link 时，不再删除已经完整且通过
+  大小/SHA-256 校验的镜像，而是返回 `recovery_path`；成功发布后的临时文件清理失败
+  也保留真实成功结果和清理告警。
+- backup/restore staging 改为每次调用独占的 `run_<uuid>` 目录；清理拒绝 reparse 与
+  非普通文件。Windows Python 不实现 `os.link(..., follow_symlinks=False)` 时走已测试
+  兼容分支，hard link 完全不可用时仍返回结构化 recovery，而不是抛出未捕获异常。
+- partial、restore staging 与运行目录的清理前检查若遇到权限/I/O 错误，现在记录为
+  cleanup error 并保留文件，不再抛异常覆盖原始备份/恢复结果。
+- 备份现在先完成输出父目录、已有 final 和旧 `.part` 的拒绝检查，再创建本次运行目录；
+  无效请求不再留下空的 `backup-staging/run_*`。
+- Flash 恢复在 `confirm=True` 后把源镜像复制到每次调用独占的项目 UUID staging，核对
+  源文件身份、长度和双重 SHA-256，再把受控副本交给 esptool；未确认调用的启动日志不再记录
+  未经校验的原始绝对路径或 expected hash。
 - `esp_file_upload`、`esp_file_download` 和 `esp_run_file(path_type="local")` 的主机相对路径现在绑定活动项目 `workspace_root`，不再随 MCP 进程当前目录写入或读取插件缓存；父目录逃逸和工作区外绝对路径会在任何后端调用或文件副作用前返回 `unsafe_local_path`。
 - Monitor 的 `STARTING` 并发测试改用假串口 `open_started` 事件进行确定性同步，不再假设慢速 CI runner 必须在 1 秒内完成 SQLite 初始化、线程调度和会话注册。
 - `erase_flash` 改用统一受管子进程执行器，显式固定 `--before default_reset --after hard_reset`，超时或启动失败时保留 stdout、stderr、returncode 和进程树清理证据；`confirm=True` 高风险确认门保持不变。
@@ -59,6 +76,12 @@
 
 ### Validation
 
+- Flash 路径安全合同在旧实现上先得到预期 `8 failed, 15 passed`；第一轮修复为
+  `26 passed`，独立复审发现 reparse、恢复源 TOCTOU 和备份父目录替换缺口后继续补强。
+  最终 Flash 定向门禁为 `36 passed, 1 skipped in 2.67s`；跳过项仅因本机无 Windows 目录
+  symlink 创建权限，同一拒绝分支另有确定性测试。main 全量为 `119 passed in 15.53s`，
+  test 显式加载 main 的全量门禁为 `287 passed, 1 skipped in 33.01s`。以上均未访问
+  串口、未备份板卡、未擦除或恢复 Flash；远端矩阵仍待提交后验证。
 - 4 MiB 配置静态合同先得到预期 `2 failed`，补齐 defaults 和说明后为 `2 passed in 0.43s`；普通 ESP-IDF build run `build_20260727_210357_c45f0c14` 成功，生成烧录参数和 bootloader 头均为 4 MB / 40 MHz / DIO。main 全量为 `119 passed in 13.99s`，test 跨工作树全量为 `249 passed in 28.88s`；本步骤没有烧录或访问板卡。
 - MicroPython 回归套件初始合同先得到预期 `2 failed`，扩展输入安全合同后为预期 `9 failed, 3 passed`；复审发现的深层 JSON `RecursionError` 也先红后绿。最终相关定向门禁为 `74 passed in 7.30s`，main 全量为 `119 passed in 14.06s`，test 跨工作树全量为 `265 passed in 30.57s`。测试没有访问板卡或执行脚本。
 - 性能样本持久化新增合同先得到预期 `2 failed`；安全补强合同再得到预期 `7 failed, 16 passed`。最终性能专项为 `24 passed in 3.47s`，性能/提示词/SQLite 定向门禁为 `65 passed in 6.64s`，main 全量为 `119 passed in 13.97s`，test 跨工作树全量为 `256 passed in 29.70s`。测试使用模拟 Raw REPL 和临时 SQLite，没有执行真实程序或板端副作用。

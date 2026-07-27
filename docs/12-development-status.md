@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-27 14:04（Asia/Shanghai）
+更新时间：2026-07-27 22:27（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；P0、`erase_flash` P1 和 Monitor 竞态修复已通过既有远端门禁。用户重启后已确认安装插件 `0.1.0+codex.20260726165544` 与 48/12/12 工具面，并授权完成真实备份、擦除和 MicroPython v1.28.0 恢复。实板文件下载暴露 MCP 当前目录路径缺陷；本地源码和测试已修复，当前等待提交、双分支 CI、Marketplace 更新及重启后的下载复验。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成本地软件门禁。当前正在提交 Flash 路径安全切片；远端 CI、Marketplace 与重启后插件验收尚未完成，本轮也没有重新访问板卡。
 
 ## 本轮已完成实现
 
@@ -31,6 +31,15 @@
 - Raw REPL 只在确认严格 `OK + stdout EOT + stderr EOT + >` 帧后报告完成，并验证源码、Ctrl-C 与退出写入没有短写。
 - `erase_flash` 改为复用统一受管子进程执行器，显式固定 `--before default_reset --after hard_reset`；失败映射保留子进程输出和清理元数据，`confirm=True` 高风险门不变。
 - `esp_file_upload`、`esp_file_download` 两个后端及 `esp_run_file(path_type="local")` 统一通过 `safe_project_path()` 解析主机路径；相对路径绑定活动 workspace，越界输入在文件或后端副作用前返回 `unsafe_local_path`，成功元数据返回规范绝对路径。
+- `esp_backup_flash` / `esp_restore_flash` 共用 workspace + 当前项目 flash artifact 的规范
+  路径边界；artifact/staging reparse、外部绝对路径和 `..` 逃逸在后端前拒绝。
+- 备份统一先写当前项目 `backup-staging` 的 UUID partial；输出和 staging 目录身份在长任务后
+  复核，final 只做 create-if-absent 发布。发布冲突/不支持 hard link 时保留已验证镜像并
+  返回 `recovery_path`。
+- 恢复保持确认门优先，随后建立每次调用独占的项目 UUID staging，核对源身份、长度和
+  SHA-256；POSIX staging 收紧为只读，Windows 依赖独占运行目录与重复身份/摘要复核，
+  正常和错误路径均记录清理结果；清理前的权限/I/O 检查失败也只形成 cleanup error，
+  不覆盖原始操作结果。
 
 ## 本地验证
 
@@ -45,6 +54,11 @@
 - Monitor STARTING 测试修复：失败用例独立进程重复 `20/20` 通过；main 全量 `104 passed in 16.67s`。失败证据为 [main run 30211564537](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211564537) 的 Windows/Python 3.10 job；修复后远端矩阵待当前提交验证。
 - 相对路径合同在旧 `main@5985230` 上为预期的 `15 failed in 2.60s`；修复后 main 专项 `32 passed in 4.15s`、test 跨工作树专项 `48 passed in 9.26s`、提交前 main 全量 `119 passed in 17.64s`、test 跨工作树全量 `243 passed in 31.50s`。
 - 已安装插件直接枚举为 `48 tools / 12 resources / 12 prompts`；本次路径修复的新 Marketplace 版本尚未生成。
+- Flash 路径安全初始红灯为 `8 failed, 15 passed`；第一轮绿灯 `26 passed` 后经过独立
+  复审继续关闭 reparse、恢复源 TOCTOU、备份父目录替换、清理异常和发布失败数据丢失。
+  最终定向门禁 `36 passed, 1 skipped in 2.67s`；main 全量 `119 passed in 15.53s`；test 显式
+  加载 main 源码 `287 passed, 1 skipped in 33.01s`。skip 仅因本机没有目录 symlink
+  创建权限，同一拒绝分支另有确定性测试。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -64,7 +78,7 @@
 
 ## 待完成
 
-1. 提交 main 实现/文档和 test 合同，合并后复跑 test 全量并原子推送双分支。
+1. 提交 Flash 路径安全的 main 实现/文档和 test 合同，合并后复跑 test 自身源码全量并推送双分支。
 2. 确认 main/test 各四个 Windows/Linux、Python 3.10/3.12 远端 job。
 3. 只同步 Marketplace 源，运行发布测试、validator 与 48/12/12 枚举，再执行一次 cachebuster 更新。
 4. 用户重启后核对新版插件，并用新的项目内输出名重复相对下载。

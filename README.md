@@ -713,6 +713,20 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 初始静态/SQLite 合同在旧实现上得到预期 `2 failed`；补充安全合同后为预期 `9 failed, 3 passed`；复审发现的深层 JSON 崩溃也先由单测复现再修复。最终相关定向门禁为 `74 passed in 7.30s`，main 全量为 `119 passed in 14.06s`，test 加载 main 源码的全量门禁为 `265 passed in 30.57s`。
 - 以上均为软件合同和模拟 Raw REPL 结果；没有访问 `COM3`、上传或执行板端脚本，也没有驱动 GPIO。真实 safe/只读/stateful/negative 验收须在板上恢复 MicroPython 后分别确认。
 
+### 2026-07-27 22:27 - 收紧 Flash 备份与恢复的主机路径边界
+
+- `esp_backup_flash` / `esp_restore_flash` 只接受当前 workspace 或当前项目经校验的
+  `artifacts/flash`；artifact 与 staging 目录中的 symlink/junction 会被拒绝。
+- 备份使用项目私有 UUID staging，完成长度和 SHA-256 校验后再以“不覆盖已有 final”
+  的方式发布。发布冲突或文件系统不支持 hard link 时返回完整镜像的 `recovery_path`，
+  不把安全失败伪装成成功，也不删除唯一可恢复副本。
+- 恢复继续要求 `confirm=True`，并先把源镜像复制到每次调用独占的 UUID staging，再交给 esptool；
+  这样源文件在校验后被替换不会改变实际交给后端的镜像。
+- 最终本地软件门禁：Flash 定向 `36 passed, 1 skipped`、main 全量 `119 passed`、
+  test 显式加载 main 源码 `287 passed, 1 skipped`。跳过项是本机缺少目录 symlink
+  创建权限；同一拒绝分支有不依赖该权限的确定性测试。本步骤没有访问 COM3、备份、
+  擦除、烧录或恢复板卡，不能作为新的实板结论。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

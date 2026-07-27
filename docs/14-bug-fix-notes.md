@@ -482,3 +482,94 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - GPIO34 返回 0/1 只能证明读取有效，不能单独证明用户按键动作发生。
 - Raw REPL 会中断现有 MicroPython 程序，且 `physical_reset_excluded=false`；不能把软件模拟
   测试写成实板通过。
+
+## 2026-07-27：Flash 备份路径可越界、覆盖已有文件，默认备份又不能直接恢复
+
+### 症状
+
+- `esp_backup_flash(output_path=<绝对路径>)` 只对相对路径调用 `safe_project_path()`，
+  因而外部绝对路径绕过 workspace 边界。
+- 后端固定使用 `<final>.part`，启动时无条件删除旧 partial，完成后用 `replace()` 发布；
+  已有 final 或未知 partial 可能被覆盖/删除。
+- 默认备份位于当前项目 `artifacts/flash`，但恢复只允许 workspace，导致工具自己生成的
+  默认备份不能直接传给 `esp_restore_flash`。
+- 恢复在调用 esptool 前只校验可变源路径；校验后源文件被替换时，后端可能打开另一份内容。
+- 第一轮修复虽然加入 canonical resolver 和 no-replace hard link，独立复审仍发现：
+  artifact 根本身可被 symlink/junction 重定向、备份长任务期间输出父目录可被替换、
+  发布/清理失败会丢掉或掩盖完整镜像。
+
+### 根因
+
+路径校验、临时文件所有权和发布语义分散在工具层与后端层，没有统一回答三个问题：
+
+1. 哪两个根目录有权限保存 Flash 镜像；
+2. 长时间运行的 esptool 应写入谁拥有的临时目录；
+3. 目标在运行中出现或文件系统不支持原子发布时，完整镜像应保留还是覆盖/删除。
+
+旧实现把“绝对路径”误当成已可信，把固定 `.part` 误当成当前调用拥有，并把 `replace()`
+成功等同于安全发布。恢复侧则把重复读取原路径当成稳定快照，没有建立后端专用副本。
+
+### 修复
+
+- 新增共享 Flash resolver：相对路径绑定当前 workspace；绝对路径只允许位于 canonical
+  workspace 或当前项目 canonical `artifacts/flash`。
+- `artifacts`、`flash`、`backup-staging` 和 `restore-staging` 在创建前后都检查
+  symlink/junction/reparse 与 containment；默认目录创建异常转换为稳定工具错误。
+- backup/restore 不共享可写临时文件名；每次调用在项目 staging 下建立独立 `run_<uuid>`
+  目录。清理前拒绝 reparse 和非普通文件，Windows 不再对可疑链接执行跟随式 `chmod`。
+- staging 的创建被移到输出父目录、已有 final 和旧 `.part` 校验之后；被提前拒绝的无效
+  备份请求不会遗留空的 `backup-staging/run_*` 目录。
+- partial、restore staging 或运行目录在清理前无法完成 reparse/类型检查时，权限/I/O
+  异常会转成 cleanup error；工具保留待检查文件，不再让清理异常覆盖原始操作结果。
+- 备份不再让 esptool 直接写用户输出目录，而是写当前项目 `backup-staging` 的 UUID
+  partial。后端记录输出父目录和 staging 的设备/文件标识，任务结束后复核目录未被替换。
+- partial 必须是普通文件，并通过精确长度与两次 SHA-256/身份复核；final 使用
+  create-if-absent hard link 发布，不再使用覆盖式 `replace()`。支持该参数的平台禁用
+  symlink 跟随；Windows Python 不实现该关键字时使用经测试的兼容分支，若 hard link
+  本身不可用则结构化失败并保留 recovery。
+- 已有 final、旧固定 `.part`、运行中出现 final、输出父目录变化均不会被覆盖或删除。
+  发布冲突或底层文件系统不支持 hard link 时，完整镜像保留在项目 staging，并返回
+  `recovery_path`；成功后的 partial 清理失败保留 `ok=true` 和清理告警。
+- 恢复仍先检查 `confirm=True`。确认后把源镜像复制到每次调用独占的当前项目 UUID
+  staging，比较复制前后的源身份、长度和 SHA-256；POSIX 收紧文件模式，Windows 使用独占
+  运行目录，两者都再次校验 staging 后再交给 esptool。源路径随后变化不会改变已经固定的
+  后端输入。
+- 未确认 backup/restore 的启动 payload 不再记录未经校验的原始路径和 expected hash；
+  已确认结果仍保留规范路径、大小、摘要和清理证据。
+- 后端在发布后再次核对 final 长度和 SHA-256，并把 `bytes_read`/摘要作为成功事实返回；
+  工具层不再重新按可变 final 路径推导成功大小。
+
+### 验证
+
+- 新合同在旧实现上先得到预期 `8 failed, 15 passed`，覆盖外部绝对路径、`..` 逃逸、
+  缺失父目录、已有 final/partial、默认备份不可恢复和发布竞态覆盖。
+- 第一轮修复为 `26 passed`；独立只读复审指出上述三类高风险缺口后，没有直接提交，
+  而是继续加入 project staging、reparse 拒绝、目录身份复核、恢复 staging 和完整镜像
+  recovery 合同。
+- 最终 Flash 定向门禁：`36 passed, 1 skipped in 2.67s`。实际目录 symlink 用例因本机
+  Windows 缺少创建权限而跳过；同一 reparse 拒绝分支另有不依赖系统权限的确定性测试，
+  Linux/远端实际 symlink 验证待提交后的 CI。
+- main 全量：`119 passed in 15.53s`。
+- test 工作树显式加载 main 源码：`287 passed, 1 skipped in 33.01s`。
+- 全部测试使用临时目录和模拟 esptool，没有访问 COM3、读取板卡 Flash、擦除、烧录或恢复。
+
+### 经验
+
+- “绝对路径”不是授权；授权必须来自明确根目录及 canonical containment。
+- 固定 `.part` 不能证明文件属于当前调用。随机唯一名称、调用方私有 staging 和只删除自己
+  创建的文件缺一不可。
+- `replace()` 的原子性只表示切换动作完整，不表示“不覆盖”；安全发布必须单独实现
+  create-if-absent。
+- 高风险恢复不能把“刚校验过的可变路径”直接交给外部进程；应先建立受控 staging 快照。
+- 绿灯后仍需独立审查。第一轮 26 项测试全绿，但没有覆盖根目录 reparse、长任务目录替换和
+  hard-link 不支持，审查把这些盲区变成了第二轮合同。
+
+### 剩余风险
+
+- Python 路径 API 无法在 Windows/Linux 上用同一套代码把目录句柄直接传给 esptool。
+  当前方案通过项目私有随机 staging、POSIX 只读权限、目录身份和重复摘要把竞态窗口压到很小，
+  但不能声称能抵御拥有同一主机账户权限的恶意进程在最后一次校验与 esptool 打开之间的
+  定向替换；若威胁模型要求对抗同账户攻击者，需要后续 OS 专用句柄/沙箱设计。
+- 不支持 hard link 的文件系统会安全失败并给出 `recovery_path`，不会把备份记为成功。
+  recovery 文件不会被自动删除，需在确认内容和目标路径后由显式清理流程处理。
+- 本轮没有做真实 4 MiB 备份或恢复；软件门禁不能代替实板数据完整性和供电稳定性验收。

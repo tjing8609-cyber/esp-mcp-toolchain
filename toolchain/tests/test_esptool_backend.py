@@ -39,33 +39,30 @@ def test_read_flash_uses_managed_process_and_atomic_output(monkeypatch, tmp_path
     assert output.read_bytes() == b"data"
     assert not output.with_name("backup.bin.part").exists()
     assert observed["command"][0] == str(python_path)
-    assert observed["command"][-1].endswith("backup.bin.part")
+    partial = Path(observed["command"][-1])
+    assert partial.parent == tmp_path
+    assert partial.name.startswith("backup.bin.")
+    assert partial.name.endswith(".part")
+    assert not partial.exists()
     assert observed["working_dir"] == tmp_path
     assert observed["idf_path"] == idf_path
     assert observed["timeout_s"] == 240
 
 
-def test_read_flash_timeout_removes_partial_and_preserves_existing_target(monkeypatch, tmp_path):
+def test_read_flash_rejects_existing_target_before_command(monkeypatch, tmp_path):
     _prepare_backend(monkeypatch, tmp_path)
     output = tmp_path / "backup.bin"
     output.write_bytes(b"existing")
 
-    def fake_run(command, _working_dir, _idf_path, _timeout_s):
-        Path(command[-1]).write_bytes(b"partial")
-        return {
-            "ok": False,
-            "error_kind": "idf_command_timeout",
-            "message": "timed out",
-            "stdout": "",
-            "stderr": "",
-        }
+    def fake_run(*_args, **_kwargs):
+        raise AssertionError("command must not run over an existing target")
 
     monkeypatch.setattr(esptool_backend, "_run_idf_command", fake_run)
 
     result = esptool_backend.run_read_flash(port="COM_TEST", output_path=output, size=16)
 
     assert result["ok"] is False
-    assert result["error_kind"] == "backup_timeout"
+    assert result["error_kind"] == "backup_output_exists"
     assert output.read_bytes() == b"existing"
     assert not output.with_name("backup.bin.part").exists()
 

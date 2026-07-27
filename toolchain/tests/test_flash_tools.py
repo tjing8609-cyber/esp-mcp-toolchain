@@ -1,13 +1,32 @@
-from esp_mcp_toolchain.tools import flash_tools
 import hashlib
+from pathlib import Path
+
+from esp_mcp_toolchain.tools import flash_tools
 
 
-def test_backup_flash_calls_esptool_backend(monkeypatch, tmp_path):
-    output = tmp_path / "backup.bin"
+def test_backup_flash_calls_esptool_backend(monkeypatch, isolated_project_context):
+    output = isolated_project_context / "backup.bin"
+    observed: dict[str, Path] = {}
 
-    def fake_run_read_flash(port: str, chip: str, address: int, size: int, baud: int, output_path):
+    def fake_run_read_flash(
+        port: str,
+        chip: str,
+        address: int,
+        size: int,
+        baud: int,
+        output_path,
+        staging_dir,
+    ):
+        observed["staging_dir"] = Path(staging_dir)
         output_path.write_bytes(b"1234")
-        return {"ok": True, "stdout": "read", "stderr": "", "message": chip}
+        return {
+            "ok": True,
+            "stdout": "read",
+            "stderr": "",
+            "message": chip,
+            "bytes_read": 4,
+            "sha256": hashlib.sha256(b"1234").hexdigest(),
+        }
 
     monkeypatch.setattr(flash_tools, "run_read_flash", fake_run_read_flash)
 
@@ -24,6 +43,10 @@ def test_backup_flash_calls_esptool_backend(monkeypatch, tmp_path):
     assert result["tool_name"] == "esp_backup_flash"
     assert result["bytes_read"] == 4
     assert result["output_path"] == str(output)
+    assert observed["staging_dir"].parent.name == "backup-staging"
+    assert observed["staging_dir"].name.startswith("run_")
+    assert not observed["staging_dir"].exists()
+    assert result["staging_cleanup_completed"] is True
 
 
 def test_flash_requires_confirmation_by_default():
@@ -103,9 +126,11 @@ def test_restore_flash_confirmed_calls_esptool_backend(monkeypatch, isolated_pro
     image = isolated_project_context / "backup.bin"
     payload = b"verified-backup-image"
     image.write_bytes(payload)
+    observed: dict[str, object] = {}
 
     def fake_run_write_flash(port: str, input_path, chip: str, address: int, baud: int):
-        assert input_path == image
+        observed["input_path"] = Path(input_path)
+        observed["payload"] = observed["input_path"].read_bytes()
         return {"ok": True, "stdout": "restored", "stderr": "", "message": chip}
 
     monkeypatch.setattr(flash_tools, "run_write_flash", fake_run_write_flash)
@@ -122,3 +147,7 @@ def test_restore_flash_confirmed_calls_esptool_backend(monkeypatch, isolated_pro
     assert result["tool_name"] == "esp_restore_flash"
     assert result["bytes_written"] == len(payload)
     assert result["sha256"] == expected
+    assert observed["input_path"] != image
+    assert observed["payload"] == payload
+    assert not observed["input_path"].exists()
+    assert result["staging_cleanup_completed"] is True
