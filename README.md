@@ -803,6 +803,9 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 本阶段只操作临时 SQLite。正式项目数据库仍保持 v2，现有运行插件也仍只支持 v2；
   event/Monitor 写入、历史数据对账和 MCP 查询接入属于后续 v3-B/v3-C，不能把本阶段
   描述为日志闭环已经完成。本阶段没有访问 COM3 或执行任何板端动作。
+- `main@5ad8f3d` 合入 test 后，分支自身源码的 v3-A 合同为
+  `33 passed in 2.33s`，全量门禁为 `320 passed, 1 skipped in 34.56s`；
+  skip 仍是既有 Windows 目录 symlink 权限用例，不是 SQLite 失败。
 
 ## 协作约定
 
