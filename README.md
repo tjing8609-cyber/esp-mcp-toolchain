@@ -703,7 +703,7 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 
 - test 分支先证明成功和失败样本未进入 SQLite completion，旧实现得到预期 `2 failed`；随后增加异常截断、128 KiB marker、固定字段、样本数/序号/类型/差值和巨整数合同。
 - 未补强实现对新增安全合同得到预期 `7 failed, 16 passed in 2.90s`；复审还复现约 4000 位整数触发 `statistics.fmean` 的 `OverflowError`，因此增加时长与 32 位堆范围门禁。
-- 最终性能专项为 `24 passed in 3.47s`，相关定向门禁为 `65 passed in 6.64s`；test 显式加载 main 源码的全量门禁为 `256 passed in 29.70s`，main 自身全量为 `119 passed in 13.97s`。
+- 最终性能专项为 `24 passed in 3.47s`，相关定向门禁为 `65 passed in 6.64s`；test 显式加载 main 源码的全量门禁为 `256 passed in 29.70s`，main 自身全量为 `119 passed in 13.97s`；合并后 test 使用自身源码的标准门禁为 `256 passed in 30.09s`。
 - 测试使用模拟 Raw REPL 和临时 SQLite，没有访问 `COM3` 或重复执行真实目标；异常前 256 字符仍是诊断数据，不等于自动脱敏。
 
 ### 2026-07-27 20:55 - 持久化 reset 有界原始输出证据
@@ -722,6 +722,14 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - `esp_project_build` run `build_20260727_210357_c45f0c14` 成功；生成命令包含 `--flash_size 4MB --flash_freq 40m --flash_mode dio`，esptool 离线解析 bootloader 为 `Flash size: 4MB / 40m / DIO`，SHA-256 为 `620A1ABEDBFF62995143824B5918B91689DFBB9601E46320D1E16D4DD40CE457`。
 - 配置专项为 `2 passed in 0.43s`，main 全量为 `119 passed in 13.99s`，test 加载 main 源码的全量门禁为 `249 passed in 28.88s`。
 - 该步骤没有访问或烧录 `COM3`。当前板上固件仍是前一版 2 MB 头镜像；真实启动警告消失必须等后续单独烧录和监控验收，不能由本次构建结论替代。
+
+### 2026-07-27 21:14 - 持久化性能分析样本与汇总统计
+
+- `esp_performance_profile` 原先只在调用返回值中提供 `samples`、`timing_us` 和 `memory_delta_bytes`，SQLite completion 事件只保存 iterations/profile_kind 等通用字段，导致历史 run 无法复核样本。
+- 该工具现在复用 `logged_task` 的局部结果白名单，把最多 50 个工具生成的结构化样本、时间/堆变化汇总和 `sampling_profiler=false` 写入当前 run；通用 `stdout`、原始 marker 与内联 `code` 仍不持久化。
+- 板端异常 `repr` 最多保留 256 字符；主机在 JSON 解析前拒绝超过 128 KiB 的 marker，只接收固定样本字段，并校验样本数、连续序号、布尔/整数类型、时长上限、32 位堆范围及 after-before 差值。未知字段会被丢弃，巨整数不会进入 `statistics.fmean`。
+- 新合同覆盖成功/失败样本、超长异常、最坏控制字符、超大 marker、巨整数和畸形样本。性能专项为 `24 passed in 3.47s`，相关定向门禁为 `65 passed in 6.64s`，main 全量为 `119 passed in 13.97s`，test 加载 main 源码的全量门禁为 `256 passed in 29.70s`。
+- 本切片没有访问板卡或重复执行用户程序；历史 run 不会被反向补写。截断不是秘密检测，目标代码不得把凭据写入异常信息。该工具仍是插桩 wall-time/heap delta，不是采样 profiler，也不能推断功耗或电流。
 
 ## 协作约定
 

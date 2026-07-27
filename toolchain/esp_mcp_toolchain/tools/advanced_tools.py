@@ -20,6 +20,9 @@ _HARDWARE_MARKER = "__ESP_MCP_HARDWARE_INFO_V1__"
 _REGRESSION_MARKER = "__ESP_MCP_REGRESSION_V1__"
 _PERFORMANCE_MARKER = "__ESP_MCP_PERFORMANCE_V1__"
 _MAX_GPIO_COUNT = 32
+_MAX_PROFILE_ERROR_CHARS = 256
+_MAX_PROFILE_HEAP_BYTES = (1 << 32) - 1
+_MAX_PROFILE_MARKER_BYTES = 131_072
 _MIN_CAPTURE_MS = 100
 _MAX_CAPTURE_MS = 30_000
 
@@ -73,6 +76,7 @@ def _marked_payload(
     marker: str,
     *,
     tool: str,
+    max_payload_bytes: int | None = None,
 ) -> tuple[Any | None, str, dict[str, Any] | None]:
     stdout = str(execution.get("stdout") or "")
     stderr = str(execution.get("stderr") or "")
@@ -95,6 +99,20 @@ def _marked_payload(
         )
     human_output = stdout[:marker_position].rstrip("\r\n")
     encoded_payload = stdout[marker_position + len(marker) :].strip()
+    encoded_payload_bytes = len(encoded_payload.encode("utf-8"))
+    if (
+        max_payload_bytes is not None
+        and encoded_payload_bytes > max_payload_bytes
+    ):
+        return None, human_output, execution_error(
+            "probe_result_too_large",
+            f"Structured probe result exceeds {max_payload_bytes} UTF-8 bytes.",
+            tool=tool,
+            structured_payload_bytes=encoded_payload_bytes,
+            structured_payload_limit_bytes=max_payload_bytes,
+            stdout=human_output[-16_000:],
+            stderr=stderr[-16_000:],
+        )
     try:
         payload = json.loads(encoded_payload)
     except (TypeError, ValueError) as exc:
@@ -102,7 +120,11 @@ def _marked_payload(
             "probe_result_invalid",
             f"MicroPython returned an invalid structured result: {exc}",
             tool=tool,
-            stdout=stdout[-16_000:],
+            stdout=(
+                human_output[-16_000:]
+                if max_payload_bytes is not None
+                else stdout[-16_000:]
+            ),
             stderr=stderr[-16_000:],
         )
     return payload, human_output, None
@@ -580,10 +602,138 @@ def _summary(values: list[int]) -> dict[str, float | int] | None:
     }
 
 
+def _normalize_performance_samples(
+    payload: Any,
+    *,
+    iterations: int,
+    capture_ms: int,
+    tool: str,
+    port: str,
+) -> tuple[list[dict[str, Any]] | None, dict[str, Any] | None]:
+    if not isinstance(payload, list) or len(payload) != iterations:
+        return None, execution_error(
+            "probe_result_invalid",
+            "Performance probe sample count must equal iterations.",
+            tool=tool,
+            port=port,
+        )
+
+    samples: list[dict[str, Any]] = []
+    for expected_iteration, item in enumerate(payload, start=1):
+        if not isinstance(item, dict):
+            return None, execution_error(
+                "probe_result_invalid",
+                "Every performance sample must be an object.",
+                tool=tool,
+                port=port,
+                invalid_sample_index=expected_iteration,
+            )
+
+        iteration = item.get("iteration")
+        ok = item.get("ok")
+        duration_us = item.get("duration_us")
+        memory_before_bytes = item.get("memory_before_bytes")
+        memory_after_bytes = item.get("memory_after_bytes")
+        memory_delta_bytes = item.get("memory_delta_bytes")
+        error = item.get("error")
+        error_truncated = item.get("error_truncated")
+
+        integer_values = (
+            iteration,
+            duration_us,
+            memory_before_bytes,
+            memory_after_bytes,
+            memory_delta_bytes,
+        )
+        if any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in integer_values
+        ):
+            return None, execution_error(
+                "probe_result_invalid",
+                "Performance sample counters, timing, and memory fields must be integers.",
+                tool=tool,
+                port=port,
+                invalid_sample_index=expected_iteration,
+            )
+        if iteration != expected_iteration:
+            return None, execution_error(
+                "probe_result_invalid",
+                "Performance sample iteration numbers must be consecutive.",
+                tool=tool,
+                port=port,
+                invalid_sample_index=expected_iteration,
+            )
+        if not isinstance(ok, bool) or not isinstance(error_truncated, bool):
+            return None, execution_error(
+                "probe_result_invalid",
+                "Performance sample ok and error_truncated fields must be booleans.",
+                tool=tool,
+                port=port,
+                invalid_sample_index=expected_iteration,
+            )
+        if (
+            not 0 <= duration_us <= capture_ms * 1000
+            or not 0 <= memory_before_bytes <= _MAX_PROFILE_HEAP_BYTES
+            or not 0 <= memory_after_bytes <= _MAX_PROFILE_HEAP_BYTES
+        ):
+            return None, execution_error(
+                "probe_result_invalid",
+                "Performance timing or heap byte count is outside the accepted range.",
+                tool=tool,
+                port=port,
+                invalid_sample_index=expected_iteration,
+            )
+        if memory_delta_bytes != memory_after_bytes - memory_before_bytes:
+            return None, execution_error(
+                "probe_result_invalid",
+                "Performance sample memory delta does not match after minus before.",
+                tool=tool,
+                port=port,
+                invalid_sample_index=expected_iteration,
+            )
+        if (ok and (error is not None or error_truncated)) or (
+            not ok and not isinstance(error, str)
+        ):
+            return None, execution_error(
+                "probe_result_invalid",
+                "Performance sample error fields do not match the sample status.",
+                tool=tool,
+                port=port,
+                invalid_sample_index=expected_iteration,
+            )
+
+        normalized_error = error
+        normalized_error_truncated = error_truncated
+        if isinstance(error, str) and len(error) > _MAX_PROFILE_ERROR_CHARS:
+            normalized_error = error[:_MAX_PROFILE_ERROR_CHARS]
+            normalized_error_truncated = True
+
+        samples.append(
+            {
+                "iteration": iteration,
+                "ok": ok,
+                "duration_us": duration_us,
+                "memory_before_bytes": memory_before_bytes,
+                "memory_after_bytes": memory_after_bytes,
+                "memory_delta_bytes": memory_delta_bytes,
+                "error": normalized_error,
+                "error_truncated": normalized_error_truncated,
+            }
+        )
+    return samples, None
+
+
 @logged_task(
     task_type="performance_profile",
     selected_port_arg="port",
     payload_args=("backend", "remote_path", "iterations", "capture_ms", "confirm_repeated_execution"),
+    result_payload_keys=(
+        "samples",
+        "timing_us",
+        "memory_delta_bytes",
+        "sampling_profiler",
+    ),
 )
 def esp_performance_profile(
     port: str | None = None,
@@ -660,15 +810,19 @@ def esp_performance_profile(
         "    _before = int(gc.mem_free())\n"
         "    _ok = True\n"
         "    _error = None\n"
+        "    _error_truncated = False\n"
         "    _start = time.ticks_us()\n"
         "    try:\n"
         "        exec(_source, {'__name__': '__main__'})\n"
         "    except Exception as _exc:\n"
         "        _ok = False\n"
         "        _error = repr(_exc)\n"
+        f"        if len(_error) > {_MAX_PROFILE_ERROR_CHARS}:\n"
+        f"            _error = _error[:{_MAX_PROFILE_ERROR_CHARS}]\n"
+        "            _error_truncated = True\n"
         "    _duration = time.ticks_diff(time.ticks_us(), _start)\n"
         "    _after = int(gc.mem_free())\n"
-        "    _samples.append({'iteration': _index + 1, 'ok': _ok, 'duration_us': _duration, 'memory_before_bytes': _before, 'memory_after_bytes': _after, 'memory_delta_bytes': _after - _before, 'error': _error})\n"
+        "    _samples.append({'iteration': _index + 1, 'ok': _ok, 'duration_us': _duration, 'memory_before_bytes': _before, 'memory_after_bytes': _after, 'memory_delta_bytes': _after - _before, 'error': _error, 'error_truncated': _error_truncated})\n"
         f"print({_PERFORMANCE_MARKER!r} + ujson.dumps(_samples))\n"
     )
     execution = execute_code(selected_port, probe_code, timeout_ms=capture_ms)
@@ -676,19 +830,21 @@ def esp_performance_profile(
         execution,
         _PERFORMANCE_MARKER,
         tool=tool,
+        max_payload_bytes=_MAX_PROFILE_MARKER_BYTES,
     )
     if probe_error:
         probe_error.update({"port": selected_port, "backend": backend})
         return probe_error
-    if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
-        return execution_error(
-            "probe_result_invalid",
-            "Performance probe must return a list of sample objects.",
-            tool=tool,
-            port=selected_port,
-        )
-
-    samples = payload
+    samples, normalization_error = _normalize_performance_samples(
+        payload,
+        iterations=iterations,
+        capture_ms=capture_ms,
+        tool=tool,
+        port=selected_port,
+    )
+    if normalization_error:
+        return normalization_error
+    assert samples is not None
     successful = [item for item in samples if item.get("ok") is True]
     durations = [
         int(item["duration_us"])
