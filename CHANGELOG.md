@@ -21,6 +21,7 @@
 ### Changed
 
 - ESP-IDF key/LED/buzzer 示例新增受版本控制的 4 MiB、DIO、40 MHz `sdkconfig.defaults`，继续使用 single-app 分区；现有本地 `sdkconfig` 的应用边界已在示例 README 明确说明。
+- 新增受版本控制的 MicroPython 分层回归 manifest 与 safe/runtime、GPIO34 只读、GPIO32 LED 状态、独立 negative 四个脚本；`esp_regression_test` 现在把不含 stdout 的逐项摘要写入 SQLite，并保守报告 Raw REPL 复位边界。
 - `esp_performance_profile` 的最多 50 个工具生成样本、时间/堆变化汇总和 `sampling_profiler` 状态现在写入 SQLite completion 事件；异常文本限制为 256 字符，结构化 marker 限制为 128 KiB，主机在统计前验证并规范化固定字段；stdout、原始 marker 和内联 code 仍不落库。
 - `esp_reset` 的有界动作后原始输出现在以长度、SHA-256、Base64、文本、解码状态、捕获完成状态和上限状态写入 SQLite completion 事件；该持久化仍不表示复位或输出因果关系已被独立确认。
 - `logged_task` 支持工具局部声明额外结果字段白名单，并校验声明类型；默认工具不会因此持久化通用 `text`。
@@ -59,6 +60,7 @@
 ### Validation
 
 - 4 MiB 配置静态合同先得到预期 `2 failed`，补齐 defaults 和说明后为 `2 passed in 0.43s`；普通 ESP-IDF build run `build_20260727_210357_c45f0c14` 成功，生成烧录参数和 bootloader 头均为 4 MB / 40 MHz / DIO。main 全量为 `119 passed in 13.99s`，test 跨工作树全量为 `249 passed in 28.88s`；本步骤没有烧录或访问板卡。
+- MicroPython 回归套件初始合同先得到预期 `2 failed`，扩展输入安全合同后为预期 `9 failed, 3 passed`；复审发现的深层 JSON `RecursionError` 也先红后绿。最终相关定向门禁为 `74 passed in 7.30s`，main 全量为 `119 passed in 14.06s`，test 跨工作树全量为 `265 passed in 30.57s`。测试没有访问板卡或执行脚本。
 - 性能样本持久化新增合同先得到预期 `2 failed`；安全补强合同再得到预期 `7 failed, 16 passed`。最终性能专项为 `24 passed in 3.47s`，性能/提示词/SQLite 定向门禁为 `65 passed in 6.64s`，main 全量为 `119 passed in 13.97s`，test 跨工作树全量为 `256 passed in 29.70s`。测试使用模拟 Raw REPL 和临时 SQLite，没有执行真实程序或板端副作用。
 - reset / SQLite / 任务书 prompt 定向门禁为 `58 passed in 5.71s`；main 全量为 `119 passed in 15.18s`，test 加载 main 源码的本地全量门禁为 `247 passed in 28.82s`。本切片没有访问真实串口或板卡，远端矩阵与 Marketplace 更新尚待后续步骤。
 - 相对路径修复先在旧 `main@5985230` 上得到确定性 `15 failed in 2.60s`；修复后 main 专项为 `32 passed in 4.15s`、test 跨工作树专项为 `48 passed in 9.26s`、提交前 main 全量为 `119 passed in 17.64s`、test 跨工作树全量为 `243 passed in 31.50s`。这些是本地软件结果，远端矩阵与新版 Marketplace 尚待完成。

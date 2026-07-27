@@ -20,6 +20,8 @@ _HARDWARE_MARKER = "__ESP_MCP_HARDWARE_INFO_V1__"
 _REGRESSION_MARKER = "__ESP_MCP_REGRESSION_V1__"
 _PERFORMANCE_MARKER = "__ESP_MCP_PERFORMANCE_V1__"
 _MAX_GPIO_COUNT = 32
+_MAX_REGRESSION_ERROR_CHARS = 256
+_MAX_REGRESSION_MARKER_BYTES = 16_384
 _MAX_PROFILE_ERROR_CHARS = 256
 _MAX_PROFILE_HEAP_BYTES = (1 << 32) - 1
 _MAX_PROFILE_MARKER_BYTES = 131_072
@@ -115,7 +117,7 @@ def _marked_payload(
         )
     try:
         payload = json.loads(encoded_payload)
-    except (TypeError, ValueError) as exc:
+    except (RecursionError, TypeError, ValueError) as exc:
         return None, human_output, execution_error(
             "probe_result_invalid",
             f"MicroPython returned an invalid structured result: {exc}",
@@ -461,10 +463,66 @@ def _validate_remote_paths(paths: list[str] | None, *, tool: str) -> tuple[list[
     return normalized, None
 
 
+def _normalize_regression_payload(
+    payload: Any,
+    *,
+    capture_ms: int,
+    tool: str,
+    port: str,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if not isinstance(payload, dict):
+        return None, execution_error(
+            "probe_result_invalid",
+            "Regression probe must return an object.",
+            tool=tool,
+            port=port,
+        )
+
+    ok = payload.get("ok")
+    duration_us = payload.get("duration_us")
+    error = payload.get("error")
+    if not isinstance(ok, bool):
+        return None, execution_error(
+            "probe_result_invalid",
+            "Regression probe ok must be a boolean.",
+            tool=tool,
+            port=port,
+        )
+    if (
+        isinstance(duration_us, bool)
+        or not isinstance(duration_us, int)
+        or not 0 <= duration_us <= capture_ms * 1000
+    ):
+        return None, execution_error(
+            "probe_result_invalid",
+            "Regression probe duration_us is outside the accepted range.",
+            tool=tool,
+            port=port,
+        )
+    if (ok and error is not None) or (not ok and not isinstance(error, str)):
+        return None, execution_error(
+            "probe_result_invalid",
+            "Regression probe error does not match the test status.",
+            tool=tool,
+            port=port,
+        )
+
+    normalized_error = error
+    if isinstance(error, str) and len(error) > _MAX_REGRESSION_ERROR_CHARS:
+        normalized_error = error[:_MAX_REGRESSION_ERROR_CHARS]
+    return {
+        "ok": ok,
+        "duration_us": duration_us,
+        "error": normalized_error,
+        "error_kind": None if ok else "test_failed",
+    }, None
+
+
 @logged_task(
     task_type="regression_test",
     selected_port_arg="port",
     payload_args=("backend", "tests", "fail_fast", "capture_ms", "confirm_execution"),
+    result_payload_keys=("result_summaries",),
 )
 def esp_regression_test(
     port: str | None = None,
@@ -514,6 +572,8 @@ def esp_regression_test(
             "except Exception as _exc:\n"
             "    _ok = False\n"
             "    _error = repr(_exc)\n"
+            f"    if len(_error) > {_MAX_REGRESSION_ERROR_CHARS}:\n"
+            f"        _error = _error[:{_MAX_REGRESSION_ERROR_CHARS}]\n"
             "_duration = time.ticks_diff(time.ticks_us(), _start)\n"
             f"print({_REGRESSION_MARKER!r} + ujson.dumps({{'ok': _ok, 'duration_us': _duration, 'error': _error}}))\n"
         )
@@ -522,6 +582,7 @@ def esp_regression_test(
             execution,
             _REGRESSION_MARKER,
             tool=tool,
+            max_payload_bytes=_MAX_REGRESSION_MARKER_BYTES,
         )
         if probe_error:
             item = {
@@ -532,28 +593,51 @@ def esp_regression_test(
                 "error": probe_error.get("message"),
                 "error_kind": probe_error.get("error_kind"),
             }
-        elif not isinstance(payload, dict):
-            item = {
-                "path": remote_path,
-                "ok": False,
-                "duration_us": None,
-                "stdout": human_output,
-                "error": "Regression probe returned a non-object payload.",
-                "error_kind": "probe_result_invalid",
-            }
         else:
-            item = {
-                "path": remote_path,
-                "ok": payload.get("ok") is True,
-                "duration_us": payload.get("duration_us"),
-                "stdout": human_output,
-            }
-            if payload.get("error"):
-                item["error"] = str(payload["error"])
+            normalized_payload, payload_error = _normalize_regression_payload(
+                payload,
+                capture_ms=capture_ms,
+                tool=tool,
+                port=selected_port,
+            )
+            if payload_error:
+                item = {
+                    "path": remote_path,
+                    "ok": False,
+                    "duration_us": None,
+                    "stdout": human_output,
+                    "error": payload_error.get("message"),
+                    "error_kind": payload_error.get("error_kind"),
+                }
+            else:
+                assert normalized_payload is not None
+                item = {
+                    "path": remote_path,
+                    "ok": normalized_payload["ok"],
+                    "duration_us": normalized_payload["duration_us"],
+                    "stdout": human_output,
+                    "error_kind": normalized_payload["error_kind"],
+                }
+                if normalized_payload["error"] is not None:
+                    item["error"] = normalized_payload["error"]
         results.append(item)
         if fail_fast and item["ok"] is False:
             break
 
+    result_summaries = [
+        {
+            "path": item["path"],
+            "ok": item["ok"] is True,
+            "duration_us": (
+                item["duration_us"]
+                if isinstance(item.get("duration_us"), int)
+                and not isinstance(item.get("duration_us"), bool)
+                else None
+            ),
+            "error_kind": item.get("error_kind"),
+        }
+        for item in results
+    ]
     passed = sum(1 for item in results if item["ok"] is True)
     failed = sum(1 for item in results if item["ok"] is False)
     skipped = len(normalized_tests or []) - len(results)
@@ -572,7 +656,10 @@ def esp_regression_test(
         "backend": backend,
         "execution_confirmed": True,
         "program_interrupted": True,
+        "reset_command_sent": False,
+        "physical_reset_excluded": False,
         "results": results,
+        "result_summaries": result_summaries,
         "passed": passed,
         "failed": failed,
         "skipped": skipped,

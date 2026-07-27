@@ -147,12 +147,12 @@ PROMPT_DEFINITIONS = {
         "description": "运行显式的板上 MicroPython 回归文件集合。",
         "text": _workflow(
             goal="在板上依次运行用户指定的远程 MicroPython 测试文件，汇总通过、失败和跳过。",
-            prechecks="调用 project_context_select/project_context_status 选择项目上下文、核对 MicroPython 与端口；先用 esp_file_list/esp_file_read 确认测试文件存在且内容受信任，并让用户确认将执行的完整路径列表。",
-            tool_order="必要时上传测试文件 → 用户明确确认后调用 esp_regression_test(tests=[...], fail_fast=..., confirm_execution=True) → esp_error_parse_log/esp_logs_get 查看失败证据。",
-            success_evidence="每个结果包含 path、ok、duration_us、stdout；failed=0 且 skipped=0 才算整组通过。",
-            safety_boundary="只运行用户明确确认的显式路径，最多 32 项；脚本可能驱动硬件或写文件。未确认时 confirm_execution 必须保持 False；不得自动发现未知脚本，不烧录、不删除、不复位。",
-            failure_handling="失败时保留第一处 error/stdout，修复或重传后重跑；端口断开时停止，不把未运行项算通过。",
-            final_report="报告测试列表、passed/failed/skipped、时长、首个失败、run_id 和软件/实板证据边界。",
+            prechecks="调用 project_context_select/project_context_status 选择项目上下文、核对 MicroPython 与端口；读取受版本控制的 regression/manifest.json 作为选择清单，default_profile=safe。先审查所选本地脚本，再用 esp_file_list/esp_file_read 核对精确 remote_path 的存在与内容；manifest 不证明已上传。",
+            tool_order="必要时逐个上传所选脚本 → 展示最终远程路径、档位和副作用 → 用户明确确认后调用 esp_regression_test(tests=[...], fail_fast=..., confirm_execution=True) → esp_error_parse_log/esp_logs_get 查看失败证据和 SQLite completion 的 result_summaries。",
+            success_evidence="即时 results 的每项包含 path、ok、duration_us、stdout；SQLite completion 只保存 stdout-free result_summaries=[path,ok,duration_us,error_kind]。failed=0 且 skipped=0 才算整组通过。",
+            safety_boundary="默认 safe 只做运行时烟测；hardware_readonly、stateful 和 negative_contract 必须显式选择，negative 单独运行。整套受审样例排除 GPIO25、蜂鸣器和 PWM。只运行用户确认的显式路径，最多 32 项，不自动发现未知脚本。未确认时 confirm_execution 必须保持 False；不烧录、不删除、不发送复位命令。reset_command_sent=False 只说明工具未显式复位，Raw REPL 串口会话仍必须报告 physical_reset_excluded=False。",
+            failure_handling="失败时从即时 results 查看受限 error/stdout，修复或重传后重跑；端口断开时停止，不把未运行项算通过。negative_contract 的预期工具结果是受控失败，不能混入 all_positive。",
+            final_report="报告 profile、精确测试列表、passed/failed/skipped、时长、result_summaries、首个失败、run_id、reset_command_sent=False、physical_reset_excluded=False 和软件/实板证据边界。",
         ),
     },
     "performance_analysis": {
