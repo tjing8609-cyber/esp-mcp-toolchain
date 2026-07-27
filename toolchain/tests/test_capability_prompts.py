@@ -90,6 +90,12 @@ def test_high_risk_prompts_keep_confirmation_and_evidence_boundaries():
     assert "allow_program_interrupt=True" in gpio
     assert "allow_program_interrupt=True" in hardware
     assert "confirm_execution=True" in regression
+    assert "default_profile=safe" in regression
+    assert "result_summaries" in regression
+    assert "SQLite completion" in regression
+    assert "physical_reset_excluded=False" in regression
+    assert "不自动发现" in regression
+    assert "GPIO25" in regression and "蜂鸣器" in regression and "PWM" in regression
     assert "confirm_repeated_execution=True" in performance
     assert "sampling_profiler=False" in performance
     assert "SQLite completion" in performance

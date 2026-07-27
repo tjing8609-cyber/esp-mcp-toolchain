@@ -731,6 +731,18 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 新合同覆盖成功/失败样本、超长异常、最坏控制字符、超大 marker、巨整数和畸形样本。性能专项为 `24 passed in 3.47s`，相关定向门禁为 `65 passed in 6.64s`，main 全量为 `119 passed in 13.97s`，test 加载 main 源码的全量门禁为 `256 passed in 29.70s`。
 - 本切片没有访问板卡或重复执行用户程序；历史 run 不会被反向补写。截断不是秘密检测，目标代码不得把凭据写入异常信息。该工具仍是插桩 wall-time/heap delta，不是采样 profiler，也不能推断功耗或电流。
 
+### 2026-07-27 21:35 - 建立 MicroPython 自动化回归套件红灯合同
+
+- 根因是 `examples/micropython_project` 仍只有占位 README，没有受版本控制的回归 manifest 或板端脚本；`esp_regression_test` 的完整 `results` 只在即时响应中存在，SQLite completion 也没有不含 stdout 的逐项摘要，响应还缺少保守的复位边界字段。
+- test 分支新增静态合同，要求 main 跟踪 `manifest.json` 及 safe、hardware_readonly、stateful、negative 四个脚本。manifest 只是受审选择源：默认 profile 只能是 safe，hardware_readonly/stateful 必须显式选择，negative 必须独立且不得混入 all_positive；没有要求工具解析 manifest、自动发现板端文件或猜测上传状态。
+- AST 门禁要求 safe 不导入 machine/网络/文件模块且不执行文件写入，GPIO34 脚本只能无模式变更地读取，GPIO32 状态脚本必须在 `finally` 中回到 LED-off；所有脚本禁止 GPIO25、buzzer 和 PWM。现有 synthetic 回归路径同步从 `test_buzzer.py` 改名为 `test_key_read.py`。
+- SQLite 合同只允许额外持久化 `result_summaries=[path, ok, duration_us, error_kind]`，禁止把逐项 stdout 或完整 `results` 落库；响应必须明确 `reset_command_sent=false`、`physical_reset_excluded=false`，不能把 Raw REPL 串口会话描述为已排除物理复位。
+- 使用项目专属 Conda Python 3.12.13、由 test 加载 `main@5245788` 运行两个新合同，最终得到预期 `2 failed, 24 deselected in 0.38s`：一个失败完整列出缺失的 manifest 和四个脚本，另一个因响应缺少 `result_summaries` 返回 `KeyError`。后续修复应只新增受审静态资产和 stdout-free 摘要，不扩展公开 MCP API。
+- 随后补充异常截断、16 KiB marker 预解析上限、布尔伪装整数、超时长和错误状态组合合同，旧实现得到预期 `9 failed, 3 passed, 20 deselected in 1.43s`。
+- 只读复审进一步用低于 16 KiB 的 5000 层 JSON 数组复现未捕获 `RecursionError`；新增单测先失败，修复后为 `1 passed in 0.91s`，错误被转换为 `probe_result_invalid` 且原始 marker 不落库。
+- 最终回归/prompt/SQLite 定向门禁为 `74 passed in 7.30s`；main 全量为 `119 passed in 14.06s`，test 加载 main 源码的全量门禁为 `265 passed in 30.57s`。
+- 本切片完成 TDD 红灯和软件修复验证，但没有访问 `COM3`、上传板端文件、执行回归脚本、烧录、复位或驱动 GPIO。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

@@ -205,7 +205,7 @@ def test_regression_test_runs_explicit_remote_files_and_aggregates(monkeypatch):
 
     result = advanced_tools.esp_regression_test(
         port="COM3",
-        tests=["/tests/test_led.py", "/tests/test_buzzer.py"],
+        tests=["/tests/test_led.py", "/tests/test_key_read.py"],
         capture_ms=2500,
         confirm_execution=True,
     )
@@ -220,7 +220,208 @@ def test_regression_test_runs_explicit_remote_files_and_aggregates(monkeypatch):
         "second output",
     ]
     assert "/tests/test_led.py" in observed_code[0]
-    assert "/tests/test_buzzer.py" in observed_code[1]
+    assert "/tests/test_key_read.py" in observed_code[1]
+    assert f"[:{advanced_tools._MAX_REGRESSION_ERROR_CHARS}]" in observed_code[0]
+
+
+def test_regression_persists_stdout_free_summaries_and_conservative_reset_boundary(
+    monkeypatch,
+):
+    responses = iter(
+        [
+            _raw_result(
+                advanced_tools._REGRESSION_MARKER,
+                {"ok": True, "duration_us": 110, "error": None},
+                prefix="safe output that must not enter SQLite\n",
+            ),
+            _raw_result(
+                advanced_tools._REGRESSION_MARKER,
+                {
+                    "ok": False,
+                    "duration_us": 70,
+                    "error": "AssertionError('intentional regression failure')",
+                },
+                prefix="negative output that must not enter SQLite\n",
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        advanced_tools,
+        "execute_code",
+        lambda *_args, **_kwargs: next(responses),
+    )
+
+    result = advanced_tools.esp_regression_test(
+        port="COM3",
+        tests=[
+            "/esp_mcp_reg_safe_runtime_smoke.py",
+            "/esp_mcp_reg_negative_intentional_failure.py",
+        ],
+        fail_fast=False,
+        confirm_execution=True,
+    )
+
+    assert result["result_summaries"] == [
+        {
+            "path": "/esp_mcp_reg_safe_runtime_smoke.py",
+            "ok": True,
+            "duration_us": 110,
+            "error_kind": None,
+        },
+        {
+            "path": "/esp_mcp_reg_negative_intentional_failure.py",
+            "ok": False,
+            "duration_us": 70,
+            "error_kind": "test_failed",
+        },
+    ]
+    assert result["program_interrupted"] is True
+    assert result["reset_command_sent"] is False
+    assert result["physical_reset_excluded"] is False
+
+    logs = log_tools.esp_logs_get(result["run_id"], tail=10)
+    complete = next(event for event in logs["events"] if event["phase"] == "complete")
+    persisted = complete["payload_json"]
+    assert persisted["result_summaries"] == result["result_summaries"]
+    assert "results" not in persisted
+    assert "stdout" not in persisted
+    assert all(
+        set(summary) == {"path", "ok", "duration_us", "error_kind"}
+        for summary in persisted["result_summaries"]
+    )
+
+
+def test_regression_bounds_failure_text_before_returning(monkeypatch):
+    oversized_error = "AssertionError('" + ("x" * 1000) + "-sensitive-tail')"
+    monkeypatch.setattr(
+        advanced_tools,
+        "execute_code",
+        lambda *_args, **_kwargs: _raw_result(
+            advanced_tools._REGRESSION_MARKER,
+            {"ok": False, "duration_us": 70, "error": oversized_error},
+        ),
+    )
+
+    result = advanced_tools.esp_regression_test(
+        port="COM3",
+        tests=["/esp_mcp_reg_negative_intentional_failure.py"],
+        confirm_execution=True,
+    )
+
+    assert result["ok"] is False
+    assert len(result["results"][0]["error"]) == advanced_tools._MAX_REGRESSION_ERROR_CHARS
+    assert "sensitive-tail" not in result["results"][0]["error"]
+    assert result["result_summaries"][0]["error_kind"] == "test_failed"
+
+    logs = log_tools.esp_logs_get(result["run_id"], tail=10)
+    complete = next(event for event in logs["events"] if event["phase"] == "complete")
+    serialized = json.dumps(complete["payload_json"], ensure_ascii=False)
+    assert "sensitive-tail" not in serialized
+    assert oversized_error not in serialized
+
+
+def test_regression_rejects_oversized_marker_before_json_decode(monkeypatch):
+    oversized_payload = json.dumps(
+        {
+            "ok": False,
+            "duration_us": 1,
+            "error": "oversized-regression-secret"
+            + ("x" * advanced_tools._MAX_REGRESSION_MARKER_BYTES),
+        }
+    )
+    monkeypatch.setattr(
+        advanced_tools,
+        "execute_code",
+        lambda *_args, **_kwargs: {
+            "ok": True,
+            "stdout": advanced_tools._REGRESSION_MARKER + oversized_payload,
+            "stderr": "",
+            "message": "ok",
+        },
+    )
+
+    result = advanced_tools.esp_regression_test(
+        port="COM3",
+        tests=["/esp_mcp_reg_safe_runtime_smoke.py"],
+        confirm_execution=True,
+    )
+
+    assert result["ok"] is False
+    assert result["result_summaries"][0]["error_kind"] == "probe_result_too_large"
+
+    logs = log_tools.esp_logs_get(result["run_id"], tail=10)
+    complete = next(event for event in logs["events"] if event["phase"] == "complete")
+    serialized = json.dumps(complete["payload_json"], ensure_ascii=False)
+    assert "oversized-regression-secret" not in serialized
+    assert "results" not in complete["payload_json"]
+
+
+def test_regression_rejects_deeply_nested_marker_without_escaping_tool(monkeypatch):
+    deeply_nested_payload = ("[" * 5000) + "0" + ("]" * 5000)
+    assert len(deeply_nested_payload.encode("utf-8")) < advanced_tools._MAX_REGRESSION_MARKER_BYTES
+    monkeypatch.setattr(
+        advanced_tools,
+        "execute_code",
+        lambda *_args, **_kwargs: {
+            "ok": True,
+            "stdout": advanced_tools._REGRESSION_MARKER + deeply_nested_payload,
+            "stderr": "",
+            "message": "ok",
+        },
+    )
+
+    result = advanced_tools.esp_regression_test(
+        port="COM3",
+        tests=["/esp_mcp_reg_safe_runtime_smoke.py"],
+        confirm_execution=True,
+    )
+
+    assert result["ok"] is False
+    assert result["result_summaries"][0]["error_kind"] == "probe_result_invalid"
+
+    logs = log_tools.esp_logs_get(result["run_id"], tail=10)
+    complete = next(event for event in logs["events"] if event["phase"] == "complete")
+    serialized = json.dumps(complete["payload_json"], ensure_ascii=False)
+    assert "results" not in complete["payload_json"]
+    assert "stdout" not in complete["payload_json"]
+    assert deeply_nested_payload not in serialized
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"ok": "yes", "duration_us": 1, "error": None},
+        {"ok": True, "duration_us": True, "error": None},
+        {"ok": True, "duration_us": 1_000_001, "error": None},
+        {"ok": False, "duration_us": 1, "error": None},
+    ],
+)
+def test_regression_rejects_invalid_probe_contract(monkeypatch, payload):
+    monkeypatch.setattr(
+        advanced_tools,
+        "execute_code",
+        lambda *_args, **_kwargs: _raw_result(
+            advanced_tools._REGRESSION_MARKER,
+            payload,
+        ),
+    )
+
+    result = advanced_tools.esp_regression_test(
+        port="COM3",
+        tests=["/esp_mcp_reg_safe_runtime_smoke.py"],
+        capture_ms=1000,
+        confirm_execution=True,
+    )
+
+    assert result["ok"] is False
+    assert result["result_summaries"] == [
+        {
+            "path": "/esp_mcp_reg_safe_runtime_smoke.py",
+            "ok": False,
+            "duration_us": None,
+            "error_kind": "probe_result_invalid",
+        }
+    ]
 
 
 def test_regression_test_fail_fast_reports_failed_and_skipped(monkeypatch):
