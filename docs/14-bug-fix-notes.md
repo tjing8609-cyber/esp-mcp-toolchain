@@ -258,3 +258,109 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   范围重构；它不影响已选端口下的工作区安全边界。
 - 远程文件管理和其余 12 项实板能力必须在新版插件重载后继续验证；本次软件门禁不能替代
   真实下载落盘证据，也不能把 Raw BIN 恢复冒充为 `build_flash_monitor`。
+
+## 2026-07-27：reset 动作后输出返回成功但未写入 SQLite
+
+### 症状
+
+- `esp_reset` 能在返回值 `text` 中给出动作后的有界串口输出，但该次 run 的 SQLite
+  completion 事件只有动作、清理和确认状态，没有可复核的原始输出。
+- 调用结束后无法证明当时到底读取了哪些字节，也无法区分“成功捕获 0 字节”和“捕获阶段
+  抛错后保留默认 0 字节”。
+
+### 根因
+
+`esp_reset` 只把原始字节替换解码为通用 `text`。`logged_task` 为避免把任意工具 stdout
+或潜在敏感内容写入数据库，只持久化固定的 `_RESULT_LOG_KEYS`；`text` 不在该白名单中。
+因此工具返回和正式审计记录之间出现信息缺口。直接把 `text` 加入全局白名单会影响全部工具，
+不是一个足够窄的修复。
+
+### 修复
+
+- `logged_task` 增加静态 `result_payload_keys` 参数，只允许装饰器为当前工具声明额外完成
+  字段；参数必须是由非空字符串组成的 tuple。
+- `esp_reset` 局部声明并写入：
+  `reset_output_bytes`、`reset_output_sha256`、`reset_output_raw_base64`、
+  `reset_output_text`、`reset_output_decode_error`、
+  `reset_output_capture_completed` 和 `reset_output_capture_limit_reached`。
+- 原始输出仍限制在 65,536 字节；Base64 可无损恢复字节，SHA-256 用于一致性核对，文本只用于
+  阅读。捕获调用成功返回后才设置 `reset_output_capture_completed=true`。
+- 兼容字段 `text` 和原有确认语义不变；默认工具没有获得通用 `text` 落库权限。
+
+### 验证
+
+- 测试先行时，新增合同分别暴露 `KeyError: reset_output_bytes` 和
+  `logged_task() got an unexpected keyword argument 'result_payload_keys'`。
+- reset、SQLite 和任务书 prompt 定向门禁：`58 passed in 5.71s`。
+- main 全量门禁：`119 passed in 15.18s`。
+- test 工作树显式加载 main 源码的全量门禁：`247 passed in 28.82s`。
+- 覆盖正常 UTF-8、非法 UTF-8、原始 Base64/SHA-256 一致性、65,536 字节上限、捕获失败
+  默认状态、默认不保存 `text`、显式白名单保存和非法白名单拒绝。
+
+### 经验
+
+- 返回给调用方的数据不等于正式审计数据；需要分别验证接口结果和 SQLite completion 事件。
+- 原始字节证据应使用有界 Base64 与摘要，不能只存替换解码文本。
+- 新增日志字段应按工具最小授权，不能为了修一个工具扩大所有工具的持久化范围。
+- “0 字节”必须带捕获完成状态，否则不能判断它是有效测量还是失败后的默认值。
+
+### 剩余风险
+
+- 这些测试使用假串口和临时 SQLite，没有访问真实 `COM3`，不能作为新的板端复位证据。
+- `reset_confirmed=false` 与 `output_causality_confirmed=false` 继续保留。当前 reset 会自行
+  打开串口；活动 Monitor 已占用同一端口时，仍不能在 Monitor 的唯一句柄内完成复位和建立
+  动作前后序列边界。该能力需要后续独立设计和测试，不能由本次持久化修复代替。
+
+## 2026-07-27：4 MiB 实物被构建为 2 MB 镜像头
+
+### 症状
+
+- 已验证的完整 Flash 备份大小为 4,194,304 字节，但 ESP-IDF 示例的本地 `sdkconfig`
+  声明 `CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y`。
+- 旧 `build/flasher_args.json` 使用 `--flash_size 2MB`，esptool 离线解析 bootloader
+  也显示 `Flash size: 2MB`。板端启动因此报告检测到 4 MB、镜像头只声明 2 MB。
+
+### 根因
+
+示例只提交了源文件，没有提交 `sdkconfig.defaults`。`sdkconfig` 又按惯例被 Git 忽略，
+所以 Flash 容量完全取决于某台机器第一次生成配置时的选择。物理容量已经确认，但仓库无法
+在新环境中复现这一关键构建输入。
+
+### 修复
+
+- 新增 `examples/esp_idf_key_led_buzzer/sdkconfig.defaults`，固定：
+  ESP32、DIO、40 MHz、4 MB 和 single-app 分区。
+- 不手写 Kconfig 派生字符串 `CONFIG_ESPTOOLPY_FLASHSIZE="4MB"`，也不启用
+  `CONFIG_ESPTOOLPY_HEADER_FLASHSIZE_UPDATE`；镜像头在构建阶段生成，保持完整性校验。
+- 4 MB 只修正物理 Flash 描述和烧录参数，不扩大 1 MiB factory app 分区，避免把容量修复
+  混成分区方案变更。
+- 示例 README 明确说明 defaults 不会覆盖已有的 ignored `sdkconfig`。本机现有配置只精确
+  修改 2 MB/4 MB choice 和派生值后运行普通 build，没有删除配置或触发 `set-target`。
+
+### 验证
+
+- test 分支先增加静态合同；修复前得到预期的 `2 failed`，分别对应 defaults 缺失和说明缺失。
+- 补齐配置与说明后静态合同为 `2 passed in 0.43s`。
+- `esp_project_build` run `build_20260727_210357_c45f0c14` 返回成功，命令只执行普通
+  `idf.py ... build`，没有 `set-target` 或 fullclean。
+- 生成的 write-flash 参数为 `--flash_mode dio --flash_size 4MB --flash_freq 40m`。
+- esptool 4.7 离线解析 bootloader 显示 `Flash size: 4MB`、`Flash freq: 40m`、
+  `Flash mode: DIO`，校验和与 validation hash 均有效；bootloader SHA-256 为
+  `620A1ABEDBFF62995143824B5918B91689DFBB9601E46320D1E16D4DD40CE457`。
+- main 全量门禁为 `119 passed in 13.99s`；test 工作树显式加载 main 源码的全量门禁为
+  `249 passed in 28.88s`。
+
+### 经验
+
+- 被 Git 忽略的 `sdkconfig` 不能承担仓库级硬件事实；稳定构建选择要写入 defaults 并测试。
+- “芯片是 4 MiB”与“应用分区使用全部 4 MiB”是两件事，修镜像头不应顺手改变分区策略。
+- defaults 对新配置生效，不会自动重写已有配置；验证现有构建时必须明确处理这一边界。
+- 删除 `sdkconfig` 可能让后端进入 `set-target`，后者等价于 fullclean，不能作为无提示的
+  配置刷新手段。
+
+### 剩余风险
+
+- 本步骤只构建并离线检查产物，没有访问、擦除或烧录 `COM3`。当前板上仍是此前的镜像；
+  只有后续经单独确认烧录并捕获启动日志，才能确认 2 MB/4 MB 启动警告消失。
+- single-app 分区仍只有 1 MiB，剩余物理容量没有自动分配。若未来需要 OTA 或更大 app，
+  必须作为独立分区设计评审，不能把本次修复当作已经完成。

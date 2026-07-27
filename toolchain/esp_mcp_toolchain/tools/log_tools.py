@@ -509,7 +509,14 @@ def logged_task(
     task_type: str | None = None,
     selected_port_arg: str | None = None,
     payload_args: tuple[str, ...] = (),
+    result_payload_keys: tuple[str, ...] = (),
 ) -> Callable[[F], F]:
+    if not isinstance(result_payload_keys, tuple) or not all(
+        isinstance(key, str) and key for key in result_payload_keys
+    ):
+        raise TypeError("result_payload_keys must be a tuple of non-empty strings.")
+    completion_keys = _RESULT_LOG_KEYS | set(result_payload_keys)
+
     def decorator(func: F) -> F:
         signature = inspect.signature(func)
 
@@ -611,7 +618,7 @@ def logged_task(
                 message = str(result.get("message") or f"{tool} {'completed' if ok else 'failed'}.")
                 result_payload = {
                     key: _json_safe(result[key])
-                    for key in _RESULT_LOG_KEYS
+                    for key in completion_keys
                     if key in result
                 }
                 logging_warnings = list(prepare_warnings)
