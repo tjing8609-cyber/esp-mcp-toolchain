@@ -424,3 +424,61 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   口令、令牌或其他凭据写进异常信息。
 - 本次测试没有访问板卡或重复执行用户目标。真实性能仍受 MicroPython 版本、GC 状态和目标
   副作用影响；该工具是插桩 wall-time/heap delta，不是采样 profiler，也不能测量电流或功耗。
+
+## 2026-07-27：自动回归只有显式路径执行器，没有可审查套件和持久摘要
+
+### 症状
+
+- `examples/micropython_project` 只有占位 README，没有可提交、可审查、可重复使用的回归文件。
+- `esp_regression_test` 把逐项 `results` 和 stdout 返回给当前调用方，但 SQLite completion
+  只保存 passed/failed/skipped 等总数，无法复核具体哪一个远程路径失败。
+- 响应只有 `program_interrupted=true`，没有区分“未发送复位命令”和“已排除物理复位”。
+
+### 根因
+
+早期实现只解决“按用户给定路径逐个执行”这一层，没有定义默认安全集、硬件分层、negative
+合同或日志摘要。直接把完整 results 落库会连带保存任意 stdout；直接信任板端 JSON 又会允许
+超长异常、超大 marker、布尔伪装整数或超出捕获窗口的时长进入结果。即使总长度低于 16 KiB，
+数千层嵌套 JSON 仍可让标准解析器抛出 `RecursionError`。因此不能只补一个 manifest 或简单
+扩大日志白名单。
+
+### 修复
+
+- 新增本地静态 `manifest.json` 与四个受审脚本。默认 safe 不接触 machine、网络或文件写入；
+  GPIO34 只读和 GPIO32 LED 状态测试必须显式选择；negative 独立；所有样例排除 GPIO25、
+  蜂鸣器和 PWM。
+- manifest 不接入工具自动解析：它不证明文件已上传，也不授权执行。工具继续只接受用户确认
+  后的精确远程路径。
+- `esp_regression_test` 局部持久化固定四字段 `result_summaries`，完整 results/stdout 只留在
+  即时响应；板端和主机都把异常限制为 256 字符，marker 在 JSON 解析前限制为 16 KiB。
+- 主机只接受布尔 ok、非布尔整数时长、`0 <= duration_us <= capture_ms * 1000`，并要求
+  error 与成功/失败状态一致。
+- JSON 解析把 `RecursionError` 与类型/语法错误一样收敛为 `probe_result_invalid`，不会让
+  异常逃出 MCP 工具边界。
+- 返回 `reset_command_sent=false`、`physical_reset_excluded=false`，避免把“代码没有调用
+  reset”夸大为“串口打开过程不可能造成物理复位”。
+
+### 验证
+
+- 缺 manifest/脚本和 SQLite 摘要的初始合同在旧实现上得到预期 `2 failed`。
+- 增加异常截断、marker 上限和畸形结构合同后，旧实现得到预期
+  `9 failed, 3 passed, 20 deselected in 1.43s`。
+- 复审用 10,001 字节、5000 层嵌套数组复现未捕获 `RecursionError`；新增单测先失败，修复后
+  `1 passed in 0.91s`，completion 不含 results、stdout 或原始 marker。
+- 最终回归、prompt 和 SQLite 相关定向门禁为 `74 passed in 7.30s`；main 全量为
+  `119 passed in 14.06s`；test 显式加载 main 源码的全量门禁为
+  `265 passed in 30.57s`。
+
+### 经验
+
+- “有回归执行工具”不等于“有回归套件”；可审查的用例、默认选择和副作用分层必须落到版本库。
+- 审计日志应保存足够定位用例的结构化摘要，而不是为了完整而永久保存任意 stdout。
+- 没有显式发送复位命令与已排除物理复位是两个不同证据命题。
+
+### 剩余风险
+
+- 本次没有向板卡上传或执行任何脚本。manifest 的路径只是计划目标，不能作为板上存在证明。
+- GPIO32 用例虽然在 finally 中恢复 LED-off，仍会实际改变输出；必须独立确认后运行。
+- GPIO34 返回 0/1 只能证明读取有效，不能单独证明用户按键动作发生。
+- Raw REPL 会中断现有 MicroPython 程序，且 `physical_reset_excluded=false`；不能把软件模拟
+  测试写成实板通过。

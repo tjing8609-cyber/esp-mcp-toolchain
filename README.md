@@ -704,6 +704,15 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 新合同覆盖成功/失败样本、超长异常、最坏控制字符、超大 marker、巨整数和畸形样本。性能专项为 `24 passed in 3.47s`，相关定向门禁为 `65 passed in 6.64s`，main 全量为 `119 passed in 13.97s`，test 加载 main 源码的全量门禁为 `256 passed in 29.70s`。
 - 本切片没有访问板卡或重复执行用户程序；历史 run 不会被反向补写。截断不是秘密检测，目标代码不得把凭据写入异常信息。该工具仍是插桩 wall-time/heap delta，不是采样 profiler，也不能推断功耗或电流。
 
+### 2026-07-27 21:43 - 建立分层 MicroPython 自动回归套件
+
+- `examples/micropython_project/regression/manifest.json` 现在跟踪 safe、hardware_readonly、stateful、negative 四层共四个脚本；默认档只有无硬件/网络/文件写入的运行时烟测。GPIO34 只读和 GPIO32 LED 状态脚本必须显式选择，negative 必须单独运行，整套明确排除 GPIO25、蜂鸣器和 PWM。
+- manifest 只是本地受审选择源，不会由工具自动解析、自动发现或自动上传。调用方仍须审查脚本、上传到 manifest 的精确 `remote_path`、展示最终路径和副作用，并在取得明确确认后把路径列表传给 `esp_regression_test`。
+- `esp_regression_test` 继续在即时响应中返回逐项 stdout，但 SQLite completion 只增加 `result_summaries=[path,ok,duration_us,error_kind]`。异常最多保留 256 字符，结构化 marker 最多 16 KiB，主机验证状态、时长类型和 `capture_ms` 上限；深层 JSON 的 `RecursionError` 也被收敛为 `probe_result_invalid`。
+- 响应现在明确 `reset_command_sent=false` 与 `physical_reset_excluded=false`：工具没有显式发送复位命令，但 Raw REPL 串口会话不能被描述为已经排除物理复位。
+- 初始静态/SQLite 合同在旧实现上得到预期 `2 failed`；补充安全合同后为预期 `9 failed, 3 passed`；复审发现的深层 JSON 崩溃也先由单测复现再修复。最终相关定向门禁为 `74 passed in 7.30s`，main 全量为 `119 passed in 14.06s`，test 加载 main 源码的全量门禁为 `265 passed in 30.57s`。
+- 以上均为软件合同和模拟 Raw REPL 结果；没有访问 `COM3`、上传或执行板端脚本，也没有驱动 GPIO。真实 safe/只读/stateful/negative 验收须在板上恢复 MicroPython 后分别确认。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "suite_id": "esp-mcp-micropython-regression",
+  "default_profile": "safe",
+  "profiles": {
+    "safe": [
+      "safe.runtime_smoke"
+    ],
+    "hardware_readonly": [
+      "safe.runtime_smoke",
+      "hardware_readonly.gpio34_key_read"
+    ],
+    "stateful": [
+      "safe.runtime_smoke",
+      "stateful.gpio32_led_latch"
+    ],
+    "all_positive": [
+      "safe.runtime_smoke",
+      "hardware_readonly.gpio34_key_read",
+      "stateful.gpio32_led_latch"
+    ],
+    "negative_contract": [
+      "negative.intentional_failure"
+    ]
+  },
+  "excluded_hardware": [
+    "GPIO25",
+    "buzzer",
+    "PWM"
+  ],
+  "runner": {
+    "backend": "raw_repl",
+    "capture_ms": 5000,
+    "fail_fast": true
+  },
+  "cases": [
+    {
+      "id": "safe.runtime_smoke",
+      "tier": "safe",
+      "local_path": "safe/runtime_smoke.py",
+      "remote_path": "/esp_mcp_reg_safe_runtime_smoke.py",
+      "requires_execution_confirmation": true,
+      "selected_by_default": true,
+      "requires_explicit_selection": false,
+      "expected_tool_ok": true,
+      "side_effects": [
+        "serial_output"
+      ],
+      "claim_limits": [
+        "Checks only basic MicroPython runtime and heap availability."
+      ]
+    },
+    {
+      "id": "hardware_readonly.gpio34_key_read",
+      "tier": "hardware_readonly",
+      "local_path": "hardware_readonly/gpio34_key_read.py",
+      "remote_path": "/esp_mcp_reg_hardware_readonly_gpio34_key_read.py",
+      "requires_execution_confirmation": true,
+      "selected_by_default": false,
+      "requires_explicit_selection": true,
+      "expected_tool_ok": true,
+      "side_effects": [
+        "interrupts_current_program",
+        "reads_GPIO34",
+        "serial_output"
+      ],
+      "claim_limits": [
+        "A valid digital level does not prove a physical button press occurred."
+      ]
+    },
+    {
+      "id": "stateful.gpio32_led_latch",
+      "tier": "stateful",
+      "local_path": "stateful/gpio32_led_latch.py",
+      "remote_path": "/esp_mcp_reg_stateful_gpio32_led_latch.py",
+      "requires_execution_confirmation": true,
+      "selected_by_default": false,
+      "requires_explicit_selection": true,
+      "expected_tool_ok": true,
+      "side_effects": [
+        "interrupts_current_program",
+        "drives_GPIO32",
+        "restores_LED_off",
+        "serial_output"
+      ],
+      "claim_limits": [
+        "Pin readback does not prove optical LED output."
+      ]
+    },
+    {
+      "id": "negative.intentional_failure",
+      "tier": "negative",
+      "local_path": "negative/intentional_failure.py",
+      "remote_path": "/esp_mcp_reg_negative_intentional_failure.py",
+      "requires_execution_confirmation": true,
+      "selected_by_default": false,
+      "requires_explicit_selection": true,
+      "expected_tool_ok": false,
+      "side_effects": [
+        "interrupts_current_program",
+        "raises_intentional_assertion"
+      ],
+      "claim_limits": [
+        "This case validates failure reporting and must run separately."
+      ]
+    }
+  ]
+}
