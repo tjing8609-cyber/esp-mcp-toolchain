@@ -439,13 +439,20 @@ def test_monitor_high_frequency_output_is_bounded_and_accounted():
     status = {}
     while time.monotonic() < deadline:
         status = serial_tools.esp_serial_monitor_status(run_id)["monitors"][0]
-        if status["bytes_received"] == expected:
+        if (
+            status["bytes_received"] == expected
+            and status["persisted_bytes"] == expected
+        ):
             break
         time.sleep(0.01)
 
     assert status["bytes_received"] == expected
     assert status["buffered_bytes"] <= 1024 * 1024
     assert status["persisted_bytes"] == expected
+    assert status["unpersisted_bytes"] == 0
+    stopped = serial_tools.esp_serial_monitor_stop(run_id)
+    assert stopped["monitor"]["persisted_bytes"] == expected
+    assert stopped["monitor"]["unpersisted_bytes"] == 0
 
 
 def test_monitor_concurrent_start_and_stop():

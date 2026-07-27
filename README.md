@@ -772,6 +772,19 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 测试只使用临时文件和模拟 esptool；本步骤没有访问 COM3、备份、擦除、烧录或恢复板卡，
   不能作为新的实板结论。
 
+### 2026-07-27 23:05 - 修复高频串口测试的持久化等待竞态
+
+- test 分支远端矩阵中，Ubuntu/Python 3.12 的高频串口用例曾出现
+  `bytes_received=262144`、`persisted_bytes=258048`；差值正好是一条 4096 字节测试记录，
+  另外三个系统/Python 组合均成功。
+- 根因是测试把“全部字节已从串口读取”误当成“全部字节已完成日志持久化”，在最后一次
+  `SerialLogStore.append()` 尚未结束时提前退出等待循环；这不是已确认的数据丢失。
+- 完成条件现在同时等待 `bytes_received` 和 `persisted_bytes` 达到目标，并核对
+  `unpersisted_bytes=0` 以及显式停止后的最终计数。生产代码没有为测试引入包住磁盘 I/O
+  的全局大锁，因此不会牺牲 status/read 的响应性来掩盖测试竞态。
+- 修复后目标用例 `1 passed in 1.09s`，test 自身源码全量
+  `287 passed, 1 skipped in 33.19s`；仍未访问真实串口或板卡。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。
