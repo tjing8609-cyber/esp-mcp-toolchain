@@ -670,13 +670,26 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 结束后直接把拼接后的 bytes 写入 `.log`，`bytes_read` 使用原始长度。
 - 文件名加入 UUID 后缀，并使用排他 `xb` 创建；出现极小概率冲突时重新生成，最多尝试十次。
 - 写入完成后执行 flush + fsync，再返回路径；文本视图仍保留替换解码语义。
+- `logs/raw` 在串口打开前创建；目录准备失败返回结构化错误并证明串口未打开。
+- open/write/flush/fsync/close 或碰撞耗尽统一收敛为 `serial_capture_persist_failed`。
+  已创建但持久化状态不确定的文件只返回为 `recovery_path`；结果保留真实 bytes、文本和串口
+  清理状态，不要求调用方重复已经发生的串口动作。
+- recovery path 只在本次调用成功取得排他文件句柄后出现。open 失败和十次碰撞耗尽不返回
+  路径，避免把不存在的目标或别人的 sentinel 归到本次 capture。
+- 文件句柄 close 失败设置 `persistence_cleanup_completed=false` 并保留
+  `persistence_close_error`；`cleanup_completed` 继续只描述串口资源清理。
 
 ### 验证
 
 - 两个测试先在旧实现稳定红灯：15 字节被报告为 19；固定秒级时间后两次 capture 路径相同。
-- 修复后新增两项 `2 passed`，完整错误检测文件 `20 passed in 3.10s`。
-- main 全量 `119 passed in 15.16s`；test 工作树显式加载 main 源码
-  `322 passed, 1 skipped in 34.84s`。
+- 独立复审发现 fsync/close 异常会逃出工具、目录准备被延后，并指出原同秒测试未强制碰撞。
+  新合同先复现 fsync 的未捕获 `OSError`，随后强制首个 UUID 命中 sentinel，验证内容不变
+  且第二个 UUID 排他创建成功；另覆盖目录准备失败不打开串口和读取失败后的字节计数。
+- 第二轮终审继续补入十次 UUID 碰撞耗尽与 fake handle close 失败合同，验证所有 sentinel
+  不变、结果没有错误 recovery path，并区分串口清理与文件持久化清理。
+- 完整错误检测文件 `25 passed in 3.57s`。
+- main 全量 `119 passed in 15.21s`；test 工作树显式加载 main 源码
+  `327 passed, 1 skipped in 35.56s`。
 - 全部使用假串口与临时项目目录，没有连接 COM3、运行板端代码或改正式 SQLite。
 
 ### 经验

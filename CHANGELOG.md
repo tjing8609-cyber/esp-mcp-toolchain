@@ -48,6 +48,9 @@
   排他创建保存，并对原始 bytes 执行 flush + fsync。
 - capture 不再把替换解码后的文本重新编码成“原始日志”；非法 UTF-8 现在原样写盘，
   `bytes_read` 统计真实接收字节，返回的 `text` 仅作为可读视图。
+- capture 在打开串口前验证 raw 目录；持久化阶段失败不再抛出未捕获异常，而是返回
+  `serial_capture_persist_failed`、原始字节事实和只作恢复用途的 `recovery_path`；
+  open/碰撞耗尽不会误报别人的路径，close 失败另行报告持久化清理缺口。
 - 修复仅提高 `CURRENT_SCHEMA_VERSION` 并执行 `CREATE TABLE IF NOT EXISTS` 时，
   v2 的旧 `raw_logs` / `errors` 会被错误标记为 v3、却没有获得新约束和索引的问题。
 - v1 raw/error 迁移不再用 `INSERT OR IGNORE` 静默跳过冲突或不合规数据；此类问题现在
@@ -90,9 +93,10 @@
 ### Validation
 
 - capture 新合同在旧实现上得到预期两个失败：15 个原始字节被报告为 19，且同 session
-  同秒两次 capture 返回同一路径。修复后错误检测文件定向 `20 passed in 3.10s`，
-  main 全量 `119 passed in 15.16s`，test 显式加载 main 全量
-  `322 passed, 1 skipped in 34.84s`；全部使用假串口和临时目录，未访问 COM3。
+  同秒两次 capture 返回同一路径。复审新增的 fsync 失败合同也先暴露未捕获 `OSError`；
+  最终错误检测文件定向 `25 passed in 3.57s`，main 全量 `119 passed in 15.21s`，
+  test 显式加载 main 全量 `327 passed, 1 skipped in 35.56s`；全部使用假串口和临时目录，
+  未访问 COM3。
 - SQLite v3-A 合同在旧实现上先得到预期 `20 failed in 0.52s`。实现后的基础合同为
   `20 passed`；加入假 v3 的 PK/FK/CHECK/索引验证、v2 缺列/额外列拒绝、重复/并发迁移、
   外键晚失败回滚、v1 直升、UUIDv5 确定性和重复异常 occurrence 后为
