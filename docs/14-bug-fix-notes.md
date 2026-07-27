@@ -182,3 +182,79 @@ monkeypatch。Linux 清理代码此时调用 `pathlib.Path(...)`，`Path` 根据
 也没有重新验证真实 Monitor 启停或板卡断电行为。真实串口驱动若让 `open()` 阻塞超过 stop
 超时，API 仍会按既有合同报告 `monitor_cleanup_timeout`，并在 `open()` 最终返回后继续清理；
 这个边界不是本次 CI 失败的原因，也没有在本修复中改变。
+
+## 2026-07-27：相对 local_path 随 MCP cwd 写入 Codex 安装缓存
+
+### 症状
+
+- 实板验收调用 `esp_file_download`，远端文件为 `/mcp_acceptance_payload.txt`，主机目标为
+  相对路径 `index/data/artifacts/exports/mcp_acceptance_20260727/downloaded_payload.txt`。
+- run `file_download_20260727_132808_0017d671` 返回 `ok=true`、`bytes_written=21`、
+  `truncated=false`，但所选项目 workspace 中没有目标文件。
+- 文件实际出现在：
+  `C:\Users\16224\.codex\plugins\cache\personal-plugins\esp-mcp-toolchain\0.1.0+codex.20260726165544\index\data\artifacts\exports\mcp_acceptance_20260727\downloaded_payload.txt`，
+  内容确实是 `MCP_FILE_TRANSFER_OK`。
+- 这不是板端传输失败，而是主机落盘位置错误。工具返回“成功”不能证明文件写到了调用者
+  期望的项目范围。
+
+### 根因
+
+Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下的 `.` 就是版本化插件
+缓存根。问题在生产代码把这个进程目录误当成了用户工程目录：
+
+- `esp_file_upload` 的 mpremote 与 Raw REPL 分支使用 `Path(local_path)`；
+- `esp_file_download` 的 mpremote 与 Raw REPL 分支使用 `Path(local_path)`；
+- `esp_run_file(path_type="local")` 使用 `Path(path)`。
+
+相对 `Path` 由操作系统按进程 `cwd` 解析，因此会从插件缓存读取或向插件缓存写入。工作区外
+绝对路径和 `..` 逃逸也没有在这些入口统一拒绝。
+
+既有测试没有发现问题，是因为上传源和下载目标都直接使用 pytest 的绝对 `tmp_path`。绝对
+路径不依赖当前目录，所以测试即使全绿，也没有覆盖“安装插件从另一目录启动”的真实合同。
+同时，夹具目录位于活动项目 workspace 外，无法直接启用严格项目边界。
+
+### 修复
+
+- 复用项目已有的 `safe_project_path()`，没有新造第二套路径算法。
+- 上传、下载和本地运行的五个入口在 `exists`、读取、`mkdir`、写入、mpremote 或 Raw REPL
+  调用前解析主机路径。
+- 相对路径以活动项目规范化后的 `workspace_root` 为基准；工作区外绝对路径和解析后的父目录
+  逃逸返回稳定错误 `unsafe_local_path`，并提示改用项目内路径。
+- 成功结果中的 `local_path` / `path` 改为规范绝对路径，调用方可以直接核对实际主机位置。
+- 板端 `remote_path` 仍属于 MicroPython 文件系统，没有错误套用主机工作区规则。
+- 原有二进制字节保持、20,000 字节 Raw REPL 上限、截断不落盘和已有目标不覆盖合同保持不变。
+
+### 验证
+
+- test 分支先模拟“插件缓存是当前目录”，新增 15 个路径域用例；旧 `main@5985230` 得到
+  预期的 `15 failed in 2.60s`。
+- 红灯覆盖 mpremote / Raw REPL 上传下载、本地 Raw REPL 文件运行、相对路径绑定、`..`
+  逃逸、工作区外绝对路径、拒绝时后端不调用和下载不落盘。
+- 修复后 main 文件/执行专项：`32 passed in 4.15s`。
+- 修复后 test 加载 main 的路径专项：`48 passed in 9.26s`。
+- 提交前 main 全量：`119 passed in 17.64s`。
+- 提交前 test 显式加载 main 源码的完整门禁：`243 passed in 31.50s`。
+- GitHub Actions、Marketplace validator / 发布测试 / 48-12-12 枚举和用户重启后的实板
+  相对下载复验仍待后续步骤；本节不提前把它们写成通过。
+
+### 经验
+
+- 项目级工具不能把 MCP 进程 `cwd` 当成用户 workspace；安装缓存、Marketplace 源和业务项目
+  是三个不同边界。
+- 路径测试要主动把 `cwd` 切换到无关目录，同时在 workspace 和该目录放置同名不同内容文件，
+  才能证明代码读取的是正确来源。
+- 只断言 `ok=true` 和字节数不够。文件工具还应断言规范路径、最终内容、项目外无副作用以及
+  拒绝时后端未调用。
+- 安全路径检查应发生在 `exists`、读写和建目录之前，否则即使最后拒绝，也可能已经泄露文件
+  存在性或创建项目外目录。
+
+### 剩余风险
+
+- 旧安装缓存中的 21 字节误写文件不会由修复自动删除；当前没有该主机文件的删除授权，因此
+  保持原状，不能通过“顺手清理”扩大权限。
+- `@logged_task` 在函数体前创建项目内审计 run；越界请求仍可能产生项目审计记录，但不会
+  读取或写入越界文件，也不会调用板端后端。这是现有审计架构的预期行为。
+- 未选择串口时，各后端对“端口缺失”和“参数缺失”的错误优先级存在历史差异，本次没有扩大
+  范围重构；它不影响已选端口下的工作区安全边界。
+- 远程文件管理和其余 12 项实板能力必须在新版插件重载后继续验证；本次软件门禁不能替代
+  真实下载落盘证据，也不能把 Raw BIN 恢复冒充为 `build_flash_monitor`。

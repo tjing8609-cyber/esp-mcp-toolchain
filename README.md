@@ -274,7 +274,7 @@ MicroPython 方向：
 
 ## 当前进度
 
-截至 2026-07-26，已完成：
+截至 2026-07-27，已完成：
 
 - 仓库结构初始化。
 - GitHub 远端同步，主分支为 `main`。
@@ -297,7 +297,7 @@ MicroPython 方向：
 - `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。当前 48/12/12 候选已同步到个人 marketplace 源 `0.1.0+codex.20260726165544`；安装缓存仍是旧版，待用户重启后验收。
+- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。当前安装插件 `0.1.0+codex.20260726165544` 已在用户重启后核对为 `48 tools / 12 resources / 12 prompts`；实板验收发现的主机相对路径缺陷已在本地源码修复，仍待双分支推送、Marketplace 更新和再次重启验证。
 - 初始测试集。
 - 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；门禁从 `index-test` 加载 `index` 的主线源码执行。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
@@ -305,7 +305,8 @@ MicroPython 方向：
 - 后台串口 Monitor 已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
 - 历史实板记录（2026-07-13）：后台串口 Monitor 曾完成 `COM3` 启动、游标读取、停止清理和同端口重新打开验收；当时固件的 UART0 运行时控制台 `115200` 实测事实已写入项目硬件映射。
 - 历史修复记录（2026-07-13）：后台串口 Monitor 针对 CH9102 稀疏输出改为非阻塞读取、先查询 `in_waiting`、单次最多 1024 字节并有界休眠；当时回归和真实按键门禁通过。
-- 历史发布记录（2026-07-20）：SQLite 日志闭环曾接通本地主线、GitHub 和个人 marketplace 源。当前 48/12/12 候选的 P0 与 `erase_flash` P1 均已分别取得 main/test 共 8 个远端成功 job；个人 marketplace 源已更新，安装缓存尚未重载。
+- 历史发布记录（2026-07-20）：SQLite 日志闭环曾接通本地主线、GitHub 和个人 marketplace 源。48/12/12 候选的 P0 与 `erase_flash` P1 均已分别取得 main/test 共 8 个远端成功 job；`0.1.0+codex.20260726165544` 安装缓存已完成重载和工具面核对。
+- 2026-07-27 经明确授权完成 `COM3` 4 MiB 备份、整片擦除和官方 MicroPython v1.28.0 BIN 恢复；随后完成启动 banner、运行时硬件信息、20 条串口标记和三个验收文件的上传/读取/列表。相对下载误写安装缓存后立即暂停实板验收，未把远程文件管理及其余未执行能力记为通过。
 
 最近一次本地验证：
 
@@ -317,13 +318,15 @@ mpremote：1.28.0（仅在项目专属 Conda 环境中验证）
 实现源码：index / main（由 ESP_MCP_SOURCE_ROOT 显式加载）
 任务书提示词/提高工具/架构专项：25 passed
 串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：62 passed
-P0 修复后 main 全量门禁：104 passed in 14.70s
-erase_flash 修复后跨工作树全量门禁：228 passed in 27.76s
+相对路径修复前红灯合同：15 failed in 2.60s（test 加载 main@5985230）
+相对路径修复后专项：main 32 passed in 4.15s；test 跨工作树 48 passed in 9.26s
+相对路径修复后全量：main 119 passed in 17.64s；test 跨工作树 243 passed in 31.50s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
-覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite/原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema，以及既有 SQLite/Monitor/项目隔离合同
-真实硬件：本次 2026-07-26 软件门禁全部使用模拟串口和临时项目，没有读取或操作当前板卡；历史实板结果保留在下方对应日期的开发日志中
-未完成硬件门禁：MicroPython 执行类能力仍需在明确的板端固件和操作步骤下单独验收，不能由软件测试推断
-远端与插件：main/test 已公开原子推送。首次远端矩阵暴露 main 旧串口测试桩和 Linux `os.name` 测试污染；P0 修复已通过本地 main `104 passed`、test `226 passed`、跨工作树 `226 passed`，以及 main/test 共 8 个远端 job。`erase_flash` P1 已通过本地 main `104 passed`、同步 test `228 passed`，以及 main/test 共 8 个 Windows/Linux、Python 3.10/3.12 远端 job。个人 marketplace 源已更新为 `0.1.0+codex.20260726165544`，validator、源目录 `104 passed` 和 `48 tools / 12 resources / 12 prompts` 直接枚举通过；安装缓存仍为 `0.1.0+codex.20260722153803`，待用户重启后验收
+覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite/原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
+真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
+当前阻塞：旧插件把一次 21 字节相对下载写入版本化安装缓存。源码修复已通过本地软件门禁，但尚未提交、远端 CI、同步 Marketplace 或在重启后的新插件上重复实板下载
+未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
+远端与插件：当前远端仍是 `main@5985230`、`test@e4f8b29` 的绿色基线。已安装插件为 `0.1.0+codex.20260726165544` 且 48/12/12 已核对；本次路径修复的新 Marketplace 版本和远端矩阵均待后续步骤
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -657,12 +660,31 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 假串口现在进入 `open()` 时设置 `open_started` 事件；测试等待该确定性事件后断言唯一会话处于 `STARTING`，启动 stop 线程后再明确等待 `STOPPING`，最后才释放 open gate。两个等待都保留 3 秒有界失败，不依赖机器速度。
 - 修复后该用例独立进程重复 `20/20` 通过，main 全量为 `104 passed in 16.67s`。本修改未访问串口，也没有改变生产 Monitor 行为；远端复跑仍待当前提交验证。
 
+### 2026-07-27 13:20 - 完成 COM3 备份、擦除和 MicroPython 恢复
+
+- 在用户明确授权前先读取 hardwork 映射并核对 `COM3` 空闲状态；备份完整 4 MiB flash 到项目数据目录，SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`。
+- `esp_erase_flash(confirm=true)` run `erase_flash_20260727_131837_f672becc` 返回成功，随后使用 `esp_restore_flash(confirm=true)` 从地址 `0x1000` 写入官方 ESP32_GENERIC MicroPython v1.28.0，run `restore_flash_20260727_131918_88af58ec` 完成写入哈希校验。
+- 动作后捕获到 `MicroPython v1.28.0 on 2026-04-06` 启动 banner；runtime 探测确认 4 MiB flash、160 MHz CPU 和可用文件系统。hard reset 工具仍保留 `reset_confirmed=false` / `output_causality_confirmed=false` 的严格证据边界。
+
+### 2026-07-27 13:28 - 实板下载验收暴露 MCP 当前目录路径缺陷
+
+- 后台 Monitor 收到 20 条有序 MicroPython 标记，停止时记录 570 字节、0 dropped、0 unpersisted；三个明确验收文件的上传、逐字节读取和根目录列表均通过。
+- `esp_file_download` 对相对输出路径返回 `ok=true`、21 字节且未截断，但项目工作区没有目标文件；同名文件实际写入版本化 Codex 插件安装缓存。根因是上传、下载和本地运行直接使用 `Path(...)`，相对路径继承 MCP 进程 `cwd`。
+- 发现后立即暂停远程文件管理及后续板端验收；没有擅自删除安装缓存中的误写文件，也没有把该能力记为通过。
+
 ### 2026-07-27 13:47 - 建立本地路径工作区边界红灯合同
 
 - MicroPython 实板验收中，`esp_file_download` 对相对 `local_path` 报告成功并写入 21 字节，但文件没有出现在已选择的项目工作区，而是落入当前已安装插件缓存目录。生产代码直接使用 `Path(...)`，因此本地上传、下载和 `esp_run_file(path_type="local")` 都受 MCP 进程当前目录影响。
 - test 分支新增 15 个路径域合同，模拟插件缓存作为当前目录，覆盖 mpremote / Raw REPL 上传下载、本地脚本执行、`..` 逃逸、工作区外绝对路径、后端不调用和下载不落盘。
 - 使用项目专属 Conda Python 3.12.13、由 test 跨工作树加载旧 `main@5985230` 运行专项，结果为预期的 `15 failed in 2.60s`；失败均对应上述路径域缺陷，证明测试不是假绿。
-- 本步骤只增加验证合同，没有修改生产实现、插件 Marketplace 或安装缓存，也没有访问 COM3。红灯 test 提交不会单独推送；下一步在 main 复用 `safe_project_path()` 修复后，将同一合同转为绿灯。
+- 本步骤只增加验证合同，没有修改生产实现、插件 Marketplace 或安装缓存，也没有访问 COM3。红灯 test 提交未单独推送，随后由 main 复用 `safe_project_path()` 将同一合同转为绿灯。
+
+### 2026-07-27 14:04 - 完成本地主机路径边界软件修复
+
+- test 分支先增加 15 个路径域合同；旧 `main@5985230` 得到预期的 `15 failed in 2.60s`。合同模拟插件缓存作为当前目录，覆盖 mpremote / Raw REPL 上传下载、本地脚本执行、父目录逃逸和工作区外绝对路径。
+- main 的五个本地路径入口统一复用 `safe_project_path()`：相对路径绑定当前 `workspace_root`，越界在任何读取、建目录、写入或后端调用前返回 `unsafe_local_path`，板端 `remote_path` 语义不变。
+- 修复后 main 专项为 `32 passed in 4.15s`，test 跨工作树专项为 `48 passed in 9.26s`，提交前 main 全量为 `119 passed in 17.64s`，test 加载 main 源码的全量门禁为 `243 passed in 31.50s`。
+- 合并态 test 自身路径专项为 `48 passed in 10.64s`，全量为 `243 passed in 29.50s`。以上仅是本地软件结论；GitHub CI、Marketplace 同步、cachebuster 和重启后实板相对下载复验仍待完成。
 
 ## 协作约定
 

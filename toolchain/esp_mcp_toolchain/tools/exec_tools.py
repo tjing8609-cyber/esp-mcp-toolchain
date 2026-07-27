@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import Field
@@ -9,6 +8,7 @@ from ..backends import mpremote_backend
 from ..backends.raw_repl_backend import execute_code, interrupt_program
 from ..config import get_selected_port
 from ..errors import execution_error, not_implemented
+from ..paths import safe_project_path
 from ..utils.error_detection import parse_error_text
 from .log_tools import logged_task
 
@@ -173,7 +173,15 @@ def esp_run_file(
     if path_type == "local" and backend == "raw_repl":
         if not path:
             return execution_error("missing_path", "No local file path was provided.", tool="esp_run_file")
-        local_path = Path(path)
+        try:
+            local_path = safe_project_path(path)
+        except ValueError as exc:
+            return execution_error(
+                "unsafe_local_path",
+                str(exc),
+                tool="esp_run_file",
+                suggested_next_actions=["Use a path inside the selected workspace"],
+            )
         if not local_path.exists():
             return execution_error("path_not_found", f"Local file does not exist: {path}", tool="esp_run_file")
         result = esp_exec_code(
@@ -186,7 +194,7 @@ def esp_run_file(
         result["tool_name"] = "esp_run_file"
         result["tools名称"] = "esp_run_file"
         result["tools鍚嶇О"] = "esp_run_file"
-        result["path"] = path
+        result["path"] = str(local_path)
         result["path_type"] = path_type
         return result
     return not_implemented("esp_run_file")

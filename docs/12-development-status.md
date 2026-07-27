@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-27 01:02（Asia/Shanghai）
+更新时间：2026-07-27 14:04（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。P0 与 `erase_flash` P1 均已分别通过 main/test 共 8 个远端 job；个人 marketplace 源已更新并通过发布前验证。最终纯文档收口 run 暴露一个 Monitor STARTING 测试调度竞态，已完成确定性事件同步和本地验证；该修复的远端矩阵、安装缓存重载和执行类实板验收尚未完成。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；P0、`erase_flash` P1 和 Monitor 竞态修复已通过既有远端门禁。用户重启后已确认安装插件 `0.1.0+codex.20260726165544` 与 48/12/12 工具面，并授权完成真实备份、擦除和 MicroPython v1.28.0 恢复。实板文件下载暴露 MCP 当前目录路径缺陷；本地源码和测试已修复，当前等待提交、双分支 CI、Marketplace 更新及重启后的下载复验。
 
 ## 本轮已完成实现
 
@@ -30,6 +30,7 @@
 - 串口基础层统一采用打开前/后压低 DTR/RTS 的生命周期；reset 分离记录打开副作用、动作、输出和清理证据。
 - Raw REPL 只在确认严格 `OK + stdout EOT + stderr EOT + >` 帧后报告完成，并验证源码、Ctrl-C 与退出写入没有短写。
 - `erase_flash` 改为复用统一受管子进程执行器，显式固定 `--before default_reset --after hard_reset`；失败映射保留子进程输出和清理元数据，`confirm=True` 高风险门不变。
+- `esp_file_upload`、`esp_file_download` 两个后端及 `esp_run_file(path_type="local")` 统一通过 `safe_project_path()` 解析主机路径；相对路径绑定活动 workspace，越界输入在文件或后端副作用前返回 `unsafe_local_path`，成功元数据返回规范绝对路径。
 
 ## 本地验证
 
@@ -42,24 +43,29 @@
 - `erase_flash` P1 修复后：后端专项 `6 passed`、擦除工具专项 `8 passed`、main 全量 `104 passed in 13.89s`、跨工作树全量 `228 passed in 27.76s`。
 - `erase_flash` P1 远端：[main run 30211040021](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211040021) 与 [test run 30211040067](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211040067) 共 8 个 job 全部成功。
 - Monitor STARTING 测试修复：失败用例独立进程重复 `20/20` 通过；main 全量 `104 passed in 16.67s`。失败证据为 [main run 30211564537](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30211564537) 的 Windows/Python 3.10 job；修复后远端矩阵待当前提交验证。
-- Marketplace 源直接枚举为 `48 tools / 12 resources / 12 prompts`；安装缓存枚举仍待用户重启和新任务验证。
-- 测试使用 fake serial、raw REPL mock、临时项目目录和临时 SQLite；不访问真实开发板。
+- 相对路径合同在旧 `main@5985230` 上为预期的 `15 failed in 2.60s`；修复后 main 专项 `32 passed in 4.15s`、test 跨工作树专项 `48 passed in 9.26s`、提交前 main 全量 `119 passed in 17.64s`、test 跨工作树全量 `243 passed in 31.50s`。
+- 已安装插件直接枚举为 `48 tools / 12 resources / 12 prompts`；本次路径修复的新 Marketplace 版本尚未生成。
+- 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
 
 - 当前项目上下文为 `summer-holiday-1-2268049d8188`。
-- 已审查的历史硬件映射仍为 ESP32-D0WD-V3、GPIO34 KEY1、GPIO32 低有效 LED、GPIO25 PWM 蜂鸣器、UART0 115200；本次纯软件步骤没有重新读取板端状态。
-- 2026-07-26 的本轮门禁没有访问串口，也没有执行烧录、擦除、删除、复位、full clean 或驱动蜂鸣器。
-- MicroPython 程序停止、GPIO raw REPL、板上回归和性能执行必须在明确的当前固件状态下单独验收，不能由 mock 测试或历史实板结果推断。
+- 已审查映射为 ESP32-D0WD-V3、GPIO34 KEY1、GPIO32 低有效 LED、GPIO25 PWM 蜂鸣器、UART0 115200；2026-07-27 的 MicroPython runtime 探测已作为新的 board-test 事实增量写回。
+- 授权前备份 4,194,304 字节，SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；`erase_flash_20260727_131837_f672becc` 成功，`restore_flash_20260727_131918_88af58ec` 成功恢复并校验官方 MicroPython v1.28.0 BIN。
+- 动作后捕获到 MicroPython v1.28.0 banner；运行时信息、20 条串口 Monitor 标记和三个临时文件的上传/读取/列表通过。hard reset 工具仍保留 `reset_confirmed=false` 与 `output_causality_confirmed=false` 的严格边界。
+- 相对下载返回成功但实际写入版本化安装缓存，因此 `remote_file_management` 尚未通过；程序停止、异常解析、GPIO34 只读、板上回归、性能、软复位、临时文件删除和日志闭环也尚未执行。
+- `build_flash_monitor` 只支持 ESP-IDF build→flash→monitor 链，本次 Raw BIN 恢复不能作为其通过证据；若执行需另行授权，恢复 MicroPython 还需再次授权。
 
 ## 插件发布状态
 
 - 当前仓库的既有本地插件 manifest 差异不属于本次提交；个人 marketplace 源已更新为 `0.1.0+codex.20260726165544`。
 - Marketplace 源通过 plugin validator、main 发布测试 `104 passed in 14.19s` 和 `48 tools / 12 resources / 12 prompts` 直接枚举。
-- 按用户约定，不直接改安装缓存；当前缓存仍为旧版 `0.1.0+codex.20260722153803`，由用户重启后再验证。本状态页不把 Marketplace 源枚举冒充为已安装插件枚举。
+- 用户重启后已确认安装缓存为 `0.1.0+codex.20260726165544` 并直接核对 48/12/12。按用户约定，本次修复只会更新 Marketplace 源，不直接改安装缓存；当前运行插件仍未包含路径修复。
 
 ## 待完成
 
-1. 推送 Monitor STARTING 测试同步修复并确认双分支远端矩阵。
-2. 用户重启后，在新任务核对安装插件版本和 48 tools / 12 resources / 12 prompts。
-3. MicroPython 执行类专项只在明确当前固件和操作步骤后做实板门禁；擦除和烧录仍需按具体动作单独确认。
+1. 提交 main 实现/文档和 test 合同，合并后复跑 test 全量并原子推送双分支。
+2. 确认 main/test 各四个 Windows/Linux、Python 3.10/3.12 远端 job。
+3. 只同步 Marketplace 源，运行发布测试、validator 与 48/12/12 枚举，再执行一次 cachebuster 更新。
+4. 用户重启后核对新版插件，并用新的项目内输出名重复相对下载。
+5. 下载通过后继续剩余 MicroPython 实板能力；删除和新的烧录/恢复操作仍按精确动作单独确认。
