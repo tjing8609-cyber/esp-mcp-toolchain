@@ -17,6 +17,8 @@
 - 新增 SQLite schema v2 与 runs/events 仓储，包含 project-scoped 复合键、外键、JSON 对象约束、规范 UUID、事务 sequence 和结构化查询索引。
 - 新增 v1 数据库重建迁移、legacy JSONL 稳定快照与可重复导入，以及 `docs/adr/0003-sqlite-log-authority.md`。
 - `esp_logs_query` 新增 `run_id`、phase、level、tool、source、时间和 sequence 范围过滤，并同步 CLI、FastMCP schema 和静态工具注册资源。
+- 新增 SQLite schema v3-A 的 `raw_logs` / `errors` 约束与复合索引，以及稳定 UUIDv5、
+  occurrence-aware error identity、严格幂等、显式冲突和 project/run 边界校验的底层仓储 API。
 
 ### Changed
 
@@ -34,11 +36,18 @@
 - GitHub Actions 的 push 触发分支增加 `test`，使测试分支也执行 Windows/Linux、Python 3.10/3.12 矩阵。
 - README、CHANGELOG、开发状态页和 ADR 分工记录不同层级的信息。
 - SQLite 成为 runs/events 的正式状态与查询源；JSONL 改为审计镜像和旧数据迁移入口，`latest.json` 不再是查询权威。
+- SQLite v2→v3 改为单事务重建 `raw_logs` / `errors`：严格复制并核对行数和外键后才写
+  v3 marker；失败时保持原 v2 表、数据、版本和 marker。正式项目数据库不会由本阶段
+  自动升级。
 - 同步工具统一使用 start/prepare/complete/finish run 生命周期；后台 Monitor 在启动时固定完整 `LogScope`，并由 worker 写入原项目终态。
 - 跨工作树门禁由 `index-test` 明确加载 `index` 源码，并校验实际导入来源，避免测试工作树误测自身旧实现。
 
 ### Fixed
 
+- 修复仅提高 `CURRENT_SCHEMA_VERSION` 并执行 `CREATE TABLE IF NOT EXISTS` 时，
+  v2 的旧 `raw_logs` / `errors` 会被错误标记为 v3、却没有获得新约束和索引的问题。
+- v1 raw/error 迁移不再用 `INSERT OR IGNORE` 静默跳过冲突或不合规数据；此类问题现在
+  终止迁移并整体回滚。
 - `esp_backup_flash` 与 `esp_restore_flash` 现在共用规范路径边界：只接受当前 workspace
   或当前项目经校验的 `artifacts/flash`，拒绝越界路径以及 artifact/staging 中的
   symlink/junction。备份先写项目私有 UUID staging，再以不覆盖方式发布；已有 final、
@@ -76,6 +85,13 @@
 
 ### Validation
 
+- SQLite v3-A 合同在旧实现上先得到预期 `20 failed in 0.52s`。实现后的基础合同为
+  `20 passed`；加入假 v3 的 PK/FK/CHECK/索引验证、v2 缺列/额外列拒绝、重复/并发迁移、
+  外键晚失败回滚、v1 直升、UUIDv5 确定性和重复异常 occurrence 后为
+  `33 passed in 1.79s`。SQLite 合并定向为 `68 passed in 5.34s`，
+  main 全量为 `119 passed in 14.89s`，test 显式加载 main 全量为
+  `320 passed, 1 skipped in 34.84s`。测试只使用临时数据库，未迁移正式项目 v2
+  数据库，也未访问串口或板卡；远端矩阵待提交后验证。
 - Flash 路径安全合同在旧实现上先得到预期 `8 failed, 15 passed`；第一轮修复为
   `26 passed`，独立复审发现 reparse、恢复源 TOCTOU 和备份父目录替换缺口后继续补强。
   最终 Flash 定向门禁为 `36 passed, 1 skipped in 2.67s`；跳过项仅因本机无 Windows 目录

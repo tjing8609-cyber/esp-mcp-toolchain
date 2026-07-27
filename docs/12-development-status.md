@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-27 22:27（Asia/Shanghai）
+更新时间：2026-07-27 23:28（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成本地软件门禁。当前正在提交 Flash 路径安全切片；远端 CI、Marketplace 与重启后插件验收尚未完成，本轮也没有重新访问板卡。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。Flash main/test 远端矩阵已通过；当前完成 SQLite v3-A 的 schema、底层仓储和可回滚迁移，尚未进入运行时写入与查询集成。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡。
 
 ## 本轮已完成实现
 
@@ -40,6 +40,14 @@
   SHA-256；POSIX staging 收紧为只读，Windows 依赖独占运行目录与重复身份/摘要复核，
   正常和错误路径均记录清理结果；清理前的权限/I/O 检查失败也只形成 cleanup error，
   不覆盖原始操作结果。
+- SQLite schema 升至 v3，`raw_logs` / `errors` 增加数据库约束和按 run/kind/time 的复合
+  索引；仓储层新增稳定 UUIDv5、error occurrence identity、规范相对 POSIX 路径、
+  SHA-256、时区时间戳、行列号和 recoverable 校验。
+- raw/error 注册采用严格幂等：完整内容相同返回 `inserted=false`，同 ID 内容不同报显式
+  conflict；跨项目或不存在的 run 在写入前拒绝。
+- 显式 v2→v3 迁移只在事务中重建 raw/error 两表，严格复制并核对行数和外键后才写版本；
+  约束失败或晚阶段外键失败会完整回滚。v1 raw/error 也改为严格复制，避免
+  `INSERT OR IGNORE` 静默丢行。
 
 ## 本地验证
 
@@ -59,6 +67,13 @@
   最终定向门禁 `36 passed, 1 skipped in 2.67s`；main 全量 `119 passed in 15.53s`；test 显式
   加载 main 源码 `287 passed, 1 skipped in 33.01s`。skip 仅因本机没有目录 symlink
   创建权限，同一拒绝分支另有确定性测试。
+- SQLite v3-A 在旧实现上的初始合同为预期 `20 failed in 0.52s`；基础实现绿灯后补入
+  假 v3 的 PK/FK/CHECK/索引验证、v2 缺列/额外列拒绝、重复/并发升级、外键晚失败回滚、
+  v1 raw/error 直升、UUIDv5 确定性和相同异常不同 occurrence 合同，最终专项
+  `33 passed in 1.79s`、SQLite 合并定向 `68 passed in 5.34s`、main 全量
+  `119 passed in 14.89s`、test 显式加载 main 全量 `320 passed, 1 skipped in 34.84s`。
+- v3-A 测试仅使用临时 SQLite；正式项目 v2 数据库没有迁移，当前安装插件没有更新，
+  串口和 COM3 没有访问。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -78,8 +93,14 @@
 
 ## 待完成
 
-1. 提交 Flash 路径安全的 main 实现/文档和 test 合同，合并后复跑 test 自身源码全量并推送双分支。
-2. 确认 main/test 各四个 Windows/Linux、Python 3.10/3.12 远端 job。
-3. 只同步 Marketplace 源，运行发布测试、validator 与 48/12/12 枚举，再执行一次 cachebuster 更新。
-4. 用户重启后核对新版插件，并用新的项目内输出名重复相对下载。
-5. 下载通过后继续剩余 MicroPython 实板能力；删除和新的烧录/恢复操作仍按精确动作单独确认。
+1. 提交并推送 SQLite v3-A 的 main 实现/文档和 test 合同，合并后复跑 test 自身源码全量，
+   再确认 main/test 各四个 Windows/Linux、Python 3.10/3.12 远端 job。
+2. v3-B：把 capture、Monitor chunk 和结构化异常写入 raw/error 仓储，并为已有
+   event/manifest/JSONL 增加独立、可重复的历史对账，不复用旧 JSONL marker。
+3. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
+   同时保留有界兼容路径和项目边界。
+4. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+   48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
+   v2 数据库升级。
+5. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
+   精确动作单独确认。

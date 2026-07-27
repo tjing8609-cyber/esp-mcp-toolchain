@@ -7,7 +7,7 @@ import time
 from ..paths import data_dir
 
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 DEFAULT_BUSY_TIMEOUT_MS = 5_000
 
 

@@ -9,6 +9,11 @@ from typing import Any, Iterable
 from uuid import UUID, uuid5
 
 from .db import connect
+from .error_repository import (
+    get_error as select_error,
+    insert_error,
+    list_errors_for_run,
+)
 from .event_repository import (
     EventRepositoryError,
     get_event_by_uuid,
@@ -21,6 +26,11 @@ from .event_repository import (
     payload_from_text,
     payload_to_text,
     query_events as select_events,
+)
+from .raw_log_repository import (
+    get_raw_log as select_raw_log,
+    insert_raw_log,
+    list_raw_logs_for_run,
 )
 
 
@@ -265,6 +275,150 @@ def get_run_events(
     connection = connect(database)
     try:
         return list_events_for_run(connection, project_id=project_id, run_id=run_id, tail=tail)
+    finally:
+        connection.close()
+
+
+def register_raw_log(
+    database: str | Path,
+    *,
+    project_id: str,
+    raw_log_id: str,
+    run_id: str,
+    kind: str,
+    path: str,
+    created_at: str,
+    sha256: str | None,
+) -> tuple[dict[str, Any], bool]:
+    connection = connect(database)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        record, inserted = insert_raw_log(
+            connection,
+            project_id=project_id,
+            raw_log_id=raw_log_id,
+            run_id=run_id,
+            kind=kind,
+            path=path,
+            created_at=created_at,
+            sha256=sha256,
+        )
+        connection.commit()
+        return record, inserted
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def get_raw_log(
+    database: str | Path,
+    *,
+    project_id: str,
+    raw_log_id: str,
+) -> dict[str, Any] | None:
+    connection = connect(database)
+    try:
+        return select_raw_log(
+            connection,
+            project_id=project_id,
+            raw_log_id=raw_log_id,
+        )
+    finally:
+        connection.close()
+
+
+def get_run_raw_logs(
+    database: str | Path,
+    *,
+    project_id: str,
+    run_id: str,
+) -> list[dict[str, Any]]:
+    connection = connect(database)
+    try:
+        return list_raw_logs_for_run(
+            connection,
+            project_id=project_id,
+            run_id=run_id,
+        )
+    finally:
+        connection.close()
+
+
+def register_error(
+    database: str | Path,
+    *,
+    project_id: str,
+    error_id: str,
+    run_id: str,
+    error_kind: str,
+    file: str | None,
+    line: int | None,
+    column: int | None,
+    exception_type: str | None,
+    message: str | None,
+    raw_text: str | None,
+    recoverable: bool | int | None,
+    created_at: str,
+) -> tuple[dict[str, Any], bool]:
+    connection = connect(database)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        record, inserted = insert_error(
+            connection,
+            project_id=project_id,
+            error_id=error_id,
+            run_id=run_id,
+            error_kind=error_kind,
+            file=file,
+            line=line,
+            column=column,
+            exception_type=exception_type,
+            message=message,
+            raw_text=raw_text,
+            recoverable=recoverable,
+            created_at=created_at,
+        )
+        connection.commit()
+        return record, inserted
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def get_error(
+    database: str | Path,
+    *,
+    project_id: str,
+    error_id: str,
+) -> dict[str, Any] | None:
+    connection = connect(database)
+    try:
+        return select_error(
+            connection,
+            project_id=project_id,
+            error_id=error_id,
+        )
+    finally:
+        connection.close()
+
+
+def get_run_errors(
+    database: str | Path,
+    *,
+    project_id: str,
+    run_id: str,
+) -> list[dict[str, Any]]:
+    connection = connect(database)
+    try:
+        return list_errors_for_run(
+            connection,
+            project_id=project_id,
+            run_id=run_id,
+        )
     finally:
         connection.close()
 

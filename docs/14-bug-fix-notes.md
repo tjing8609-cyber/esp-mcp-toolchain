@@ -573,3 +573,77 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 不支持 hard link 的文件系统会安全失败并给出 `recovery_path`，不会把备份记为成功。
   recovery 文件不会被自动删除，需在确认内容和目标路径后由显式清理流程处理。
 - 本轮没有做真实 4 MiB 备份或恢复；软件门禁不能代替实板数据完整性和供电稳定性验收。
+
+## 2026-07-27：SQLite 只改版本号会把旧表误报为 v3，失败迁移还可能静默丢行
+
+### 症状
+
+- schema v2 已经存在 `raw_logs` / `errors` 空壳表，但运行时没有正式仓储 API。
+- 如果只把 `CURRENT_SCHEMA_VERSION` 从 2 改为 3，原 `init_database()` 会把 v2 判定为
+  “当前形状”，执行 `CREATE TABLE IF NOT EXISTS` 后直接写 `user_version=3`。
+- SQLite 不会用 `CREATE TABLE IF NOT EXISTS` 改造已经存在的表，因此旧表仍缺少路径、
+  SHA-256、行列号、recoverable 约束和查询索引，却会被标记成 v3。
+- v1 raw/error 迁移原来使用 `INSERT OR IGNORE`；出现主键冲突或新约束不接受的行时，
+  迁移可能继续并删除 legacy 表，使问题表现为静默数据丢失。
+
+### 根因
+
+旧迁移流程把“runs/events 列看起来是当前格式”与“整个数据库满足最新 schema”混为一谈，
+也把幂等建表语句当成了表结构升级机制。SQLite 的 `IF NOT EXISTS` 只保证对象存在，
+不会比较或替换既有定义；而 `INSERT OR IGNORE` 又会把迁移数据问题隐藏成成功。
+
+另一个风险是过早写版本号。若复制之后才发现外键不一致，只有把 rename、建表、复制、
+行数检查、外键检查、migration marker 和 `user_version` 全部放在同一个事务里，
+才能保证数据库回到可识别的 v2 状态。
+
+### 修复
+
+- schema v3 为 raw/error 增加必要 CHECK 和四个复合索引；数据库层不强制旧 ID 必须为 UUID，
+  以便合法历史 ID 原样迁移，新写入则由仓储层强制规范 RFC 4122 UUID。
+- 新增 `raw_log_repository` / `error_repository`。raw ID 由项目、run、kind 和规范路径
+  生成；error ID 还要求调用方提供稳定 occurrence key（后续使用来源 event UUID），
+  使同一次异常可严格重试、相同异常的第二次发生可生成另一条记录。
+- 仓储层规范项目/run/kind、相对 POSIX 路径、SHA-256、时区时间戳、正整数行列号和
+  recoverable，并在 INSERT 前检查复合 run 外键。
+- 新增显式 `_migrate_v2()`：在 `BEGIN IMMEDIATE` 中把两张旧表改名，应用 v3 schema，
+  使用严格 INSERT 复制全部列，核对两表行数，删除 legacy 表后再次应用 schema 以避免旧
+  index 名暂时占用，最后运行 `foreign_key_check`。
+- 只有上述步骤全部通过后才新增 v3 migration marker 并写 `user_version=3`。
+  Constraint 或最终外键检查失败统一抛 `database_migration_error` 并回滚。
+- v1 raw/error 复制也取消 `OR IGNORE` 并核对行数；不合规数据现在阻止迁移，不会被静默删除。
+- 对已经盖章 v3 的数据库不再只看列名：初始化会核对两表复合主键、同一组复合外键、
+  ON DELETE CASCADE、四个索引的精确列序，并在可回滚 savepoint 中证明非法路径、SHA、
+  行号类型和 recoverable 确实被 CHECK 拒绝。
+- v2 重建前先用 `PRAGMA table_info` 核对精确复制列集合；缺列时在 rename 前失败，避免
+  SQLite 把双引号中的未知列名兼容解释成字符串常量并写入伪造数据；存在额外扩展列时也
+  失败并保留原库，避免白名单复制后 DROP legacy 静默删除扩展证据。
+
+### 验证
+
+- 新增合同在旧实现上先得到预期 `20 failed in 0.52s`。
+- 第一轮实现后基础合同 `20 passed`；独立复审指出假 v3、v2 缺列字符串伪造、额外列静默
+  丢失和重复异常 identity 阻断项后，继续加入 PK/FK/CHECK/同名错索引验证、精确列集合
+  预检、重复与双线程升级、复制完成后的外键晚失败回滚、v1 raw/error 直升和
+  occurrence-aware UUIDv5 测试。
+- v3-A 最终专项：`33 passed in 1.79s`。
+- 既有 SQLite 合同与 v3-A 合并定向：`68 passed in 5.34s`。
+- main 全量：`119 passed in 14.89s`。
+- test 工作树显式加载 main 源码：`320 passed, 1 skipped in 34.84s`。
+- 全部新增测试只创建临时数据库，没有打开或迁移正式项目数据库，没有访问 COM3 或板卡。
+
+### 经验
+
+- schema 版本号是结论，不是迁移动作；只有结构和数据验证完成后才能写入。
+- `CREATE TABLE IF NOT EXISTS` 适合新建和补缺，不能代替既有表重建。
+- 数据迁移不应使用会隐藏失败的 `OR IGNORE`，除非每一条被忽略的业务语义都有单独审计。
+- 回滚测试既要覆盖复制时的早失败，也要覆盖复制完成后外键检查的晚失败。
+- 新库合同与升级后合同必须共用同一组结构断言，否则容易得到“新库正确、旧库假升级”的绿灯。
+
+### 剩余风险
+
+- v3-A 只提供表结构、迁移和底层仓储；capture、Monitor、错误解析和 MCP 查询还没有写入或
+  读取新仓储，必须在 v3-B/v3-C 分步接入。
+- 正式项目数据库仍是 v2，当前安装插件也只支持 v2。必须等 Marketplace 更新、用户重启并
+  确认新插件后才能迁移正式库，否则旧插件会拒绝 v3。
+- 历史 JSONL marker 已存在，不能靠再次运行旧 importer 回填 raw/error；后续需要独立、
+  可重复、带自身版本标记的 reconciliation。

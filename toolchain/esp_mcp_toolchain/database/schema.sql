@@ -60,13 +60,32 @@ CREATE TABLE IF NOT EXISTS legacy_jsonl_imports (
 );
 
 CREATE TABLE IF NOT EXISTS raw_logs (
-  project_id TEXT NOT NULL,
-  raw_log_id TEXT NOT NULL,
-  run_id TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  path TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  sha256 TEXT,
+  project_id TEXT NOT NULL CHECK(length(trim(project_id)) > 0),
+  raw_log_id TEXT NOT NULL CHECK(length(trim(raw_log_id)) > 0),
+  run_id TEXT NOT NULL CHECK(length(trim(run_id)) > 0),
+  kind TEXT NOT NULL CHECK(length(trim(kind)) > 0),
+  path TEXT NOT NULL CHECK(
+    length(trim(path)) > 0
+    AND substr(path, 1, 1) <> '/'
+    AND instr(path, char(92)) = 0
+    AND instr(path, ':') = 0
+    AND path NOT IN ('.', '..')
+    AND path NOT LIKE './%'
+    AND path NOT LIKE '../%'
+    AND path NOT LIKE '%/./%'
+    AND path NOT LIKE '%/../%'
+    AND path NOT LIKE '%/.'
+    AND path NOT LIKE '%/..'
+  ),
+  created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0),
+  sha256 TEXT CHECK(
+    sha256 IS NULL
+    OR (
+      length(sha256) = 64
+      AND sha256 = lower(sha256)
+      AND sha256 NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
   PRIMARY KEY(project_id, raw_log_id),
   FOREIGN KEY(project_id, run_id)
     REFERENCES runs(project_id, run_id)
@@ -74,18 +93,21 @@ CREATE TABLE IF NOT EXISTS raw_logs (
 );
 
 CREATE TABLE IF NOT EXISTS errors (
-  project_id TEXT NOT NULL,
-  error_id TEXT NOT NULL,
-  run_id TEXT NOT NULL,
-  error_kind TEXT NOT NULL,
+  project_id TEXT NOT NULL CHECK(length(trim(project_id)) > 0),
+  error_id TEXT NOT NULL CHECK(length(trim(error_id)) > 0),
+  run_id TEXT NOT NULL CHECK(length(trim(run_id)) > 0),
+  error_kind TEXT NOT NULL CHECK(length(trim(error_kind)) > 0),
   file TEXT,
-  line INTEGER,
-  column INTEGER,
+  line INTEGER CHECK(line IS NULL OR (typeof(line) = 'integer' AND line >= 1)),
+  column INTEGER CHECK(column IS NULL OR (typeof(column) = 'integer' AND column >= 1)),
   exception_type TEXT,
   message TEXT,
   raw_text TEXT,
-  recoverable INTEGER,
-  created_at TEXT NOT NULL,
+  recoverable INTEGER CHECK(
+    recoverable IS NULL
+    OR (typeof(recoverable) = 'integer' AND recoverable IN (0, 1))
+  ),
+  created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0),
   PRIMARY KEY(project_id, error_id),
   FOREIGN KEY(project_id, run_id)
     REFERENCES runs(project_id, run_id)
@@ -160,3 +182,11 @@ CREATE INDEX IF NOT EXISTS idx_events_project_tool_ts
   ON events(project_id, tool, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_project_source_ts
   ON events(project_id, source, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_raw_logs_project_run_created
+  ON raw_logs(project_id, run_id, created_at, raw_log_id);
+CREATE INDEX IF NOT EXISTS idx_raw_logs_project_kind_created
+  ON raw_logs(project_id, kind, created_at, raw_log_id);
+CREATE INDEX IF NOT EXISTS idx_errors_project_run_created
+  ON errors(project_id, run_id, created_at, error_id);
+CREATE INDEX IF NOT EXISTS idx_errors_project_kind_created
+  ON errors(project_id, error_kind, created_at, error_id);

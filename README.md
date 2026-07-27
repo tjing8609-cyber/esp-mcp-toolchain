@@ -785,6 +785,25 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 修复后目标用例 `1 passed in 1.09s`，test 自身源码全量
   `287 passed, 1 skipped in 33.19s`；仍未访问真实串口或板卡。
 
+### 2026-07-27 23:28 - 完成 SQLite v3-A 仓储与可回滚迁移
+
+- schema v3 为 `raw_logs` / `errors` 增加路径、SHA-256、行列号、可恢复状态约束，
+  并建立按 run、kind 和时间查询的复合索引。
+- 新增两组底层仓储 API：新记录使用稳定 UUIDv5，error ID 额外包含稳定 occurrence key，
+  使同一次发生可重试、相同异常的不同发生可分别记录；完整相同的重试返回去重结果，
+  同 ID 不同内容明确报冲突，不存在或跨项目的 run 会在写入前拒绝。
+- v2→v3 不再用 `CREATE TABLE IF NOT EXISTS` 直接盖版本号，而是在单个
+  `BEGIN IMMEDIATE` 事务中重建两张表、严格复制、核对行数和外键，最后才写 v3 marker。
+  复制约束失败或最终外键检查失败时，表名、数据、v2 marker 和 `user_version=2`
+  会整体恢复。
+- 合同先在旧实现上得到预期 `20 failed`；完成实现并补齐假 v3 结构验证、v2 缺列/额外列
+  拒绝、迁移后置约束、重复/并发升级、晚失败回滚、v1 直升与重复异常 occurrence 覆盖后，
+  v3-A 专项为 `33 passed`，SQLite 合并定向为 `68 passed`，main 全量为
+  `119 passed`，test 显式加载 main 为 `320 passed, 1 skipped`。
+- 本阶段只操作临时 SQLite。正式项目数据库仍保持 v2，现有运行插件也仍只支持 v2；
+  event/Monitor 写入、历史数据对账和 MCP 查询接入属于后续 v3-B/v3-C，不能把本阶段
+  描述为日志闭环已经完成。本阶段没有访问 COM3 或执行任何板端动作。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。
