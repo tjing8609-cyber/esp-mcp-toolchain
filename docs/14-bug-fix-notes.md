@@ -310,3 +310,57 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - `reset_confirmed=false` 与 `output_causality_confirmed=false` 继续保留。当前 reset 会自行
   打开串口；活动 Monitor 已占用同一端口时，仍不能在 Monitor 的唯一句柄内完成复位和建立
   动作前后序列边界。该能力需要后续独立设计和测试，不能由本次持久化修复代替。
+
+## 2026-07-27：4 MiB 实物被构建为 2 MB 镜像头
+
+### 症状
+
+- 已验证的完整 Flash 备份大小为 4,194,304 字节，但 ESP-IDF 示例的本地 `sdkconfig`
+  声明 `CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y`。
+- 旧 `build/flasher_args.json` 使用 `--flash_size 2MB`，esptool 离线解析 bootloader
+  也显示 `Flash size: 2MB`。板端启动因此报告检测到 4 MB、镜像头只声明 2 MB。
+
+### 根因
+
+示例只提交了源文件，没有提交 `sdkconfig.defaults`。`sdkconfig` 又按惯例被 Git 忽略，
+所以 Flash 容量完全取决于某台机器第一次生成配置时的选择。物理容量已经确认，但仓库无法
+在新环境中复现这一关键构建输入。
+
+### 修复
+
+- 新增 `examples/esp_idf_key_led_buzzer/sdkconfig.defaults`，固定：
+  ESP32、DIO、40 MHz、4 MB 和 single-app 分区。
+- 不手写 Kconfig 派生字符串 `CONFIG_ESPTOOLPY_FLASHSIZE="4MB"`，也不启用
+  `CONFIG_ESPTOOLPY_HEADER_FLASHSIZE_UPDATE`；镜像头在构建阶段生成，保持完整性校验。
+- 4 MB 只修正物理 Flash 描述和烧录参数，不扩大 1 MiB factory app 分区，避免把容量修复
+  混成分区方案变更。
+- 示例 README 明确说明 defaults 不会覆盖已有的 ignored `sdkconfig`。本机现有配置只精确
+  修改 2 MB/4 MB choice 和派生值后运行普通 build，没有删除配置或触发 `set-target`。
+
+### 验证
+
+- test 分支先增加静态合同；修复前得到预期的 `2 failed`，分别对应 defaults 缺失和说明缺失。
+- 补齐配置与说明后静态合同为 `2 passed in 0.43s`。
+- `esp_project_build` run `build_20260727_210357_c45f0c14` 返回成功，命令只执行普通
+  `idf.py ... build`，没有 `set-target` 或 fullclean。
+- 生成的 write-flash 参数为 `--flash_mode dio --flash_size 4MB --flash_freq 40m`。
+- esptool 4.7 离线解析 bootloader 显示 `Flash size: 4MB`、`Flash freq: 40m`、
+  `Flash mode: DIO`，校验和与 validation hash 均有效；bootloader SHA-256 为
+  `620A1ABEDBFF62995143824B5918B91689DFBB9601E46320D1E16D4DD40CE457`。
+- main 全量门禁为 `119 passed in 13.99s`；test 工作树显式加载 main 源码的全量门禁为
+  `249 passed in 28.88s`。
+
+### 经验
+
+- 被 Git 忽略的 `sdkconfig` 不能承担仓库级硬件事实；稳定构建选择要写入 defaults 并测试。
+- “芯片是 4 MiB”与“应用分区使用全部 4 MiB”是两件事，修镜像头不应顺手改变分区策略。
+- defaults 对新配置生效，不会自动重写已有配置；验证现有构建时必须明确处理这一边界。
+- 删除 `sdkconfig` 可能让后端进入 `set-target`，后者等价于 fullclean，不能作为无提示的
+  配置刷新手段。
+
+### 剩余风险
+
+- 本步骤只构建并离线检查产物，没有访问、擦除或烧录 `COM3`。当前板上仍是此前的镜像；
+  只有后续经单独确认烧录并捕获启动日志，才能确认 2 MB/4 MB 启动警告消失。
+- single-app 分区仍只有 1 MiB，剩余物理容量没有自动分配。若未来需要 OTA 或更大 app，
+  必须作为独立分区设计评审，不能把本次修复当作已经完成。

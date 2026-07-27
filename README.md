@@ -679,13 +679,22 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 修复后 main 专项为 `32 passed in 4.15s`，test 跨工作树专项为 `48 passed in 9.26s`，提交前 main 全量为 `119 passed in 17.64s`，test 加载 main 源码的全量门禁为 `243 passed in 31.50s`。
 - 以上仅是本地软件结论；新提交、GitHub CI、Marketplace 同步、cachebuster 和重启后实板相对下载复验仍待完成。
 
-### 2026-07-27 21:40 - 持久化 reset 有界原始输出证据
+### 2026-07-27 20:55 - 持久化 reset 有界原始输出证据
 
 - 根因是 `esp_reset` 虽然读取动作后串口字节，却只把解码后的兼容字段 `text` 返回给调用方；`logged_task` 的完成事件白名单不会保存该字段，因此调用结束后无法从 SQLite 复核原始输出。
 - `logged_task` 新增按工具声明的静态 `result_payload_keys` 白名单，并拒绝非 tuple 或空字符串键；没有把所有工具的 `text` 全局写入日志，避免扩大输出或敏感数据落库范围。
 - `esp_reset` 现在把最多 65,536 字节的长度、SHA-256、Base64、替换解码文本、严格 UTF-8 解码状态、捕获是否完成和是否达到上限写入当前 run 的 completion 事件。`reset_output_capture_completed=false` 明确区分捕获失败与成功捕获到 0 字节。
 - 本地定向门禁为 `58 passed in 5.71s`，main 全量为 `119 passed in 15.18s`，test 加载 main 源码的全量门禁为 `247 passed in 28.82s`。本切片只使用假串口和临时 SQLite，没有访问 `COM3`、复位、擦除或烧录板卡。
 - 剩余边界不变：持久化输出不能独立证明输出由本次复位导致，`reset_confirmed=false` 与 `output_causality_confirmed=false` 仍被保留；Monitor 持有串口时的同句柄复位取证属于后续独立切片。
+
+### 2026-07-27 21:05 - 修正 ESP-IDF 示例的 4 MiB Flash 描述
+
+- 实物完整备份为 4,194,304 字节，但示例的旧本地 `sdkconfig`、`flasher_args.json` 和 bootloader 镜像头均声明 2 MB；根因是仓库没有受版本控制的 `sdkconfig.defaults`，构建结果继承了机器上的旧生成配置。
+- 新增 `sdkconfig.defaults`，固定 ESP32、DIO、40 MHz、4 MB，并保留 single-app 分区布局；没有启用烧录时改写镜像头的选项，也没有把 4 MiB 误写成 4 MB 应用分区。
+- 因 defaults 不会覆盖已有 `sdkconfig`，本机只精确更新被忽略配置中的三处 2 MB→4 MB 后执行普通 build；没有删除配置、没有运行 `set-target` 或 fullclean。
+- `esp_project_build` run `build_20260727_210357_c45f0c14` 成功；生成命令包含 `--flash_size 4MB --flash_freq 40m --flash_mode dio`，esptool 离线解析 bootloader 为 `Flash size: 4MB / 40m / DIO`，SHA-256 为 `620A1ABEDBFF62995143824B5918B91689DFBB9601E46320D1E16D4DD40CE457`。
+- 配置专项为 `2 passed in 0.43s`，main 全量为 `119 passed in 13.99s`，test 加载 main 源码的全量门禁为 `249 passed in 28.88s`。
+- 该步骤没有访问或烧录 `COM3`。当前板上固件仍是前一版 2 MB 头镜像；真实启动警告消失必须等后续单独烧录和监控验收，不能由本次构建结论替代。
 
 ## 协作约定
 
