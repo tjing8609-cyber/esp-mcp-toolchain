@@ -75,6 +75,7 @@ def esp_exec_code(
     task_type="program_stop",
     selected_port_arg="port",
     payload_args=("baudrate", "timeout_ms"),
+    completion_artifacts=("result_error",),
 )
 def esp_program_stop(
     port: str | None = None,

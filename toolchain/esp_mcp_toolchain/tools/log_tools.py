@@ -3,10 +3,13 @@ from __future__ import annotations
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
+import hashlib
 import inspect
 import json
+import os
 from pathlib import Path
 import shlex
+import stat
 from threading import RLock
 from typing import Any, Callable, TypeVar
 from uuid import uuid4
@@ -80,6 +83,15 @@ _RESULT_LOG_KEYS = {
     "iterations",
     "failed_count",
 }
+_COMPLETION_ARTIFACT_POLICIES = {
+    "serial_capture_raw",
+    "result_error",
+    "structured_error",
+}
+
+
+class CompletionArtifactError(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -124,6 +136,212 @@ def resolve_log_scope(
         resolved_project_id = project_id or str(get_project_context()["project_id"])
         return LogScope.bound(project_id=resolved_project_id, log_root=log_root)
     return LogScope.active()
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def _is_reparse_point(path: Path) -> bool:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return False
+    attributes = getattr(metadata, "st_file_attributes", 0)
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return path.is_symlink() or bool(attributes & reparse_flag)
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _optional_positive_integer(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
+
+
+def _optional_recoverable(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value)
+    return None
+
+
+def _verified_serial_capture_artifact(
+    result: dict[str, Any],
+    scope: LogScope,
+) -> log_repository.RawLogArtifact:
+    raw_path = result.get("raw_path")
+    bytes_read = result.get("bytes_read")
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise CompletionArtifactError("serial capture raw_path is missing")
+    if isinstance(bytes_read, bool) or not isinstance(bytes_read, int) or bytes_read < 0:
+        raise CompletionArtifactError("serial capture bytes_read is invalid")
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        raise CompletionArtifactError("serial capture raw_path must be absolute")
+
+    raw_root = scope.log_root / "raw"
+    try:
+        canonical_root = raw_root.resolve(strict=True)
+    except OSError as exc:
+        raise CompletionArtifactError(
+            f"serial capture raw root is unavailable: {exc}"
+        ) from exc
+    if _is_reparse_point(raw_root):
+        raise CompletionArtifactError(
+            "serial capture raw root must not be a symbolic link or reparse point"
+        )
+
+    lexical_candidate = Path(os.path.abspath(candidate))
+    if not _is_within(lexical_candidate, canonical_root):
+        raise CompletionArtifactError(
+            "serial capture raw_path is outside the active project's raw log root"
+        )
+    relative = lexical_candidate.relative_to(canonical_root)
+    current = canonical_root
+    for part in relative.parts:
+        current /= part
+        if _is_reparse_point(current):
+            raise CompletionArtifactError(
+                "serial capture raw_path contains a symbolic link or reparse point"
+            )
+    try:
+        canonical_candidate = lexical_candidate.resolve(strict=True)
+    except OSError as exc:
+        raise CompletionArtifactError(
+            f"serial capture raw_path is unavailable: {exc}"
+        ) from exc
+    if not _is_within(canonical_candidate, canonical_root):
+        raise CompletionArtifactError(
+            "serial capture raw_path resolves outside the active project's raw log root"
+        )
+
+    digest = hashlib.sha256()
+    hashed_bytes = 0
+    try:
+        with canonical_candidate.open("rb") as handle:
+            metadata = os.fstat(handle.fileno())
+            if not stat.S_ISREG(metadata.st_mode):
+                raise CompletionArtifactError(
+                    "serial capture raw_path must identify a regular file"
+                )
+            if metadata.st_size != bytes_read:
+                raise CompletionArtifactError(
+                    "serial capture raw file size does not match bytes_read"
+                )
+            while True:
+                chunk = handle.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+                hashed_bytes += len(chunk)
+            metadata_after = os.fstat(handle.fileno())
+            if (
+                hashed_bytes != bytes_read
+                or metadata_after.st_size != bytes_read
+                or metadata_after.st_dev != metadata.st_dev
+                or metadata_after.st_ino != metadata.st_ino
+            ):
+                raise CompletionArtifactError(
+                    "serial capture raw file changed during verification"
+                )
+    except CompletionArtifactError:
+        raise
+    except OSError as exc:
+        raise CompletionArtifactError(
+            f"serial capture raw file could not be verified: {exc}"
+        ) from exc
+    if _is_reparse_point(lexical_candidate):
+        raise CompletionArtifactError(
+            "serial capture raw_path became a symbolic link or reparse point"
+        )
+    stored_path = canonical_candidate.relative_to(scope.log_root.resolve()).as_posix()
+    return log_repository.RawLogArtifact(
+        kind="serial_capture_raw",
+        path=stored_path,
+        sha256=digest.hexdigest(),
+    )
+
+
+def _result_error_artifact(
+    result: dict[str, Any],
+    event_uuid: str,
+) -> log_repository.ErrorArtifact | None:
+    if result.get("ok") is not False:
+        return None
+    error_kind = _optional_text(result.get("error_kind"))
+    if error_kind is None:
+        return None
+    return log_repository.ErrorArtifact(
+        occurrence_key=f"event:{event_uuid}:result_error",
+        error_kind=error_kind,
+        file=_optional_text(result.get("file")),
+        line=_optional_positive_integer(result.get("line")),
+        column=_optional_positive_integer(result.get("column")),
+        exception_type=_optional_text(result.get("exception_type")),
+        message=None if result.get("message") is None else str(result.get("message")),
+        raw_text=None,
+        recoverable=_optional_recoverable(result.get("recoverable")),
+    )
+
+
+def _structured_error_artifact(
+    result: dict[str, Any],
+    event_uuid: str,
+) -> log_repository.ErrorArtifact | None:
+    report = result.get("error_report")
+    if (
+        result.get("has_error") is not True
+        or not isinstance(report, dict)
+        or report.get("has_error") is not True
+    ):
+        return None
+    error_kind = _optional_text(report.get("error_kind"))
+    if error_kind is None:
+        return None
+    return log_repository.ErrorArtifact(
+        occurrence_key=f"event:{event_uuid}:structured_error",
+        error_kind=error_kind,
+        file=_optional_text(report.get("file")),
+        line=_optional_positive_integer(report.get("line")),
+        column=_optional_positive_integer(report.get("column")),
+        exception_type=_optional_text(report.get("exception_type")),
+        message=None if report.get("message") is None else str(report.get("message")),
+        raw_text=None,
+        recoverable=_optional_recoverable(report.get("recoverable")),
+    )
+
+
+def _build_completion_artifacts(
+    *,
+    result: dict[str, Any],
+    event_uuid: str,
+    scope: LogScope,
+    policies: tuple[str, ...],
+) -> log_repository.EventArtifacts:
+    raw_logs: list[log_repository.RawLogArtifact] = []
+    errors: list[log_repository.ErrorArtifact] = []
+    if "serial_capture_raw" in policies and result.get("ok") is True:
+        raw_logs.append(_verified_serial_capture_artifact(result, scope))
+    if "result_error" in policies:
+        result_error = _result_error_artifact(result, event_uuid)
+        if result_error is not None:
+            errors.append(result_error)
+    if "structured_error" in policies:
+        structured_error = _structured_error_artifact(result, event_uuid)
+        if structured_error is not None:
+            errors.append(structured_error)
+    return log_repository.EventArtifacts(
+        raw_logs=tuple(raw_logs),
+        errors=tuple(errors),
+    )
 
 
 def new_run_id(prefix: str = "run") -> str:
@@ -277,6 +495,7 @@ def write_event(
     task_type: str | None = None,
     selected_port: str | None = None,
     auto_finish: bool | None = None,
+    artifacts: log_repository.EventArtifacts | None = None,
     scope: LogScope | None = None,
     project_id: str | None = None,
     log_root: str | Path | None = None,
@@ -303,19 +522,28 @@ def write_event(
                 summary=message,
                 payload={},
             )
-        event, inserted = log_repository.append_event(
-            resolved_scope.database_file,
-            project_id=resolved_scope.project_id,
-            run_id=rid,
-            event_uuid=event_uuid,
-            ts=ts or now_iso(),
-            phase=phase,
-            level=level,
-            tool=tool,
-            source=source,
-            message=message,
-            payload=payload,
-        )
+        append_arguments = {
+            "database": resolved_scope.database_file,
+            "project_id": resolved_scope.project_id,
+            "run_id": rid,
+            "event_uuid": event_uuid,
+            "ts": ts or now_iso(),
+            "phase": phase,
+            "level": level,
+            "tool": tool,
+            "source": source,
+            "message": message,
+            "payload": payload,
+        }
+        if artifacts is None:
+            event, inserted = log_repository.append_event(**append_arguments)
+        else:
+            report = log_repository.append_event_with_artifacts(
+                **append_arguments,
+                artifacts=artifacts,
+            )
+            event = report["event"]
+            inserted = report["event_inserted"]
         event["deduplicated"] = not inserted
         logging_warnings: list[str] = []
         try:
@@ -510,11 +738,25 @@ def logged_task(
     selected_port_arg: str | None = None,
     payload_args: tuple[str, ...] = (),
     result_payload_keys: tuple[str, ...] = (),
+    completion_artifacts: tuple[str, ...] = (),
 ) -> Callable[[F], F]:
     if not isinstance(result_payload_keys, tuple) or not all(
         isinstance(key, str) and key for key in result_payload_keys
     ):
         raise TypeError("result_payload_keys must be a tuple of non-empty strings.")
+    if (
+        not isinstance(completion_artifacts, tuple)
+        or not all(isinstance(policy, str) and policy for policy in completion_artifacts)
+        or len(set(completion_artifacts)) != len(completion_artifacts)
+    ):
+        raise TypeError(
+            "completion_artifacts must be a tuple of unique non-empty strings."
+        )
+    unsupported_policies = set(completion_artifacts) - _COMPLETION_ARTIFACT_POLICIES
+    if unsupported_policies:
+        raise ValueError(
+            f"Unsupported completion artifact policies: {sorted(unsupported_policies)}"
+        )
     completion_keys = _RESULT_LOG_KEYS | set(result_payload_keys)
 
     def decorator(func: F) -> F:
@@ -622,24 +864,51 @@ def logged_task(
                     if key in result
                 }
                 logging_warnings = list(prepare_warnings)
+                completion_event_uuid = str(uuid4())
+                completion_ts = now_iso()
+                completion_bundle: log_repository.EventArtifacts | None = None
+                artifacts_ready = True
+                if completion_artifacts:
+                    try:
+                        completion_bundle = _build_completion_artifacts(
+                            result=result,
+                            event_uuid=completion_event_uuid,
+                            scope=scope,
+                            policies=completion_artifacts,
+                        )
+                    except Exception as exc:
+                        artifacts_ready = False
+                        logging_warnings.append(
+                            "completion artifacts: "
+                            f"{type(exc).__name__}: {exc}"
+                        )
                 try:
-                    completed = write_event(
-                        tool,
-                        "info" if ok else "error",
-                        message,
-                        result_payload,
-                        run_id=run_id,
-                        phase="complete",
-                        scope=scope,
-                    )
-                    if completed.get("ok") is False:
-                        logging_warnings.append(
-                            str(completed.get("message") or completed.get("error_kind") or "event write failed")
+                    if artifacts_ready:
+                        completed = write_event(
+                            tool,
+                            "info" if ok else "error",
+                            message,
+                            result_payload,
+                            run_id=run_id,
+                            ts=completion_ts,
+                            phase="complete",
+                            event_uuid=completion_event_uuid,
+                            artifacts=completion_bundle,
+                            scope=scope,
                         )
-                    elif completed.get("logging_persisted") is False:
-                        logging_warnings.append(
-                            f"completion event: {completed.get('logging_warning') or 'audit mirror failed'}"
-                        )
+                        if completed.get("ok") is False:
+                            logging_warnings.append(
+                                "completion event: "
+                                + str(
+                                    completed.get("message")
+                                    or completed.get("error_kind")
+                                    or "event write failed"
+                                )
+                            )
+                        elif completed.get("logging_persisted") is False:
+                            logging_warnings.append(
+                                f"completion event: {completed.get('logging_warning') or 'audit mirror failed'}"
+                            )
                 except Exception as exc:
                     logging_warnings.append(f"completion event: {type(exc).__name__}: {exc}")
                 try:

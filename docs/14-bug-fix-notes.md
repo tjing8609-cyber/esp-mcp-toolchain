@@ -704,3 +704,87 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   SQLite 事务提交 completion event、raw row 和 error row；数据库失败时保留文件供独立对账。
 - 本次未把 capture 接入 `raw_logs` / `errors`，也未处理 Monitor chunk 或历史 manifest。
 - 软件假串口结果不能证明 COM3 的供电稳定性、驱动行为或真实丢字节情况。
+
+## 2026-07-28：completion、raw 和 error 分开写会留下“任务已完成但证据缺失”的假完整记录
+
+### 症状
+
+- SQLite 已有 `events`、`raw_logs` 和 `errors` 仓储，但固定 capture 和程序停止完成后只写
+  completion event；原始文件与结构化错误没有进入正式仓储。
+- 如果先写 event、再分别写 raw/error，中间任一步失败会留下 completion-only 记录。
+  查询端会看到“任务已经完成”，却无法区分证据确实不存在还是审计只写了一半。
+- 直接信任工具结果里的绝对 `raw_path` 会允许项目外文件、大小不符文件或
+  symlink/junction/reparse 目标被登记为当前项目的正式原始证据。
+- capture 持久化失败时返回的 `recovery_path` 只表示“可能需要人工保存的部分文件”，
+  不能冒充已经完成 fsync 并通过校验的正式 raw。
+- 程序停止成功时常见 `KeyboardInterrupt`。若对所有输出自动做结构化异常投影，会把正常
+  Ctrl-C 停止证据误报为运行时错误。
+
+### 根因
+
+原日志装饰器只有“写一个 completion event”的接口，raw/error 注册是彼此独立的事务；
+调用方还可以自行提供 ID、project/run 和 created_at。这样既不能保证同一 occurrence
+共用 event UUID 和时间，也不能保证 event、证据和 sequence 同时提交。
+
+另一个根因是隐式扫描策略。若所有工具都根据 `raw_path`、`error_report` 或输出文本自动
+推断证据，普通工具返回的同名字段也会被错误提升为正式审计记录；程序停止中的预期
+`KeyboardInterrupt` 就属于这种误判。
+
+### 修复
+
+- 新增 frozen `RawLogArtifact`、`ErrorArtifact` 和 `EventArtifacts`。输入不包含
+  project/run、数据库 ID 或 created_at；仓储从本次 event 的项目、run、规范时间和
+  occurrence key 统一生成稳定 UUIDv5。
+- 新增 `append_event_with_artifacts()`，在一个 `BEGIN IMMEDIATE` 中按
+  event → raw → error → sequence 顺序执行；只有新 event 才递增 sequence。任一仓储冲突
+  或 SQLite 写错都回滚整个事务，并统一为 `artifact_projection_failed`，同时保留 cause。
+- 旧 `append_event(...)->(event, inserted)` 委托新接口的空证据路径，保持调用方式和
+  幂等行为不变。已经结束的 run 只允许使用完全相同的 completion UUID/内容补齐缺失证据，
+  不允许追加新 event，也不增加序号。
+- `logged_task` 在业务返回后只生成一次 completion UUID 和时间戳，证据构建和事务提交
+  共用这两个值。构建或提交失败时禁止退化为 completion-only 写入；业务 `ok`、
+  `error_kind` 和 `message` 不变，另外返回 `logging_persisted=false` 和 warning，并继续
+  尝试按业务结果结束 run。
+- artifact 投影必须由每个工具显式声明。固定 capture 启用
+  `serial_capture_raw/result_error/structured_error`；程序停止只启用 `result_error`。
+- capture 只有在 `ok is True` 时才登记 raw，并要求绝对路径位于当前项目
+  `logs/raw`，路径组件和文件不是 reparse，打开句柄是普通文件，实际大小等于
+  `bytes_read`，哈希从文件实际内容计算。`recovery_path` 从不参与 raw 投影。
+- result error 与 structured error 分别使用
+  `event:<uuid>:result_error` 和 `event:<uuid>:structured_error`，所以“持久化失败且同时
+  捕获 traceback”会形成两条可重试但不互相覆盖的记录。
+- `esp_program_stop` 不解析输出生成 structured error；只有 `ok=false` 且存在顶层
+  `error_kind` 时登记失败。成功停止中的 `KeyboardInterrupt` 仍保留为停止证据，不进
+  errors 表。
+
+### 验证
+
+- 旧实现上的首轮合同为预期 `11 failed, 1 passed`。
+- 最终 15 项专项覆盖：原子提交与严格重试、晚阶段冲突回滚、意外 SQLite 错误包装、
+  终态 event 补齐、旧二元组兼容、规范化共享时间、稳定 ID、可信 raw 成功路径、项目外/
+  大小/reparse 拒绝、recovery 排除、capture 双错误、程序停止 KeyboardInterrupt 语义，
+  以及日志失败不篡改业务成功或失败。
+- 专项 `15 passed in 1.61s`；main 全量 `119 passed in 14.54s`；test 工作树显式加载
+  main 源码 `342 passed, 1 skipped in 35.69s`。
+- 两轮独立只读终审均为 P0=0、P1=0。全部新增测试使用临时 SQLite、临时项目和假串口，
+  没有迁移正式项目数据库，没有访问 COM3、执行板端程序、擦除或烧录。
+
+### 经验
+
+- “任务完成”与“证据完整”必须是一个数据库事务的结论，不能依赖三个先后成功的写操作。
+- 稳定 ID 解决重复提交；同一 occurrence key 加内容才定义同一错误，不能只按异常文本去重。
+- 工具返回字段不是天然可信证据。正式 raw 必须从受控项目路径重新核验文件类型、大小和哈希。
+- 错误检测策略必须按工具声明；正常控制流中的异常文本不能靠通用字符串扫描决定业务语义。
+- 日志失败不应反向改写已经发生的业务动作，但必须显式暴露审计缺口，不能静默假装完整。
+
+### 剩余风险
+
+- raw 文件和 SQLite 仍跨两个介质；文件完成后、事务提交前的崩溃会留下未登记文件，必须由
+  后续独立、可重复的 reconciliation 回收，不能复用旧 JSONL importer marker。
+- 路径核验已经检查 reparse、打开句柄的大小、设备号、inode 和实际读取长度，但 Python
+  路径 API 不能彻底消除同一主机账户恶意并发替换造成的最后窗口；当前威胁模型是普通本地
+  工具链，不声称抵御同账户攻击者。
+- 本切片没有接入 Monitor chunk、历史 manifest/JSONL 或 v3 查询；这些分别属于
+  v3-B3、v3-B4 和 v3-C。
+- 正式项目数据库和当前安装插件仍为 v2；只有 Marketplace 源更新、用户重启并确认新插件后，
+  才能另行执行正式 v2→v3 迁移。

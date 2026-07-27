@@ -270,11 +270,11 @@ MicroPython 方向：
 - memory_items / memory_audit 表。
 - 日志导出和检索增强。
 
-当前状态：SQLite 已在本地主线成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v2、迁移、任务生命周期和结构化查询已通过 `134 passed` 跨工作树门禁；本地提交、当前项目正式迁移、个人 marketplace 源同步、公开 GitHub 推送和 Actions 四平台矩阵均已完成，Codex 缓存重载仍待完成。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
+当前状态：SQLite 已在本地主线成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v3-A 已补齐 raw/error 约束、仓储和显式 v2→v3 迁移；v3-B2 已把固定串口 capture 的可信 raw、结构化异常和程序停止失败与 completion event 放入同一事务。正式项目数据库和当前安装插件仍保持 v2，尚未执行升级；Monitor chunk、历史对账和查询接入继续后置。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
 
 ## 当前进度
 
-截至 2026-07-27，已完成：
+截至 2026-07-28，已完成：
 
 - 仓库结构初始化。
 - GitHub 远端同步，主分支为 `main`。
@@ -291,7 +291,8 @@ MicroPython 方向：
 - MicroPython Traceback 文本解析。
 - hardwork processed 文档和索引基础实现。
 - memory JSONL 存储和 audit 基础实现。
-- SQLite schema v2 与正式日志仓储：project-scoped runs/events、复合外键、查询索引、事务 sequence、UUID/时间戳严格幂等、终态约束和可重复迁移。
+- SQLite schema v3-A 与正式日志仓储：project-scoped runs/events/raw_logs/errors、复合外键、查询索引、事务 sequence、UUID/时间戳严格幂等、终态约束和显式可回滚迁移。
+- SQLite v3-B2 原子 completion 证据投影：固定 capture 只登记当前项目 `logs/raw` 内经大小、普通文件、reparse 和实际 SHA-256 校验的正式文件；capture 的 result/structured error 与 `esp_program_stop` 的明确失败使用 completion UUID 区分 occurrence，并与 event、sequence 在同一事务提交。
 - Codex skill 文件和示例工作流。
 - Codex 插件 manifest 补齐 `name`、`version`、`description`、`author`、`homepage`、`repository`、`license`、`keywords`、`skills`、`apps`、`mcpServers` 和 `interface`。`hooks.json` 已创建；`hooks` 未写入 `plugin.json`，因为当前插件验证器会拒绝该字段，优先保证插件可见和可验证。
 - `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
@@ -321,12 +322,15 @@ mpremote：1.28.0（仅在项目专属 Conda 环境中验证）
 相对路径修复前红灯合同：15 failed in 2.60s（test 加载 main@5985230）
 相对路径修复后专项：main 32 passed in 4.15s；test 跨工作树 48 passed in 9.26s
 相对路径修复后全量：main 119 passed in 17.64s；test 跨工作树 243 passed in 31.50s
+SQLite v3-B2 红灯：11 failed, 1 passed
+SQLite v3-B2 原子投影专项：15 passed in 1.61s
+当前软件全量：main 119 passed in 14.54s；test 显式加载 main 342 passed, 1 skipped in 35.69s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
-覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite/原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
+覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
-当前阻塞：旧插件把一次 21 字节相对下载写入版本化安装缓存。源码修复已通过本地软件门禁，但尚未提交、远端 CI、同步 Marketplace 或在重启后的新插件上重复实板下载
+当前 SQLite 边界：正式项目数据库和当前安装插件仍保持 schema v2；v3-B2 只在源码与临时数据库完成，尚待本次 main/test 提交和远端矩阵
 未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
-远端与插件：当前远端仍是 `main@5985230`、`test@e4f8b29` 的绿色基线。已安装插件为 `0.1.0+codex.20260726165544` 且 48/12/12 已核对；本次路径修复的新 Marketplace 版本和远端矩阵均待后续步骤
+远端与插件：提交前绿色基线为 `main@c3c0fa5`、`test@288a37b`；对应 main run `30284314843` 和 test run `30284329096` 的四矩阵均成功。当前 v3-B2 仍待提交和远端验证；按约定只在后续阶段更新 Marketplace 源，不直接改安装缓存
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -828,6 +832,28 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   读取失败语义。
 - 这一小步只修复 v3-B 入库前的文件证据正确性；`raw_logs` / `errors` 原子投影、
   Monitor chunk 对账与正式查询仍按后续小提交完成。
+
+### 2026-07-28 00:50 - 完成 SQLite v3-B2 原子 completion 证据投影
+
+- 原实现只能先写 completion event，再由其他代码分别登记 raw/error；中途失败会留下
+  “任务完成但证据缺失”的假完整记录，调用方还可能自行提供跨项目 ID 和时间。
+- 新增不可变 `EventArtifacts` 和 `append_event_with_artifacts()`；event、可信 raw、
+  occurrence-aware error 和 sequence 在同一个 `BEGIN IMMEDIATE` 中提交，任一步失败
+  全部回滚。旧 `append_event` 二元组调用保持兼容。
+- `logged_task` 只按工具显式策略构建证据，并让 completion UUID/时间贯穿 event、raw 和
+  error。构建或提交失败时不写 completion-only event，也不篡改已经发生的业务结果；
+  审计缺口通过 `logging_persisted=false` 和 warning 返回。
+- 固定 capture 只登记当前项目 `logs/raw` 中经 reparse、普通文件、真实大小和 SHA-256
+  核验的正式文件；`recovery_path` 永不登记为 raw。持久化失败与已捕获 traceback 可以
+  分别形成 result/structured 两条错误。
+- `esp_program_stop` 只登记明确的 `ok=false` 结果；正常 Ctrl-C 停止中预期出现的
+  `KeyboardInterrupt` 不作为运行时错误。
+- 初始红灯为 `11 failed, 1 passed`；最终专项 `15 passed in 1.61s`，main 全量
+  `119 passed in 14.54s`，test 显式加载 main 全量
+  `342 passed, 1 skipped in 35.69s`。两轮独立终审均为 P0=0、P1=0；没有迁移正式
+  v2 数据库，没有访问 COM3。
+- 本切片只完成固定 capture/程序停止的 completion 投影；Monitor chunk、历史对账和
+  raw/error 查询分别在 v3-B3、v3-B4、v3-C 后续小提交中完成。
 
 ## 协作约定
 

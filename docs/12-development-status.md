@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-28 00:06（Asia/Shanghai）
+更新时间：2026-07-28 00:50（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。Flash 与 SQLite v3-A 的 main/test 远端矩阵已通过；v3-B 已先完成固定 capture 的原始字节保真和不可覆盖前置修复，尚未接入 raw/error 原子写入。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。Flash、SQLite v3-A 和固定 capture 原始字节前置修复的 main/test 远端矩阵已通过；v3-B2 已在本地完成 completion event/raw/error 原子写入和可信 capture 投影，等待本次双分支提交与远端矩阵。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡。
 
 ## 本轮已完成实现
 
@@ -52,6 +52,19 @@
   flush + fsync。同 session 同秒重复执行不会覆盖，`bytes_read` 不再统计替换文本长度；
   raw 目录在打开串口前准备，持久化失败返回结构化阶段；只有本次确实创建的文件才可作为
   recovery path，文件 close 失败单独标记持久化清理未完成。
+- 新增不可变 `EventArtifacts` 输入和 `append_event_with_artifacts()`：调用方不能提供
+  project/run/ID/created_at；仓储在单个 `BEGIN IMMEDIATE` 中按
+  event → raw → error → sequence 顺序提交，任一证据冲突或 SQLite 写错均整体回滚。
+  旧 `append_event(...)->(event, inserted)` 保持兼容；已结束 run 可用完全相同的
+  completion UUID/内容补齐缺失证据而不消耗新序号。
+- `logged_task` 只按工具显式策略投影证据。`esp_serial_capture` 只登记位于当前项目
+  `logs/raw`、非 reparse 普通文件、大小等于 `bytes_read` 且由实际内容计算 SHA-256 的
+  正式 raw；`recovery_path` 永不当作 raw。capture 可同时登记业务失败和既有 traceback
+  两条 occurrence 不同的 error。`esp_program_stop` 只登记 `ok=false` 的 result error，
+  正常停止中预期的 `KeyboardInterrupt` 不作为异常。
+- completion UUID 和时区时间戳在构建证据与数据库提交之间共用。证据构建或原子事务失败
+  时禁止降级写 completion-only event；业务结果保持原 `ok/error_kind/message`，另用
+  `logging_persisted=false` 和 warning 暴露审计缺口，run 仍按业务结果结束。
 
 ## 本地验证
 
@@ -82,6 +95,14 @@
   `OSError`。最终错误检测文件定向 `25 passed in 3.57s`、main 全量
   `119 passed in 15.21s`、test 显式加载 main 全量
   `327 passed, 1 skipped in 35.56s`。测试使用假串口和临时目录，没有访问 COM3。
+- v3-B2 初始合同在旧实现上为预期 `11 failed, 1 passed`；适配不可变 API 并补入
+  原子回滚、旧接口兼容、外部/大小/reparse raw 拒绝、recovery 排除、双错误、
+  program-stop KeyboardInterrupt 语义及日志失败不篡改业务结果后，专项
+  `15 passed in 1.61s`。两轮独立终审均为 P0=0、P1=0。
+- 当前 main 全量 `119 passed in 14.54s`；test 工作树显式加载 main 源码为
+  `342 passed, 1 skipped in 35.69s`。skip 是既有 Windows 目录 symlink 权限限制；
+  同一 reparse 拒绝分支另有确定性 monkeypatch 合同。所有新增测试只使用临时 SQLite、
+  临时工程和假串口，没有迁移正式项目数据库或访问 COM3。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -101,13 +122,15 @@
 
 ## 待完成
 
-1. 提交 capture 原始字节与不可覆盖修复，并确认 main/test 远端四矩阵。
-2. v3-B：把 capture、Monitor chunk 和结构化异常写入 raw/error 仓储，并为已有
-   event/manifest/JSONL 增加独立、可重复的历史对账，不复用旧 JSONL marker。
-3. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
+1. 提交 v3-B2 的原子 completion/capture/error 接入，并确认 main/test 远端四矩阵。
+2. v3-B3：只接入 Monitor 已最终化 chunk 和运行期错误；使用独立、版本化 artifact
+   对账标记，不改变旧 `sqlite_reconciled` 语义。
+3. v3-B4：为已有 event/manifest/JSONL 增加独立、可重复的历史对账，不复用旧
+   JSONL marker，也不信任 manifest 中的绝对路径。
+4. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
    同时保留有界兼容路径和项目边界。
-4. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+5. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
    48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
    v2 数据库升级。
-5. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
+6. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
    精确动作单独确认。
