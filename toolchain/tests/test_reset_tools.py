@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+
 from esp_mcp_toolchain.tools import log_tools, reset_tools
 
 
@@ -29,7 +32,11 @@ class FakeSerial:
         self.closed = False
         self.open_snapshot: dict[str, object] = {}
         self._pre_action_reads: list[bytes] = []
-        self._reads = [b"soft reboot\r\n", b"MicroPython\r\n>>> "]
+        self._reads = (
+            [b"\xffboot\r\n"]
+            if type(self).fail_on == "invalid_utf8"
+            else [b"soft reboot\r\n", b"MicroPython\r\n>>> "]
+        )
         type(self).instances.append(self)
         type(self).events.append(("construct", None))
 
@@ -168,6 +175,7 @@ def test_reset_soft_sends_ctrl_c_ctrl_d(monkeypatch):
     prepare_reset(monkeypatch)
 
     result = reset_tools.esp_reset(port="COM_TEST", mode="soft")
+    expected_output = b"soft reboot\r\nMicroPython\r\n>>> "
 
     assert result["ok"] is True
     assert result["implemented"] is True
@@ -183,6 +191,13 @@ def test_reset_soft_sends_ctrl_c_ctrl_d(monkeypatch):
     assert result["pre_action_bytes_read"] == 0
     assert result["pre_action_output_observed"] is False
     assert result["pre_action_text"] == ""
+    assert result["reset_output_bytes"] == len(expected_output)
+    assert result["reset_output_text"] == expected_output.decode("utf-8")
+    assert base64.b64decode(result["reset_output_raw_base64"]) == expected_output
+    assert result["reset_output_sha256"] == hashlib.sha256(expected_output).hexdigest()
+    assert result["reset_output_decode_error"] is False
+    assert result["reset_output_capture_completed"] is True
+    assert result["reset_output_capture_limit_reached"] is False
     assert result["output_causality_confirmed"] is False
     assert result["cleanup_completed"] is True
     assert result["cleanup_required"] is True
@@ -197,6 +212,13 @@ def test_reset_soft_sends_ctrl_c_ctrl_d(monkeypatch):
     assert complete["payload_json"]["reset_command_sent"] is True
     assert complete["payload_json"]["failure_stage"] is None
     assert complete["payload_json"]["cleanup_errors"] == []
+    assert complete["payload_json"]["reset_output_bytes"] == len(expected_output)
+    assert complete["payload_json"]["reset_output_text"] == expected_output.decode("utf-8")
+    assert base64.b64decode(complete["payload_json"]["reset_output_raw_base64"]) == expected_output
+    assert complete["payload_json"]["reset_output_sha256"] == hashlib.sha256(expected_output).hexdigest()
+    assert complete["payload_json"]["reset_output_decode_error"] is False
+    assert complete["payload_json"]["reset_output_capture_completed"] is True
+    assert complete["payload_json"]["reset_output_capture_limit_reached"] is False
 
 
 def test_reset_hard_restarts_app_without_asserting_boot_pin(monkeypatch):
@@ -224,6 +246,49 @@ def test_reset_hard_restarts_app_without_asserting_boot_pin(monkeypatch):
     ]
     assert "MicroPython" in result["text"]
     assert FakeSerial.instances[0].closed is True
+
+
+def test_reset_persists_exact_binary_output_and_decode_status(monkeypatch):
+    prepare_reset(monkeypatch, fail_on="invalid_utf8")
+    expected_output = b"\xffboot\r\n"
+
+    result = reset_tools.esp_reset(port="COM_TEST", mode="hard")
+
+    assert result["ok"] is True
+    assert result["reset_output_bytes"] == len(expected_output)
+    assert base64.b64decode(result["reset_output_raw_base64"]) == expected_output
+    assert result["reset_output_sha256"] == hashlib.sha256(expected_output).hexdigest()
+    assert result["reset_output_decode_error"] is True
+    assert "\ufffdboot" in result["reset_output_text"]
+
+    logs = log_tools.esp_logs_get(result["run_id"], tail=10)
+    complete = next(event for event in logs["events"] if event["phase"] == "complete")
+    assert base64.b64decode(complete["payload_json"]["reset_output_raw_base64"]) == expected_output
+    assert complete["payload_json"]["reset_output_decode_error"] is True
+
+
+def test_reset_persists_capture_limit_status(monkeypatch):
+    prepare_reset(monkeypatch)
+    calls = 0
+
+    def bounded_read(_ser, _duration_s: float, *, max_bytes: int) -> tuple[bytes, bool]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return b"", False
+        assert max_bytes == 65_536
+        return b"bounded reset output", True
+
+    monkeypatch.setattr(reset_tools, "_read_for", bounded_read)
+
+    result = reset_tools.esp_reset(port="COM_TEST", mode="hard")
+
+    assert result["ok"] is True
+    assert result["output_capture_limit_reached"] is True
+    assert result["reset_output_capture_limit_reached"] is True
+    logs = log_tools.esp_logs_get(result["run_id"], tail=10)
+    complete = next(event for event in logs["events"] if event["phase"] == "complete")
+    assert complete["payload_json"]["reset_output_capture_limit_reached"] is True
 
 
 def test_reset_configures_safe_control_lines_before_open(monkeypatch):
@@ -350,6 +415,13 @@ def test_reset_preserves_action_state_when_capture_fails(monkeypatch):
     assert result["failure_stage"] == "capture"
     assert result["reset_command_sent"] is True
     assert result["reset_confirmed"] is False
+    assert result["reset_output_bytes"] == 0
+    assert result["reset_output_sha256"] is None
+    assert result["reset_output_raw_base64"] == ""
+    assert result["reset_output_text"] == ""
+    assert result["reset_output_decode_error"] is False
+    assert result["reset_output_capture_completed"] is False
+    assert result["reset_output_capture_limit_reached"] is False
     assert FakeSerial.instances[0].closed is True
 
 

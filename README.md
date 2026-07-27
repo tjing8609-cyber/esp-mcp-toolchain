@@ -686,6 +686,13 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 修复后 main 专项为 `32 passed in 4.15s`，test 跨工作树专项为 `48 passed in 9.26s`，提交前 main 全量为 `119 passed in 17.64s`，test 加载 main 源码的全量门禁为 `243 passed in 31.50s`。
 - 合并态 test 自身路径专项为 `48 passed in 10.64s`，全量为 `243 passed in 29.50s`。以上仅是本地软件结论；GitHub CI、Marketplace 同步、cachebuster 和重启后实板相对下载复验仍待完成。
 
+### 2026-07-27 21:40 - 建立 reset 原始输出持久化合同
+
+- test 分支新增正常 UTF-8、非法 UTF-8、Base64/SHA-256 字节一致性、65,536 字节上限和捕获失败默认状态合同，并核对返回值与 SQLite completion 事件。
+- `logged_task` 合同证明默认工具不会保存通用 `text`，只有工具显式声明的额外字段才会落库；非法字段声明必须在调用业务函数前抛出 `TypeError`。
+- test 显式加载 main 源码后，reset / SQLite / 任务书 prompt 定向门禁为 `58 passed in 5.71s`，全量为 `247 passed in 28.82s`；main 自身全量为 `119 passed in 15.18s`。
+- 以上均使用假串口和临时 SQLite；没有访问 `COM3`，也没有把输出持久化解释为 `reset_confirmed` 或因果确认。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

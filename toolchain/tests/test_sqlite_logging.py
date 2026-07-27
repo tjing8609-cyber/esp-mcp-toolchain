@@ -406,6 +406,33 @@ def test_nested_logged_tasks_share_one_run():
         (run_id, 2, "complete", "outer_task"),
     ]
 
+
+def test_logged_task_only_persists_explicit_extra_result_payload_keys():
+    @logged_task(task_type="default_result_payload")
+    def default_task() -> dict:
+        return {"ok": True, "message": "default completed", "text": "not persisted"}
+
+    @logged_task(task_type="extra_result_payload", result_payload_keys=("text",))
+    def extra_task() -> dict:
+        return {"ok": True, "message": "extra completed", "text": "persisted"}
+
+    default_result = default_task()
+    extra_result = extra_task()
+
+    default_logs = esp_logs_get(default_result["run_id"], tail=10)
+    extra_logs = esp_logs_get(extra_result["run_id"], tail=10)
+    default_complete = next(event for event in default_logs["events"] if event["phase"] == "complete")
+    extra_complete = next(event for event in extra_logs["events"] if event["phase"] == "complete")
+
+    assert "text" not in default_complete["payload_json"]
+    assert extra_complete["payload_json"]["text"] == "persisted"
+
+
+def test_logged_task_rejects_invalid_extra_result_payload_keys():
+    with pytest.raises(TypeError, match="result_payload_keys"):
+        logged_task(result_payload_keys=("text", 1))  # type: ignore[arg-type]
+
+
 def test_terminal_run_finish_and_event_retries_are_strictly_idempotent():
     scope = LogScope.active()
     run = start_run("terminal_contract", run_id="terminal-run")

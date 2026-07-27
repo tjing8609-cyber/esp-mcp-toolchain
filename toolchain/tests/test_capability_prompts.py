@@ -82,6 +82,10 @@ def test_high_risk_prompts_keep_confirmation_and_evidence_boundaries():
     assert "不能反向证明原复位" in reset
     assert "physical_reset_excluded=False" in reset
     assert "pre_action_text" in reset
+    assert "reset_output_raw_base64" in reset
+    assert "reset_output_sha256" in reset
+    assert "reset_output_capture_completed" in reset
+    assert "SQLite" in reset
     assert "output_causality_confirmed=False" in reset
     assert "allow_program_interrupt=True" in gpio
     assert "allow_program_interrupt=True" in hardware
