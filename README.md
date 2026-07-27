@@ -855,6 +855,24 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 本切片只完成固定 capture/程序停止的 completion 投影；Monitor chunk、历史对账和
   raw/error 查询分别在 v3-B3、v3-B4、v3-C 后续小提交中完成。
 
+### 2026-07-28 00:55 - test 分支锁定 v3-B2 原子证据合同
+
+- 新增 15 项分支专属合同，直接覆盖不可变 `EventArtifacts` API、event/raw/error/sequence
+  同事务提交与晚阶段回滚、意外 SQLite 错误包装、终态 event 补齐和旧 `append_event`
+  二元组兼容。
+- capture 合同验证正式 raw 的项目边界、相对 POSIX 路径、实际 SHA-256、共享 completion
+  时间、外部路径/大小/reparse 拒绝、`recovery_path` 排除，以及持久化失败与 traceback
+  同时出现时的双 occurrence error。
+- program-stop 合同明确区分正常 Ctrl-C 的 `KeyboardInterrupt` 与未观察到提示符的
+  `program_stop_unconfirmed`；即使模拟结果带伪 raw/structured report，也只允许声明的
+  result error 投影。
+- 两个故障注入合同证明：artifact 构建或原子提交失败时数据库只有 prepare event，run
+  仍按业务成功或失败结束，返回结果保留原始 `ok/error_kind/message` 并附审计 warning。
+- 合并 main 后，test 自身源码的标准全量门禁为
+  `342 passed, 1 skipped in 38.68s`；此前跨工作树结果为
+  `342 passed, 1 skipped in 35.69s`。全部使用临时项目、假串口和临时 SQLite，
+  没有访问 COM3 或正式数据库。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。
