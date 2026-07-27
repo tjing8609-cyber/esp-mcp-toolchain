@@ -17,6 +17,21 @@ Initial tools are grouped into:
 
 High-risk tools must require explicit confirmation in clients.
 
+## Project-scoped host file paths
+
+`local_path` in `esp_file_upload` / `esp_file_download` and `path` in
+`esp_run_file(path_type="local")` name files on the host:
+
+- Relative host paths resolve from the active project's normalized `workspace_root`, never from the
+  MCP process current directory, repository root, Marketplace source, or installed plugin cache.
+- Absolute host paths are accepted only when they remain inside that same workspace. Parent
+  traversal, outside absolute paths, and resolved escapes return `unsafe_local_path`.
+- Validation happens before `exists`, read, `mkdir`, write, mpremote, or Raw REPL backend work. A
+  rejected download cannot create a parent directory or partial target.
+- Successful metadata reports the resolved absolute host path. Downloads continue to reject an
+  existing target, and Raw REPL truncation continues to write no local file.
+- `remote_path` names a path on the MicroPython board and is not interpreted by this host path rule.
+
 ## Background serial monitor
 
 The background monitor exposes:

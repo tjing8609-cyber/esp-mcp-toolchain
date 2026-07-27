@@ -7,6 +7,7 @@ from ..backends import mpremote_backend
 from ..backends.raw_repl_backend import execute_code
 from ..config import get_selected_port
 from ..errors import execution_error, not_implemented
+from ..paths import safe_project_path
 from .log_tools import logged_task
 
 
@@ -24,6 +25,18 @@ def _resolve_port(tool: str, port: str | None) -> dict | str:
             suggested_next_actions=["Run esp_port_list", "Run esp_port_select with the confirmed board port"],
         )
     return selected_port
+
+
+def _resolve_local_path(tool: str, value: str) -> dict | Path:
+    try:
+        return safe_project_path(value)
+    except ValueError as exc:
+        return execution_error(
+            "unsafe_local_path",
+            str(exc),
+            tool=tool,
+            suggested_next_actions=["Use a path inside the selected workspace"],
+        )
 
 
 def _mpremote_metadata(tool: str, result: dict, *, port: str, **extra: object) -> dict:
@@ -145,7 +158,9 @@ def esp_file_upload(
             return execution_error("missing_local_path", "No local path was provided.", tool="esp_file_upload")
         if not remote_path:
             return execution_error("missing_remote_path", "No remote path was provided.", tool="esp_file_upload")
-        source_path = Path(local_path)
+        source_path = _resolve_local_path("esp_file_upload", local_path)
+        if isinstance(source_path, dict):
+            return source_path
         if not source_path.exists():
             return execution_error("path_not_found", f"Local file does not exist: {local_path}", tool="esp_file_upload")
         result = mpremote_backend.upload_file(port=selected_port, local_path=source_path, remote_path=remote_path)
@@ -170,7 +185,9 @@ def esp_file_upload(
     if isinstance(selected_port, dict):
         return selected_port
 
-    source_path = Path(local_path)
+    source_path = _resolve_local_path("esp_file_upload", local_path)
+    if isinstance(source_path, dict):
+        return source_path
     if not source_path.exists():
         return execution_error("path_not_found", f"Local file does not exist: {local_path}", tool="esp_file_upload")
     payload = source_path.read_bytes()
@@ -227,7 +244,9 @@ def esp_file_download(
             return execution_error("missing_remote_path", "No remote path was provided.", tool="esp_file_download")
         if not local_path:
             return execution_error("missing_local_path", "No local path was provided.", tool="esp_file_download")
-        target_path = Path(local_path)
+        target_path = _resolve_local_path("esp_file_download", local_path)
+        if isinstance(target_path, dict):
+            return target_path
         if target_path.exists():
             return execution_error(
                 "local_path_exists",
@@ -261,7 +280,9 @@ def esp_file_download(
     selected_port = _resolve_port("esp_file_download", port)
     if isinstance(selected_port, dict):
         return selected_port
-    target_path = Path(local_path)
+    target_path = _resolve_local_path("esp_file_download", local_path)
+    if isinstance(target_path, dict):
+        return target_path
     if target_path.exists():
         return execution_error(
             "local_path_exists",

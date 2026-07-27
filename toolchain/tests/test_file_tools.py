@@ -39,10 +39,10 @@ def test_file_read_mpremote_returns_content(monkeypatch):
     assert result["content"] == "hello\n"
 
 
-def test_file_upload_mpremote_calls_backend(monkeypatch, tmp_path):
+def test_file_upload_mpremote_calls_backend(monkeypatch, isolated_project_context):
     from esp_mcp_toolchain.tools import file_tools
 
-    source = tmp_path / "probe.txt"
+    source = isolated_project_context / "probe.txt"
     source.write_text("probe", encoding="utf-8")
 
     def fake_upload_file(port: str, local_path, remote_path: str):
@@ -58,10 +58,10 @@ def test_file_upload_mpremote_calls_backend(monkeypatch, tmp_path):
     assert result["bytes_written"] == 5
 
 
-def test_file_download_mpremote_calls_backend(monkeypatch, tmp_path):
+def test_file_download_mpremote_calls_backend(monkeypatch, isolated_project_context):
     from esp_mcp_toolchain.tools import file_tools
 
-    target = tmp_path / "downloaded.txt"
+    target = isolated_project_context / "downloaded.txt"
 
     def fake_download_file(port: str, remote_path: str, local_path):
         local_path.write_text("probe", encoding="utf-8")
@@ -112,10 +112,10 @@ def test_file_read_raw_repl_parses_bytes(monkeypatch):
     assert result["truncated"] is False
 
 
-def test_file_upload_raw_repl_writes_bytes(monkeypatch, tmp_path):
+def test_file_upload_raw_repl_writes_bytes(monkeypatch, isolated_project_context):
     from esp_mcp_toolchain.tools import file_tools
 
-    source = tmp_path / "probe.txt"
+    source = isolated_project_context / "probe.txt"
     source.write_text("probe", encoding="utf-8")
 
     def fake_execute_code(port: str, code: str, timeout_ms: int):
@@ -136,7 +136,7 @@ def test_file_upload_raw_repl_writes_bytes(monkeypatch, tmp_path):
     assert result["bytes_written"] == 5
 
 
-def test_file_download_raw_repl_preserves_binary_bytes(monkeypatch, tmp_path):
+def test_file_download_raw_repl_preserves_binary_bytes(monkeypatch, isolated_project_context):
     from esp_mcp_toolchain.tools import file_tools
 
     payload = b"\x00\xff\n\r\n"
@@ -150,7 +150,7 @@ def test_file_download_raw_repl_preserves_binary_bytes(monkeypatch, tmp_path):
         }
 
     monkeypatch.setattr(file_tools, "execute_code", fake_execute_code)
-    target = tmp_path / "downloaded.bin"
+    target = isolated_project_context / "downloaded.bin"
     result = esp_file_download(
         port="COM_TEST",
         backend="raw_repl",
@@ -165,7 +165,7 @@ def test_file_download_raw_repl_preserves_binary_bytes(monkeypatch, tmp_path):
     assert target.read_bytes() == payload
 
 
-def test_file_download_raw_repl_rejects_truncated_content(monkeypatch, tmp_path):
+def test_file_download_raw_repl_rejects_truncated_content(monkeypatch, isolated_project_context):
     from esp_mcp_toolchain.tools import file_tools
 
     payload = b"x" * 20001
@@ -179,7 +179,7 @@ def test_file_download_raw_repl_rejects_truncated_content(monkeypatch, tmp_path)
         }
 
     monkeypatch.setattr(file_tools, "execute_code", fake_execute_code)
-    target = tmp_path / "not-created" / "downloaded.bin"
+    target = isolated_project_context / "not-created" / "downloaded.bin"
 
     result = esp_file_download(
         port="COM_TEST",
@@ -195,7 +195,7 @@ def test_file_download_raw_repl_rejects_truncated_content(monkeypatch, tmp_path)
     assert target.parent.exists() is False
 
 
-def test_file_download_raw_repl_accepts_exact_size_limit(monkeypatch, tmp_path):
+def test_file_download_raw_repl_accepts_exact_size_limit(monkeypatch, isolated_project_context):
     from esp_mcp_toolchain.tools import file_tools
 
     payload = bytes(range(256)) * 78 + bytes(range(32))
@@ -210,7 +210,7 @@ def test_file_download_raw_repl_accepts_exact_size_limit(monkeypatch, tmp_path):
         }
 
     monkeypatch.setattr(file_tools, "execute_code", fake_execute_code)
-    target = tmp_path / "limit.bin"
+    target = isolated_project_context / "limit.bin"
 
     result = esp_file_download(
         port="COM_TEST",

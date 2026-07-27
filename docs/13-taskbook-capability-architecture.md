@@ -1,6 +1,6 @@
 # 任务书 12 项能力与提示词架构
 
-更新时间：2026-07-26（Asia/Shanghai）
+更新时间：2026-07-27（Asia/Shanghai）
 
 ## 总体结构
 
@@ -18,14 +18,14 @@
 
 | 类别 | 能力 | 公开 prompt | 主要 tools | 当前软件状态 | 证据与限制 |
 | --- | --- | --- | --- | --- | --- |
-| 基础 | 文件传输 | `file_transfer` | `esp_file_upload`、`esp_file_read`、`esp_file_list` | 已实现 | `mpremote 1.28.0` 已安装在独立 Conda 环境；上传会修改板上文件，必须使用明确路径。 |
+| 基础 | 文件传输 | `file_transfer` | `esp_file_upload`、`esp_file_read`、`esp_file_list` | 已实现，本地路径修复待发布 | `mpremote 1.28.0` 已安装在独立 Conda 环境；上传会修改板上文件。主机相对路径绑定活动 workspace，工作区外路径在后端调用前拒绝。 |
 | 基础 | 程序执行和停止 | `program_execution_control` | `esp_exec_code`、`esp_run_file`、`esp_program_stop` | 已实现 | 停止只发送两次 Ctrl-C；只有观察到 `>>>` 才返回 `stop_confirmed=True`。它不发送 Ctrl-D 或复位命令，只证明 `reset_command_sent=false`，并明确 `physical_reset_excluded=false`。 |
 | 基础 | 微控制器复位 | `microcontroller_reset` | `esp_reset`、串口采集工具 | 已实现 | soft/hard 模式必须明确；启动成功仍需独立串口证据。 |
 | 基础 | 串口监控 | `serial_monitor` | `esp_serial_capture`、4 个后台 Monitor 工具 | 已实现 | 支持游标、原始字节持久化、状态机、停止清理和断连报告；UART 不能替代物理外设观察。 |
 | 基础 | 运行日志检索 | `runtime_log_search` | `esp_logs_latest/get/query` | 已实现 | SQLite runs/events 是正式查询源，JSONL 只是审计镜像。 |
 | 基础 | MicroPython 错误报告 | `debug_error` | `esp_error_parse_text/log`、exec/capture/Monitor | 已实现 | 支持跨串口 chunk Traceback、raw REPL stderr、固定捕获和 Monitor；原始日志扫描限制在当前项目 logs 根目录与 `max_bytes`。 |
 | 提高 | 固件自动烧录 | `build_flash_monitor` | `esp_project_build`、`esp_flash_firmware` | 已实现 | 烧录必须有本轮明确授权并保持 `confirm=True` 门；烧录后监控需单独启动。 |
-| 提高 | 远程文件管理 | `remote_file_management` | `esp_file_list/read/upload/download/delete` | 已实现 | 面向 MicroPython；删除必须明确路径和 `confirm=True`。 |
+| 提高 | 远程文件管理 | `remote_file_management` | `esp_file_list/read/upload/download/delete` | 已实现，本地路径修复待发布 | 面向 MicroPython；主机下载目标遵守 workspace 边界且不覆盖已有文件，板端删除必须明确路径和 `confirm=True`。 |
 | 提高 | GPIO 状态在线查询 | `gpio_status_query` | `esp_gpio_status` | 已实现 | 只读明确 pins，不调用 `Pin.IN`、`Pin.OUT` 或 `init` 改模式；进入 raw REPL 会中断当前程序，必须先给出 `allow_program_interrupt=true`。 |
 | 提高 | 硬件信息自动采集 | `review_hardware_context` | `esp_hardware_info` | 已实现 | passive 只接受当前已枚举串口，并合并 host USB descriptor 与 reviewed mapping。可选 MicroPython runtime 模式需要 `allow_program_interrupt=true`；证据不扩大为“物理复位已排除”。 |
 | 提高 | 自动化回归测试 | `automated_regression_test` | `esp_regression_test` | 已实现 | 只运行显式远程测试路径，最多 32 项；执行前必须给出 `confirm_execution=true`，并报告 passed/failed/skipped、stdout 和板上时长。 |
@@ -66,17 +66,17 @@ MicroPython 自动错误检测是在现有 exec、capture、Monitor 和 error pa
 - 独立 Conda 解释器：`C:\Users\16224\anaconda3\envs\esp-mcp-toolchain\python.exe`。
 - `mpremote 1.28.0` 已在该环境中通过模块版本和 CLI 版本核验；`.mcp.json` 经
   `scripts/run_mcp_server.py` 定位专用环境，定位失败时不会静默运行全局 Python。
-- 提示词/提高工具/架构专项：`25 passed`；串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：`62 passed`；显式加载 `index` 的完整候选门禁为 `226 passed in 29.35s`。main→test 同步后，test 分支自身源码的标准全量门禁为 `226 passed in 27.66s`。
-- 源码注册目标为 `48 tools / 12 resources / 12 prompts`；安装缓存仍待重装后在新任务枚举。
+- 相对路径修复前 15 个合同在旧 main 上全部失败；提交前 main 为 `119 passed in 17.64s`，test 显式加载 main 的完整门禁为 `243 passed in 31.50s`。
+- 源码与已安装插件均已核对为 `48 tools / 12 resources / 12 prompts`；当前运行缓存是路径修复前的 `0.1.0+codex.20260726165544`，需在 Marketplace 更新后再次重启。
 - 新硬件工具通过 fake serial、raw REPL 模拟和临时 SQLite/日志目录测试；测试不会访问真实开发板。
-- 本次 2026-07-26 软件门禁没有重新读取或操作当前板卡；历史 COM3/CH9102 验收记录不能代替当前固件状态。MicroPython 程序停止、GPIO raw REPL、回归和性能执行类能力仍需独立实板验收。
+- 2026-07-27 已完成 4 MiB 备份、真实擦除、MicroPython v1.28.0 恢复、runtime 探测、20 条 Monitor 标记以及文件上传/读取/列表。相对下载误写安装缓存后暂停；远程文件管理及程序停止、GPIO、回归、性能等其余能力仍未通过。
 
 ## 发布边界
 
-源码和测试完成后仍需依次通过：
+当前路径修复和剩余实板验收依次通过：
 
-1. 推送 main/test 并通过 GitHub Actions 矩阵。
-2. 补齐 `erase_flash` 受管进程清理和复位参数的软件合同。
-3. 通过 `plugin-creator` validator，只更新个人 marketplace 源和单一 cachebuster，由用户重启 Codex。
-4. 在新 Codex 任务中核对 48/12/12 工具面。
-5. MicroPython 执行类能力在明确当前固件和步骤后完成真实板卡验收。
+1. 提交 main 实现/文档和 test 合同，合并后运行完整 test 门禁。
+2. 原子推送 main/test 并通过 GitHub Actions 四平台矩阵。
+3. 通过 `plugin-creator` validator，只更新个人 Marketplace 源和一次 cachebuster，不直接改安装缓存。
+4. 用户重启后核对 48/12/12，并用新输出名验证相对下载落在所选 workspace。
+5. 在明确授权边界下完成其余 MicroPython 能力；板端删除和 ESP-IDF 烧录保持单独确认。
