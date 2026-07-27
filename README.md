@@ -823,6 +823,9 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `25 passed`，main 全量 `119 passed`，test 显式加载 main 全量
   `327 passed, 1 skipped`。合同还强制 UUID 碰撞/耗尽、fsync/close 失败和读取失败；
   测试使用假串口和临时目录，没有访问 COM3。
+- test 分支合入 main 后以自身源码复跑为 `327 passed, 1 skipped in 34.28s`；新增 7 项
+  分支合同锁定非 UTF-8 原始字节、排他碰撞、碰撞耗尽、fsync/close 失败、目录预检和
+  读取失败语义。
 - 这一小步只修复 v3-B 入库前的文件证据正确性；`raw_logs` / `errors` 原子投影、
   Monitor chunk 对账与正式查询仍按后续小提交完成。
 

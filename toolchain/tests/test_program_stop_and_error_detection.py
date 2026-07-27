@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from queue import Empty, Queue
 import time
+from types import SimpleNamespace
 
 from esp_mcp_toolchain.backends import raw_repl_backend
 from esp_mcp_toolchain.backends.serial_monitor_backend import SERIAL_MONITOR_MANAGER
@@ -283,6 +284,216 @@ def test_serial_capture_returns_structured_error_report_across_reads(monkeypatch
     assert CaptureSerial.instances[0].open_snapshot["dtr"] is False
     assert CaptureSerial.instances[0].open_snapshot["rts"] is False
     assert CaptureSerial.instances[0].closed is True
+
+
+def test_serial_capture_preserves_non_utf8_raw_bytes(monkeypatch):
+    CaptureSerial.instances = []
+    CaptureSerial.chunks = [b"\xff\x00boot\r\n", b"\x80done\r\n"]
+    monkeypatch.setattr(serial_tools, "get_serial_module", lambda: CaptureSerialModule)
+
+    result = serial_tools.esp_serial_capture(
+        port="COM_CAPTURE",
+        duration_ms=20,
+        stop_on_traceback=False,
+        session_name="binary-raw",
+    )
+
+    expected = b"\xff\x00boot\r\n\x80done\r\n"
+    assert result["ok"] is True
+    assert result["bytes_read"] == len(expected)
+    assert Path(result["raw_path"]).read_bytes() == expected
+    assert "\ufffd" in result["text"]
+
+
+def test_serial_capture_exclusive_create_retries_uuid_collision_without_overwrite(monkeypatch):
+    CaptureSerial.instances = []
+    monkeypatch.setattr(serial_tools, "get_serial_module", lambda: CaptureSerialModule)
+    monkeypatch.setattr(serial_tools, "now_compact", lambda: "20260727_120000")
+    uuids = iter(
+        [
+            SimpleNamespace(hex="a" * 32),
+            SimpleNamespace(hex="b" * 32),
+        ]
+    )
+    monkeypatch.setattr(serial_tools, "uuid4", lambda: next(uuids))
+    raw_dir = serial_tools.logs_dir() / "raw"
+    raw_dir.mkdir(parents=True)
+    sentinel = raw_dir / "same-second_20260727_120000_aaaaaaaaaaaa.log"
+    sentinel.write_bytes(b"sentinel")
+
+    CaptureSerial.chunks = [b"new capture"]
+    result = serial_tools.esp_serial_capture(
+        port="COM_CAPTURE",
+        duration_ms=20,
+        stop_on_traceback=False,
+        session_name="same-second",
+    )
+
+    result_path = Path(result["raw_path"])
+    assert sentinel.read_bytes() == b"sentinel"
+    assert result_path.name == "same-second_20260727_120000_bbbbbbbbbbbb.log"
+    assert result_path.read_bytes() == b"new capture"
+
+
+def test_serial_capture_fsync_failure_returns_recovery_path(monkeypatch):
+    CaptureSerial.instances = []
+    CaptureSerial.chunks = [b"persist me"]
+    monkeypatch.setattr(serial_tools, "get_serial_module", lambda: CaptureSerialModule)
+    monkeypatch.setattr(
+        serial_tools.os,
+        "fsync",
+        lambda _fd: (_ for _ in ()).throw(OSError("forced fsync failure")),
+    )
+
+    result = serial_tools.esp_serial_capture(
+        port="COM_CAPTURE",
+        duration_ms=20,
+        stop_on_traceback=False,
+        session_name="fsync-failure",
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "serial_capture_persist_failed"
+    assert result["failure_stage"] == "fsync"
+    assert result["bytes_read"] == len(b"persist me")
+    assert result["text"] == "persist me"
+    recovery_path = Path(result["recovery_path"])
+    assert recovery_path.is_file()
+    assert recovery_path.read_bytes() == b"persist me"
+    assert result["cleanup_completed"] is True
+    assert result["persistence_cleanup_completed"] is True
+    completion = log_tools.esp_logs_get(result["run_id"])["events"][-1]
+    assert completion["payload_json"]["recovery_path"] == str(recovery_path)
+    assert "text" not in completion["payload_json"]
+
+
+def test_serial_capture_collision_exhaustion_never_claims_existing_file_as_recovery(
+    monkeypatch,
+):
+    CaptureSerial.instances = []
+    CaptureSerial.chunks = [b"new capture"]
+    monkeypatch.setattr(serial_tools, "get_serial_module", lambda: CaptureSerialModule)
+    monkeypatch.setattr(serial_tools, "now_compact", lambda: "20260727_120000")
+    monkeypatch.setattr(
+        serial_tools,
+        "uuid4",
+        lambda: SimpleNamespace(hex="c" * 32),
+    )
+    raw_dir = serial_tools.logs_dir() / "raw"
+    raw_dir.mkdir(parents=True)
+    sentinel = raw_dir / "collision_20260727_120000_cccccccccccc.log"
+    sentinel.write_bytes(b"belongs to an earlier run")
+
+    result = serial_tools.esp_serial_capture(
+        port="COM_CAPTURE",
+        duration_ms=20,
+        stop_on_traceback=False,
+        session_name="collision",
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "serial_capture_persist_failed"
+    assert result["failure_stage"] == "allocate"
+    assert "recovery_path" not in result
+    assert sentinel.read_bytes() == b"belongs to an earlier run"
+
+
+def test_serial_capture_close_failure_reports_persistence_cleanup_gap(monkeypatch):
+    class CloseFailingHandle:
+        def __init__(self, wrapped):
+            self._wrapped = wrapped
+
+        def write(self, payload: bytes) -> int:
+            return self._wrapped.write(payload)
+
+        def flush(self) -> None:
+            self._wrapped.flush()
+
+        def fileno(self) -> int:
+            return self._wrapped.fileno()
+
+        def close(self) -> None:
+            self._wrapped.close()
+            raise OSError("forced close failure")
+
+    original_open = Path.open
+
+    def close_failing_open(path, mode="r", *args, **kwargs):
+        handle = original_open(path, mode, *args, **kwargs)
+        return CloseFailingHandle(handle) if mode == "xb" else handle
+
+    CaptureSerial.instances = []
+    CaptureSerial.chunks = [b"close me"]
+    monkeypatch.setattr(serial_tools, "get_serial_module", lambda: CaptureSerialModule)
+    monkeypatch.setattr(Path, "open", close_failing_open)
+
+    result = serial_tools.esp_serial_capture.__wrapped__(
+        port="COM_CAPTURE",
+        duration_ms=20,
+        stop_on_traceback=False,
+        session_name="close-failure",
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "serial_capture_persist_failed"
+    assert result["failure_stage"] == "close"
+    assert result["cleanup_completed"] is True
+    assert result["persistence_cleanup_completed"] is False
+    assert "forced close failure" in result["persistence_close_error"]
+    recovery_path = Path(result["recovery_path"])
+    assert recovery_path.read_bytes() == b"close me"
+
+
+def test_serial_capture_prepares_raw_directory_before_opening_port(monkeypatch, tmp_path):
+    CaptureSerial.instances = []
+    CaptureSerial.chunks = [b"must not be read"]
+    blocked_root = tmp_path / "not-a-directory"
+    blocked_root.write_text("blocked", encoding="utf-8")
+    monkeypatch.setattr(serial_tools, "get_serial_module", lambda: CaptureSerialModule)
+    monkeypatch.setattr(serial_tools, "logs_dir", lambda: blocked_root)
+
+    result = serial_tools.esp_serial_capture(
+        port="COM_CAPTURE",
+        duration_ms=20,
+        stop_on_traceback=False,
+        session_name="prepare-failure",
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "serial_capture_persist_failed"
+    assert result["failure_stage"] == "prepare_log_directory"
+    assert result["bytes_read"] == 0
+    assert result["physical_reset_excluded"] is True
+    assert CaptureSerial.instances == []
+
+
+def test_serial_capture_read_failure_keeps_original_byte_count(monkeypatch):
+    class FailingReadSerial(CaptureSerial):
+        def read(self, _size: int) -> bytes:
+            if self._chunks:
+                return self._chunks.pop(0)
+            raise OSError("forced read failure")
+
+    class FailingReadSerialModule:
+        Serial = FailingReadSerial
+
+    FailingReadSerial.instances = []
+    FailingReadSerial.chunks = [b"\xff\x80"]
+    monkeypatch.setattr(serial_tools, "get_serial_module", lambda: FailingReadSerialModule)
+
+    result = serial_tools.esp_serial_capture(
+        port="COM_CAPTURE",
+        duration_ms=100,
+        stop_on_traceback=False,
+        session_name="read-failure",
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "serial_capture_failed"
+    assert result["bytes_read"] == 2
+    assert result["text"] == "\ufffd\ufffd"
+    assert result["cleanup_completed"] is True
+    assert FailingReadSerial.instances[0].closed is True
 
 
 class MonitorSerial:
