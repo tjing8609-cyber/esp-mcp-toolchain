@@ -19,6 +19,8 @@
 - `esp_logs_query` 新增 `run_id`、phase、level、tool、source、时间和 sequence 范围过滤，并同步 CLI、FastMCP schema 和静态工具注册资源。
 - 新增 SQLite schema v3-A 的 `raw_logs` / `errors` 约束与复合索引，以及稳定 UUIDv5、
   occurrence-aware error identity、严格幂等、显式冲突和 project/run 边界校验的底层仓储 API。
+- 新增不可变 `EventArtifacts` 和原子 `append_event_with_artifacts()`；completion event、
+  raw、error 与 run sequence 在同一 SQLite 事务中提交，旧 `append_event` 二元组接口保持兼容。
 
 ### Changed
 
@@ -27,6 +29,9 @@
 - `esp_performance_profile` 的最多 50 个工具生成样本、时间/堆变化汇总和 `sampling_profiler` 状态现在写入 SQLite completion 事件；异常文本限制为 256 字符，结构化 marker 限制为 128 KiB，主机在统计前验证并规范化固定字段；stdout、原始 marker 和内联 code 仍不落库。
 - `esp_reset` 的有界动作后原始输出现在以长度、SHA-256、Base64、文本、解码状态、捕获完成状态和上限状态写入 SQLite completion 事件；该持久化仍不表示复位或输出因果关系已被独立确认。
 - `logged_task` 支持工具局部声明额外结果字段白名单，并校验声明类型；默认工具不会因此持久化通用 `text`。
+- `logged_task` 新增显式 completion artifact 策略。固定 capture 只投影受信任的正式 raw
+  和明确的 result/structured error；程序停止只投影业务失败，不把正常停止时的
+  `KeyboardInterrupt` 当作错误。
 - 串口统一采用零参构造，打开前关闭流控并将 DTR/RTS 置为非活动态，打开后再次压低控制线；端口探测同时报告生命周期阶段和清理结果。
 - Raw REPL 只有在严格收到 `OK + stdout EOT + stderr EOT + >` 后才确认完成，并分别记录 ACK、两个 EOT、提示符、退出发送和退出确认。
 - 程序停止只在观察到 `>>>` 后确认；仅声明 `reset_command_sent=false`，并保留 `physical_reset_excluded=false`。
@@ -89,9 +94,17 @@
 - legacy JSONL 对原生 run 只允许既有 UUID 的严格去重；同 run_id 新 UUID 不再追加事件、回填端口或写 marker。
 - optional 默认端口在 run 创建时冻结并传入业务函数，避免审计端口与实际动作端口发生 TOCTOU 偏差；缺失必填端口在建 run 前拒绝。
 - 动作或状态变更完成后的日志故障保留真实业务结果，并通过 `logging_persisted=false` 和 `logging_warning` 报告审计缺口。
+- completion 证据构建或 SQLite 原子写入失败时不再降级写入孤立的 completion event；
+  原业务成功或失败语义保持不变，run 仍按业务结果结束。
+- 固定 capture 的正式 raw 登记前会校验项目 `logs/raw` 边界、普通文件、symlink/junction/
+  reparse、实际字节数和 SHA-256；`recovery_path` 只用于人工恢复，永不登记为正式 raw。
 
 ### Validation
 
+- SQLite v3-B2 合同在旧实现上先得到预期 `11 failed, 1 passed`；最终原子投影专项
+  `15 passed in 1.61s`，main 全量 `119 passed in 14.54s`，test 显式加载 main 全量
+  `342 passed, 1 skipped in 35.69s`。两轮独立终审均为 P0=0、P1=0；测试只使用
+  临时 SQLite、临时项目和假串口，没有迁移正式项目数据库或访问 COM3。
 - capture 新合同在旧实现上得到预期两个失败：15 个原始字节被报告为 19，且同 session
   同秒两次 capture 返回同一路径。复审新增的 fsync 失败合同也先暴露未捕获 `OSError`；
   最终错误检测文件定向 `25 passed in 3.57s`，main 全量 `119 passed in 15.21s`，

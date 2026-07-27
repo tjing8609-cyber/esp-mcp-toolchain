@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -10,9 +11,11 @@ from uuid import UUID, uuid5
 
 from .db import connect
 from .error_repository import (
+    ErrorRepositoryError,
     get_error as select_error,
     insert_error,
     list_errors_for_run,
+    stable_error_id,
 )
 from .event_repository import (
     EventRepositoryError,
@@ -28,9 +31,11 @@ from .event_repository import (
     query_events as select_events,
 )
 from .raw_log_repository import (
+    RawLogRepositoryError,
     get_raw_log as select_raw_log,
     insert_raw_log,
     list_raw_logs_for_run,
+    stable_raw_log_id,
 )
 
 
@@ -60,6 +65,53 @@ class RunStateConflictError(LogRepositoryError):
 
 class NativeRunImportConflictError(RunConflictError):
     error_kind = "native_run_import_conflict"
+
+
+class ArtifactProjectionError(LogRepositoryError):
+    error_kind = "artifact_projection_failed"
+
+
+@dataclass(frozen=True)
+class RawLogArtifact:
+    kind: str
+    path: str
+    sha256: str | None = None
+
+
+@dataclass(frozen=True)
+class ErrorArtifact:
+    occurrence_key: str
+    error_kind: str
+    file: str | None = None
+    line: int | None = None
+    column: int | None = None
+    exception_type: str | None = None
+    message: str | None = None
+    raw_text: str | None = None
+    recoverable: bool | int | None = None
+
+
+@dataclass(frozen=True)
+class EventArtifacts:
+    raw_logs: tuple[RawLogArtifact, ...] = ()
+    errors: tuple[ErrorArtifact, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.raw_logs, tuple) or not all(
+            isinstance(item, RawLogArtifact) for item in self.raw_logs
+        ):
+            raise TypeError(
+                "EventArtifacts.raw_logs must be a tuple of RawLogArtifact values"
+            )
+        if not isinstance(self.errors, tuple) or not all(
+            isinstance(item, ErrorArtifact) for item in self.errors
+        ):
+            raise TypeError(
+                "EventArtifacts.errors must be a tuple of ErrorArtifact values"
+            )
+
+
+EMPTY_EVENT_ARTIFACTS = EventArtifacts()
 
 
 def _now_iso() -> str:
@@ -207,6 +259,138 @@ def finish_run(
     finally:
         connection.close()
 
+def append_event_with_artifacts(
+    database: str | Path,
+    *,
+    project_id: str,
+    run_id: str,
+    event_uuid: str | None,
+    ts: str,
+    phase: str,
+    level: str,
+    tool: str,
+    source: str,
+    message: str,
+    payload: dict[str, Any] | None,
+    artifacts: EventArtifacts = EMPTY_EVENT_ARTIFACTS,
+) -> dict[str, Any]:
+    if not isinstance(artifacts, EventArtifacts):
+        raise TypeError("artifacts must be an EventArtifacts value")
+    if not all(isinstance(item, RawLogArtifact) for item in artifacts.raw_logs):
+        raise TypeError("artifacts.raw_logs must contain only RawLogArtifact values")
+    if not all(isinstance(item, ErrorArtifact) for item in artifacts.errors):
+        raise TypeError("artifacts.errors must contain only ErrorArtifact values")
+    canonical_uuid = normalize_event_uuid(event_uuid)
+    normalized_ts = normalize_timestamp(ts)
+    normalized_phase = normalize_phase(phase)
+    normalized_level = normalize_level(level)
+    connection = connect(database)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        run = _get_run_row(connection, project_id, run_id)
+        if run is None:
+            raise RunNotFoundError(f"No run {run_id} exists in project {project_id}")
+        if run["status"] != "running":
+            existing = get_event_by_uuid(connection, canonical_uuid)
+            if existing is None:
+                raise RunNotRunningError(
+                    f"run {run_id} is {run['status']} and cannot accept a new event"
+                )
+        sequence_no = int(run["next_sequence_no"])
+        event, inserted = insert_event(
+            connection,
+            event_uuid=canonical_uuid,
+            project_id=project_id,
+            run_id=run_id,
+            sequence_no=sequence_no,
+            ts=normalized_ts,
+            phase=normalized_phase,
+            level=normalized_level,
+            tool=tool,
+            source=source,
+            message=message,
+            payload=payload,
+        )
+        raw_reports: list[dict[str, Any]] = []
+        error_reports: list[dict[str, Any]] = []
+        try:
+            for artifact in artifacts.raw_logs:
+                raw_log_id = stable_raw_log_id(
+                    project_id=project_id,
+                    run_id=run_id,
+                    kind=artifact.kind,
+                    path=artifact.path,
+                )
+                record, artifact_inserted = insert_raw_log(
+                    connection,
+                    project_id=project_id,
+                    raw_log_id=raw_log_id,
+                    run_id=run_id,
+                    kind=artifact.kind,
+                    path=artifact.path,
+                    created_at=normalized_ts,
+                    sha256=artifact.sha256,
+                )
+                raw_reports.append(
+                    {"record": record, "inserted": artifact_inserted}
+                )
+            for artifact in artifacts.errors:
+                error_id = stable_error_id(
+                    project_id=project_id,
+                    run_id=run_id,
+                    occurrence_key=artifact.occurrence_key,
+                    error_kind=artifact.error_kind,
+                    file=artifact.file,
+                    line=artifact.line,
+                    column=artifact.column,
+                    exception_type=artifact.exception_type,
+                    message=artifact.message,
+                    raw_text=artifact.raw_text,
+                )
+                record, artifact_inserted = insert_error(
+                    connection,
+                    project_id=project_id,
+                    error_id=error_id,
+                    run_id=run_id,
+                    error_kind=artifact.error_kind,
+                    file=artifact.file,
+                    line=artifact.line,
+                    column=artifact.column,
+                    exception_type=artifact.exception_type,
+                    message=artifact.message,
+                    raw_text=artifact.raw_text,
+                    recoverable=artifact.recoverable,
+                    created_at=normalized_ts,
+                )
+                error_reports.append(
+                    {"record": record, "inserted": artifact_inserted}
+                )
+        except (RawLogRepositoryError, ErrorRepositoryError, sqlite3.Error) as exc:
+            raise ArtifactProjectionError(
+                f"Could not project completion artifacts: {exc}"
+            ) from exc
+        if inserted:
+            connection.execute(
+                """
+                UPDATE runs SET next_sequence_no = next_sequence_no + 1
+                WHERE project_id = ? AND run_id = ?
+                """,
+                (project_id, run_id),
+            )
+        connection.commit()
+        return {
+            "event": event,
+            "event_inserted": inserted,
+            "raw_logs": raw_reports,
+            "errors": error_reports,
+        }
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def append_event(
     database: str | Path,
     *,
@@ -221,49 +405,21 @@ def append_event(
     message: str,
     payload: dict[str, Any] | None,
 ) -> tuple[dict[str, Any], bool]:
-    connection = connect(database)
-    try:
-        connection.execute("BEGIN IMMEDIATE")
-        run = _get_run_row(connection, project_id, run_id)
-        if run is None:
-            raise RunNotFoundError(f"No run {run_id} exists in project {project_id}")
-        canonical_uuid = normalize_event_uuid(event_uuid) if event_uuid is not None else None
-        if run["status"] != "running":
-            existing = get_event_by_uuid(connection, canonical_uuid) if canonical_uuid is not None else None
-            if existing is None:
-                raise RunNotRunningError(
-                    f"run {run_id} is {run['status']} and cannot accept a new event"
-                )
-        sequence_no = int(run["next_sequence_no"])
-        event, inserted = insert_event(
-            connection,
-            event_uuid=canonical_uuid,
-            project_id=project_id,
-            run_id=run_id,
-            sequence_no=sequence_no,
-            ts=ts,
-            phase=phase,
-            level=level,
-            tool=tool,
-            source=source,
-            message=message,
-            payload=payload,
-        )
-        if inserted:
-            connection.execute(
-                """
-                UPDATE runs SET next_sequence_no = next_sequence_no + 1
-                WHERE project_id = ? AND run_id = ?
-                """,
-                (project_id, run_id),
-            )
-        connection.commit()
-        return event, inserted
-    except Exception:
-        connection.rollback()
-        raise
-    finally:
-        connection.close()
+    report = append_event_with_artifacts(
+        database,
+        project_id=project_id,
+        run_id=run_id,
+        event_uuid=event_uuid,
+        ts=ts,
+        phase=phase,
+        level=level,
+        tool=tool,
+        source=source,
+        message=message,
+        payload=payload,
+    )
+    return report["event"], report["event_inserted"]
+
 
 def get_run_events(
     database: str | Path,

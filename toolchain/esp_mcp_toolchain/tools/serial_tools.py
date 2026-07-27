@@ -173,6 +173,11 @@ def _finish_monitor_start_failure(
         "persistence_cleanup_completed",
         "persistence_close_error",
     ),
+    completion_artifacts=(
+        "serial_capture_raw",
+        "result_error",
+        "structured_error",
+    ),
 )
 def esp_serial_capture(
     port: str | None = None,
