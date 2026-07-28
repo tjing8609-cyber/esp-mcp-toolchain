@@ -15,7 +15,10 @@
 
 当前优先顺序：
 
-1. 提交主机相对路径修复与 test 合同，合并双工作树并确认 Windows/Linux、Python 3.10/3.12 远端矩阵。
-2. 只同步个人 Marketplace 源，运行 validator、发布测试和 48/12/12 枚举，再更新一次 cachebuster；不直接修改安装缓存。
-3. 由用户重启 Codex 后，使用新的项目内输出名复验相对下载确实落在所选 workspace。
-4. 继续程序停止、错误解析、GPIO34 只读、板上回归、性能、软复位、临时文件删除和日志闭环；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。
+1. v3-B4.1：新增只对既有终态 event 原子补入 raw/error 的 repository API；不得新建 event/run、改变 run/sequence 或触碰正式数据库。
+2. v3-B4.2：建立历史 Monitor resolver，只接受项目内可信 manifest/chunk 身份，不信任旧绝对路径。
+3. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation 版本，不复用 legacy JSONL import marker。
+4. v3-B4.4：接入项目范围启动/状态报告，保持重复执行严格幂等并暴露有界失败。
+5. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，同时保留有界兼容路径。
+6. v3-B/v3-C 软件门禁通过后，只同步个人 Marketplace 源并执行 validator、发布测试和 48/12/12 枚举；用户重启确认后才允许正式 v2→v3 升级。
+7. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。
