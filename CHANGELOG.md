@@ -89,6 +89,10 @@
   未经校验的原始绝对路径或 expected hash。
 - `esp_file_upload`、`esp_file_download` 和 `esp_run_file(path_type="local")` 的主机相对路径现在绑定活动项目 `workspace_root`，不再随 MCP 进程当前目录写入或读取插件缓存；父目录逃逸和工作区外绝对路径会在任何后端调用或文件副作用前返回 `unsafe_local_path`。
 - Monitor 的 `STARTING` 并发测试改用假串口 `open_started` 事件进行确定性同步，不再假设慢速 CI runner 必须在 1 秒内完成 SQLite 初始化、线程调度和会话注册。
+- Monitor 断连测试不再把 `DISCONNECTED` 错当作 worker 已退出。测试现在使用公开
+  `esp_serial_monitor_stop(timeout_ms=5000)` 作为 join/cleanup 屏障，并断言日志关闭和
+  `cleanup_complete`；Event 门控回归会验证真实慢清理返回 `monitor_cleanup_timeout`，
+  fixture 也会明确报告残留 worker。生产状态机和断连终态顺序保持不变。
 - `erase_flash` 改用统一受管子进程执行器，显式固定 `--before default_reset --after hard_reset`，超时或启动失败时保留 stdout、stderr、returncode 和进程树清理证据；`confirm=True` 高风险确认门保持不变。
 - ACK 后缺少完整 Raw REPL 终止帧不再误报执行成功；stderr 以 `>` 开头时不会被第一个 EOT 提前截断。
 - 源码、Ctrl-C 和 Raw REPL 退出的串口短写不再被记录为完整发送；cleanup 异常会保留原始 operation/protocol 错误类型和已收到输出。
@@ -137,6 +141,12 @@
 
 ### Validation
 
+- v3-B4.1 首轮远端中，[main run 30338443462](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30338443462)
+  的 Windows/Python 3.12 因既有 Monitor 固定 1 秒轮询失败，另外 3 个 main job 和
+  [test run 30338445078](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30338445078)
+  的 4 个 job 成功。确定性清理屏障修复后，两项针对性测试 `2 passed in 1.31s`、
+  独立进程重复 `30/30`、Monitor 文件 `23 passed in 35.85s`、main 全量
+  `120 passed in 50.72s`；双分支远端复验待提交。
 - SQLite v3-B4.1 独立复审补强后先得到预期 `4 failed, 7 passed`；修复后专项
   `11 passed in 1.78s`、SQLite 相关 `146 passed, 2 skipped in 50.21s`、main 全量
   `119 passed in 49.32s`、test 显式加载 main 的跨工作树全量

@@ -10,7 +10,11 @@ import time
 
 import pytest
 
-from esp_mcp_toolchain.backends.serial_monitor_backend import SERIAL_MONITOR_MANAGER, SerialMonitorManager
+from esp_mcp_toolchain.backends.serial_monitor_backend import (
+    SERIAL_MONITOR_MANAGER,
+    MonitorSession,
+    SerialMonitorManager,
+)
 from esp_mcp_toolchain.backends.serial_monitor_lock import identity_key
 from esp_mcp_toolchain.backends.serial_monitor_store import SerialLogStore
 from esp_mcp_toolchain.project_context import get_project_context, select_project_context
@@ -91,7 +95,8 @@ def _wait_for_state(run_id: str, expected: set[str], timeout: float = 3) -> dict
 
 @pytest.fixture(autouse=True)
 def fake_monitor(monkeypatch):
-    SERIAL_MONITOR_MANAGER.shutdown_all(1)
+    startup_cleanup = SERIAL_MONITOR_MANAGER.shutdown_all(5)
+    assert startup_cleanup["ok"] is True, startup_cleanup
     FakeSerial.queue = Queue()
     FakeSerial.instances = []
     FakeSerial.open_gate = None
@@ -100,7 +105,8 @@ def fake_monitor(monkeypatch):
     monkeypatch.setattr(serial_tools, "get_serial_module", lambda: FakeSerialModule)
     monkeypatch.setattr(serial_tools, "describe_serial_port", _identity)
     yield
-    SERIAL_MONITOR_MANAGER.shutdown_all(1)
+    final_cleanup = SERIAL_MONITOR_MANAGER.shutdown_all(5)
+    assert final_cleanup["ok"] is True, final_cleanup
 
 
 def test_serial_monitor_status_empty():
@@ -392,15 +398,61 @@ def test_monitor_disconnect_preserves_buffer_and_terminal_reason():
 
     status = _wait_for_state(run_id, {"DISCONNECTED"})
     assert status["last_error"]["error_kind"] == "serial_disconnected"
-    deadline = time.monotonic() + 1
-    while status["worker_alive"] and time.monotonic() < deadline:
-        time.sleep(0.01)
-        status = serial_tools.esp_serial_monitor_status(run_id)["monitors"][0]
+    stopped = serial_tools.esp_serial_monitor_stop(run_id, timeout_ms=5000)
+    assert stopped["ok"] is True
+    status = stopped["monitor"]
+    assert status["state"] == "DISCONNECTED"
     assert status["worker_alive"] is False
+    assert status["log_store_closed"] is True
+    assert status["cleanup_complete"] is True
     result = serial_tools.esp_serial_monitor_read(run_id)
     assert "".join(record["text"] for record in result["records"]) == "before-disconnect"
     assert result["state"] == "DISCONNECTED"
     assert serial_tools.esp_serial_monitor_stop(run_id)["ok"] is True
+
+
+def test_monitor_cleanup_timeout_is_explicit(monkeypatch):
+    reconciliation_started = threading.Event()
+    release_reconciliation = threading.Event()
+    original_reconcile = MonitorSession._reconcile_terminal_artifacts
+
+    def gated_reconcile(session):
+        reconciliation_started.set()
+        if not release_reconciliation.wait(10):
+            raise RuntimeError("test did not release terminal reconciliation")
+        return original_reconcile(session)
+
+    monkeypatch.setattr(
+        MonitorSession,
+        "_reconcile_terminal_artifacts",
+        gated_reconcile,
+    )
+    start = serial_tools.esp_serial_monitor_start("COM_CLEANUP_TIMEOUT")
+    run_id = start["run_id"]
+    FakeSerial.queue.put(RuntimeError("device disconnected"))
+
+    status = _wait_for_state(run_id, {"DISCONNECTED"})
+    assert status["last_error"]["error_kind"] == "serial_disconnected"
+    assert reconciliation_started.wait(10)
+
+    timed_out = None
+    completed = None
+    try:
+        timed_out = serial_tools.esp_serial_monitor_stop(run_id, timeout_ms=0)
+    finally:
+        release_reconciliation.set()
+        completed = serial_tools.esp_serial_monitor_stop(
+            run_id,
+            timeout_ms=5000,
+        )
+
+    assert timed_out["ok"] is False
+    assert timed_out["error_kind"] == "monitor_cleanup_timeout"
+    assert timed_out["monitor"]["worker_alive"] is True
+    assert completed["ok"] is True
+    assert completed["monitor"]["worker_alive"] is False
+    assert completed["monitor"]["log_store_closed"] is True
+    assert completed["monitor"]["cleanup_complete"] is True
 
 
 def test_monitor_quota_failure_is_not_silent(monkeypatch):
