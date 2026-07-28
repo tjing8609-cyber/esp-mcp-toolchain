@@ -914,7 +914,7 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `no_artifacts`、0 个错误，Monitor 文件与正式 SQLite 文件元数据前后不变。此次没有打开
   COM3、执行板端程序、写正式 SQLite、升级 schema、更新 Marketplace 或安装缓存。
 
-### 2026-07-28 17:24 - 固化 Windows Monitor lease 零长度竞态合同
+### 2026-07-28 17:28 - 修复 Windows Monitor lease 零长度竞态
 
 - B4.2 的 test 分支 GitHub run `30345364620` 仅在 Windows/Python 3.10 的既有
   Monitor 并发对账测试失败；其余 7 个双分支矩阵 job 成功。没有用重跑掩盖该失败。
@@ -922,9 +922,14 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `.sqlite-artifacts.lock` 元数据时，竞争线程会在真正申请 byte-range lock 之前看到
   零长度文件、写入占位字节，并在 `flush()` 得到 `PermissionError [Errno 13]`。该异常
   被包装为不可恢复的普通对账失败，而不是应有的 recoverable busy。
-- test 分支先加入 Windows 专项红灯合同，并明确并发合法结果只能是两次幂等成功，或一次成功
-  加一次 recoverable busy。此提交只固化原因和验收条件；产品修复将在 main 分支单独完成。
-  本步骤只使用临时目录和临时 SQLite，没有访问 COM3、板卡或正式项目数据库。
+- 修复删除加锁前的零长度占位写，空文件直接申请 byte-range lock；Windows 允许锁定 EOF
+  之后的区域，取得 lease 后才执行已有的 truncate/write/flush/fsync。这样真实权限或磁盘
+  错误仍保持普通失败，只有实际锁竞争返回 busy。
+- test 分支先固化了预期红灯合同；修复后的确定性 busy/release/reacquire 检查通过，双线程
+  独立循环 2000 次得到 2004 次成功、1996 次 busy、0 次普通失败；新增合同和原并发测试
+  `2 passed`，原并发测试独立 pytest 进程 `100/100`，main compileall 与全量
+  `120 passed in 51.01s`。test 分支自身全量和双分支 GitHub 门禁仍需在后续验证提交中
+  记录。本步骤没有访问 COM3、板卡或正式项目数据库。
 
 ## 协作约定
 

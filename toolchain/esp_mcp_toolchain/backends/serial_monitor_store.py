@@ -89,10 +89,11 @@ class SerialRunReconciliationLease:
                 raise SerialLogStoreError(
                     "Monitor reconciliation lock is not a safe regular file."
                 )
-            if status.st_size == 0:
-                handle.write(b"\0")
-                handle.flush()
-                os.fsync(handle.fileno())
+            # Windows byte-range locks may extend past EOF, so an empty lock
+            # file needs no pre-lock sentinel.  Keeping every write behind the
+            # lease prevents a contender from observing the owner's truncate
+            # window and failing with PermissionError before it asks for the
+            # non-blocking lock.
             _lock_reconciliation_file(handle)
             locked = True
             encoded = (
