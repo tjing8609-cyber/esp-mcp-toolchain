@@ -106,10 +106,6 @@ def _write_history(
     return manifest_path, chunk_paths, manifest
 
 
-def _read_manifest(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def _replace_manifest(path: Path, manifest: dict) -> None:
     path.write_text(
         json.dumps(manifest, ensure_ascii=False, sort_keys=True),
@@ -131,13 +127,16 @@ def _tree_snapshot(root: Path) -> dict[str, tuple]:
                 "dir",
                 int(status.st_dev),
                 int(status.st_ino),
+                int(status.st_mtime_ns),
             )
         else:
+            status = path.lstat()
             raw = path.read_bytes()
             snapshot[relative] = (
                 "file",
                 len(raw),
                 hashlib.sha256(raw).hexdigest(),
+                int(status.st_mtime_ns),
             )
     return snapshot
 
@@ -289,6 +288,40 @@ def test_resolves_moved_v1_path_without_using_old_location(monkeypatch):
     assert all("moved-project" not in str(path) for path in opened)
 
 
+def test_resolves_moved_posix_v1_path_without_using_old_location(monkeypatch):
+    scope = _scope()
+    run_id = "monitor_history_posix_v1"
+    manifest_path, chunk_paths, _manifest = _write_history(
+        scope,
+        run_id=run_id,
+        legacy_paths=(
+            f"/moved-project/logs/serial/{run_id}/chunk-000001.bin",
+        ),
+    )
+    opened: list[Path] = []
+    original_open = serial_monitor_store._open_readonly_no_reparse
+
+    def recording_open(path: Path) -> int:
+        opened.append(Path(path))
+        return original_open(path)
+
+    monkeypatch.setattr(
+        serial_monitor_store,
+        "_open_readonly_no_reparse",
+        recording_open,
+    )
+
+    candidate = _resolve(
+        scope,
+        run_id=run_id,
+        event_uuid=str(uuid4()),
+    )
+
+    assert candidate.status == "resolved"
+    assert set(opened) == {manifest_path, *chunk_paths}
+    assert all("moved-project" not in str(path) for path in opened)
+
+
 def test_resolves_v2_and_reports_empty_history_explicitly():
     scope = _scope()
     event_uuid = str(uuid4())
@@ -314,6 +347,39 @@ def test_resolves_v2_and_reports_empty_history_explicitly():
     assert empty.artifacts.raw_logs == ()
     assert empty.artifacts.errors == ()
     assert len(empty.artifact_bundle_sha256) == 64
+
+
+@pytest.mark.parametrize(
+    "process_owner",
+    [
+        {
+            "pid": 2_147_483_647,
+            "process_token": "stale-owner-token",
+            "process_started": "2000-01-01T00:00:00+00:00",
+        },
+        None,
+    ],
+)
+def test_terminal_process_owner_is_inert_historical_metadata(process_owner):
+    scope = _scope()
+    run_id = f"monitor_history_stale_owner_{uuid4().hex[:8]}"
+    manifest_path, _chunks, manifest = _write_history(
+        scope,
+        run_id=run_id,
+    )
+    if process_owner is None:
+        manifest.pop("process_owner")
+    else:
+        manifest["process_owner"] = process_owner
+    _replace_manifest(manifest_path, manifest)
+
+    candidate = _resolve(
+        scope,
+        run_id=run_id,
+        event_uuid=str(uuid4()),
+    )
+
+    assert candidate.status == "resolved"
 
 
 @pytest.mark.parametrize("state", ["FAILED", "DISCONNECTED"])
@@ -397,6 +463,26 @@ def test_rejects_invalid_event_uuid_without_creating_database():
 
 
 @pytest.mark.parametrize(
+    "run_id",
+    [
+        "..",
+        "../outside",
+        "..\\outside",
+        "serial/outside",
+        "serial\\outside",
+        "C:\\outside",
+        "/outside",
+        "bad\0run",
+    ],
+)
+def test_rejects_unsafe_caller_run_id_before_filesystem_access(run_id: str):
+    scope = _scope()
+    _assert_resolution_error(scope, run_id=run_id)
+    assert not scope.log_root.exists()
+    assert not scope.database_file.exists()
+
+
+@pytest.mark.parametrize(
     "mutation",
     [
         {"format_version": True},
@@ -443,6 +529,7 @@ def test_missing_format_version_is_legacy_v1():
     [
         "C:\\old\\logs\\serial\\wrong-run\\chunk-000001.bin",
         "C:\\old\\logs\\serial\\..\\monitor_history_bad_path\\chunk-000001.bin",
+        "\\old\\serial\\monitor_history_bad_path\\chunk-000001.bin",
         "\\\\server\\share\\serial\\monitor_history_bad_path\\chunk-000001.bin",
         "\\\\?\\C:\\old\\serial\\monitor_history_bad_path\\chunk-000001.bin",
         "C:\\old\\serial\\monitor_history_bad_path\\other.bin",
@@ -548,6 +635,50 @@ def test_rejects_reparse_run_directory(tmp_path):
     _assert_resolution_error(scope, run_id=run_id)
 
 
+@pytest.mark.parametrize("ancestor", ["log_root", "serial_root"])
+def test_rejects_reparse_ancestor_directory(tmp_path, ancestor: str):
+    scope = _scope()
+    run_id = f"monitor_history_reparse_{ancestor}"
+    _write_history(scope, run_id=run_id)
+    link = (
+        scope.log_root
+        if ancestor == "log_root"
+        else scope.log_root / "serial"
+    )
+    external = tmp_path / f"external-{ancestor}"
+    link.rename(external)
+    _directory_reparse(link, external)
+
+    _assert_resolution_error(scope, run_id=run_id)
+
+
+def test_rejects_directory_identity_change_during_resolution(monkeypatch):
+    scope = _scope()
+    run_id = "monitor_history_directory_changed"
+    _write_history(scope, run_id=run_id)
+    original_identity = serial_monitor_backend.safe_directory_identity
+    calls = 0
+
+    def unstable_identity(path: Path, *, label: str, include_metadata: bool):
+        nonlocal calls
+        calls += 1
+        identity = original_identity(
+            path,
+            label=label,
+            include_metadata=include_metadata,
+        )
+        if calls == 8:
+            return (*identity[:-1], identity[-1] + 1)
+        return identity
+
+    monkeypatch.setattr(
+        serial_monitor_backend,
+        "safe_directory_identity",
+        unstable_identity,
+    )
+    _assert_resolution_error(scope, run_id=run_id)
+
+
 def test_rejects_synthetic_fd_reparse_and_identity_change(monkeypatch):
     scope = _scope()
     first_run = "monitor_history_fd_reparse"
@@ -625,6 +756,27 @@ def test_rejects_b3_sidecar_and_legacy_ownership(legacy_field: str):
         encoding="utf-8",
     )
     _assert_resolution_error(scope, run_id=sidecar_run)
+
+
+def test_persistent_lease_file_is_not_b3_ownership():
+    scope = _scope()
+    run_id = "monitor_history_persistent_lease"
+    manifest_path, _chunks, _manifest = _write_history(
+        scope,
+        run_id=run_id,
+    )
+    manifest_path.with_name(".sqlite-artifacts.lock").write_text(
+        "released lease file remains on disk",
+        encoding="utf-8",
+    )
+
+    candidate = _resolve(
+        scope,
+        run_id=run_id,
+        event_uuid=str(uuid4()),
+    )
+
+    assert candidate.status == "resolved"
 
 
 def test_resolver_is_file_only_and_has_zero_side_effects(monkeypatch):
