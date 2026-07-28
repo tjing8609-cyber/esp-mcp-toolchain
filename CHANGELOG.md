@@ -175,6 +175,13 @@
   `50 passed, 1 skipped in 1.31s`，main 全量 `120 passed in 49.93s`。正式项目 4 个
   capture 的纯只读检查得到 1 个 native `resolved`、3 个 legacy `ineligible`；SQLite
   connect 被探针禁止，项目 189 个文件的路径、长度、mtime 与 SHA-256 前后无差异。
+- 合入固定 main 后，test 分支自身源码全量为
+  `508 passed, 4 skipped in 254.09s`。B4.3
+  [main run 30356471000](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356471000)
+  首次仅 Windows/Python 3.10 的既有 Monitor 子进程 ready 等待在固定 8 秒超时；
+  本地独立进程重复 `10/10` 后只重跑该失败 job，attempt 2 成功。
+  [test run 30356899571](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356899571)
+  四个 job 首次全部成功；该 CI 事件未修改 B4.3 或 Monitor 代码。
 - SQLite v3-B4.2 初始 42 条合同在入口缺失时全部按预期失败；独立审查补齐陈旧 owner、
   caller 路径逃逸、祖先 reparse、目录身份变化、持久 lease、合法 POSIX v1 历史和
   Windows 根相对路径拒绝后，专项 `58 passed in 1.66s`，既有 Monitor 回归

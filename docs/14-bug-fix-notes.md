@@ -1166,6 +1166,17 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 正式探针把 `sqlite3.connect` 替换为失败函数，4 项仍全部完成。解析前后核对 189 个项目
   文件的路径、长度、mtime 和 SHA-256，差异为 0；没有访问 COM3、板卡、Marketplace 或
   安装缓存。
+- main 合入 test 后，test 分支自身源码全量
+  `508 passed, 4 skipped in 254.09s`。B4.3
+  [main run 30356471000](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356471000)
+  首次仅 Windows/Python 3.10 的既有
+  `test_forced_termination_releases_os_handle_and_next_start_cleans_stale_lock`
+  在等待第二个子进程 ready 文件的固定 8 秒窗口超时；该 job 其余 119 项和另外三个
+  main job 均成功，日志没有业务异常。
+- 上述既有用例在本地独立 pytest 进程重复 `10/10` 通过，耗时范围
+  1.85–3.87 秒，因此未修改 B4.3 或 Monitor 代码，只重跑失败 job。main attempt 2
+  成功；[test run 30356899571](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356899571)
+  四个 job 首次全部成功。
 
 ### 经验与剩余边界
 
@@ -1183,3 +1194,6 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 当前 safe-fd 与前后目录检查面向普通本地故障和路径替换，不声称抵御同一账户恶意完成
   可恢复原样的 ABA。正式项目数据库仍为 v2；B4.4、v3-C、Marketplace 重启确认完成前
   不执行正式升级。
+- CI 的单次固定 ready 超时不自动等于产品回归。本轮先检查失败日志，再做同一用例独立
+  重复，最后只重跑失败 job；没有用整轮盲目重跑掩盖可复现缺陷，也没有把既有测试调度
+  波动冒充 B4.3 修复。
