@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 
 from esp_mcp_toolchain.database import log_repository
+from esp_mcp_toolchain.database.migrations import init_database
 from esp_mcp_toolchain.database.error_repository import (
     ErrorConflictError,
     stable_error_id,
@@ -686,3 +687,337 @@ def test_concurrent_reconcile_same_bundle_commits_once():
     assert after["events"] == before["events"]
     assert len(after["raw_logs"]) == 1
     assert len(after["errors"]) == 1
+
+
+def _strict_profiles(
+    scope: LogScope,
+    run_id: str,
+    event_uuid: str,
+) -> tuple[dict, dict, int, int]:
+    run = log_repository.get_run(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run_id,
+    )
+    event = log_repository.get_event(
+        scope.database_file,
+        event_uuid=event_uuid,
+    )
+    assert run is not None
+    assert event is not None
+    event_profile = {
+        key: event[key]
+        for key in (
+            "event_uuid",
+            "project_id",
+            "run_id",
+            "ts",
+            "phase",
+            "level",
+            "tool",
+            "source",
+            "message",
+            "payload_json",
+        )
+    }
+    run_profile = {
+        key: run[key]
+        for key in (
+            "project_id",
+            "run_id",
+            "task_type",
+            "status",
+            "ended_at",
+            "selected_port",
+            "summary",
+            "payload_json",
+        )
+    }
+    return (
+        event_profile,
+        run_profile,
+        int(event["sequence_no"]),
+        int(run["next_sequence_no"]),
+    )
+
+
+def _historical_claim(
+    artifact: log_repository.RawLogArtifact,
+) -> log_repository.HistoricalRawClaim:
+    assert artifact.sha256 is not None
+    return log_repository.HistoricalRawClaim(
+        path=artifact.path,
+        kind=artifact.kind,
+        sha256=artifact.sha256,
+        adapter_id="history_contract_v1",
+        reconciliation_version=1,
+        event_profile_sha256=hashlib.sha256(b"event profile").hexdigest(),
+        artifact_bundle_sha256=hashlib.sha256(b"artifact bundle").hexdigest(),
+    )
+
+
+def _strict_reconcile(
+    scope: LogScope,
+    run_id: str,
+    event_uuid: str,
+    *,
+    artifacts: log_repository.EventArtifacts,
+    event_profile: dict,
+    run_profile: dict,
+    expected_sequence_no: int,
+    expected_next_sequence_no: int,
+) -> dict:
+    return log_repository.reconcile_existing_event_artifacts(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run_id,
+        event_uuid=event_uuid,
+        artifacts=artifacts,
+        expected_event_profile=event_profile,
+        expected_run_profile=run_profile,
+        expected_sequence_no=expected_sequence_no,
+        expected_next_sequence_no=expected_next_sequence_no,
+        raw_claims=tuple(
+            _historical_claim(artifact)
+            for artifact in artifacts.raw_logs
+        ),
+    )
+
+
+def test_schema_v3_reopen_adds_persistent_historical_raw_claim_contract():
+    run_id = "history-additive-claim-schema"
+    scope, _event_uuid, _event = _prepare_event(run_id)
+    connection = sqlite3.connect(scope.database_file)
+    try:
+        connection.execute("DROP TABLE IF EXISTS historical_raw_claims")
+        connection.commit()
+    finally:
+        connection.close()
+
+    init_database(scope.database_file, project_id=scope.project_id)
+
+    connection = sqlite3.connect(scope.database_file)
+    try:
+        table = connection.execute(
+            """
+            SELECT name FROM sqlite_master
+            WHERE type = 'table' AND name = 'historical_raw_claims'
+            """
+        ).fetchone()
+        columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(historical_raw_claims)"
+            )
+        }
+        primary_key = tuple(
+            row[1]
+            for row in sorted(
+                connection.execute(
+                    "PRAGMA table_info(historical_raw_claims)"
+                ),
+                key=lambda row: row[5],
+            )
+            if row[5]
+        )
+    finally:
+        connection.close()
+
+    assert table == ("historical_raw_claims",)
+    assert {
+        "project_id",
+        "path",
+        "run_id",
+        "event_uuid",
+        "kind",
+        "sha256",
+        "adapter_id",
+        "reconciliation_version",
+        "event_profile_sha256",
+        "artifact_bundle_sha256",
+        "claimed_at",
+    } <= columns
+    assert primary_key == ("project_id", "path")
+
+
+def test_strict_profiles_and_sequence_are_checked_before_any_artifact_write():
+    run_id = "history-strict-profile"
+    scope, event_uuid, _event = _prepare_event(run_id)
+    event_profile, run_profile, sequence_no, next_sequence_no = (
+        _strict_profiles(scope, run_id, event_uuid)
+    )
+    event_profile["message"] = "stale precheck value"
+    before = _snapshot(scope, run_id)
+
+    with pytest.raises(
+        log_repository.HistoricalArtifactProfileConflictError
+    ) as exc_info:
+        _strict_reconcile(
+            scope,
+            run_id,
+            event_uuid,
+            artifacts=_artifacts(event_uuid),
+            event_profile=event_profile,
+            run_profile=run_profile,
+            expected_sequence_no=sequence_no,
+            expected_next_sequence_no=next_sequence_no,
+        )
+
+    assert (
+        exc_info.value.error_kind
+        == "historical_artifact_database_profile_conflict"
+    )
+    assert _snapshot(scope, run_id) == before
+    assert log_repository.get_run_historical_raw_claims(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run_id,
+    ) == []
+
+    event_profile, run_profile, sequence_no, next_sequence_no = (
+        _strict_profiles(scope, run_id, event_uuid)
+    )
+    with pytest.raises(
+        log_repository.HistoricalArtifactProfileConflictError
+    ):
+        _strict_reconcile(
+            scope,
+            run_id,
+            event_uuid,
+            artifacts=_artifacts(event_uuid),
+            event_profile=event_profile,
+            run_profile=run_profile,
+            expected_sequence_no=sequence_no + 1,
+            expected_next_sequence_no=next_sequence_no,
+        )
+    assert _snapshot(scope, run_id) == before
+
+
+def test_strict_reconcile_commits_claim_and_artifacts_once_on_exact_retry():
+    run_id = "history-strict-idempotent"
+    scope, event_uuid, _event = _prepare_event(run_id)
+    profiles = _strict_profiles(scope, run_id, event_uuid)
+    artifacts = _artifacts(event_uuid)
+
+    first = _strict_reconcile(
+        scope,
+        run_id,
+        event_uuid,
+        artifacts=artifacts,
+        event_profile=profiles[0],
+        run_profile=profiles[1],
+        expected_sequence_no=profiles[2],
+        expected_next_sequence_no=profiles[3],
+    )
+    retry = _strict_reconcile(
+        scope,
+        run_id,
+        event_uuid,
+        artifacts=artifacts,
+        event_profile=profiles[0],
+        run_profile=profiles[1],
+        expected_sequence_no=profiles[2],
+        expected_next_sequence_no=profiles[3],
+    )
+
+    assert [entry["inserted"] for entry in first["raw_claims"]] == [True]
+    assert [entry["inserted"] for entry in retry["raw_claims"]] == [False]
+    assert [entry["inserted"] for entry in first["raw_logs"]] == [True]
+    assert [entry["inserted"] for entry in retry["raw_logs"]] == [False]
+    claims = log_repository.get_run_historical_raw_claims(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run_id,
+    )
+    assert len(claims) == 1
+    assert claims[0]["event_uuid"] == event_uuid
+    assert claims[0]["path"] == artifacts.raw_logs[0].path
+
+
+def test_same_historical_raw_path_cannot_be_claimed_by_another_run():
+    first_run = "history-first-raw-owner"
+    first_scope, first_event_uuid, _event = _prepare_event(first_run)
+    first_profiles = _strict_profiles(
+        first_scope,
+        first_run,
+        first_event_uuid,
+    )
+    first_artifacts = _artifacts(first_event_uuid)
+    _strict_reconcile(
+        first_scope,
+        first_run,
+        first_event_uuid,
+        artifacts=first_artifacts,
+        event_profile=first_profiles[0],
+        run_profile=first_profiles[1],
+        expected_sequence_no=first_profiles[2],
+        expected_next_sequence_no=first_profiles[3],
+    )
+
+    second_run = "history-second-raw-owner"
+    second_scope, second_event_uuid, _event = _prepare_event(second_run)
+    second_profiles = _strict_profiles(
+        second_scope,
+        second_run,
+        second_event_uuid,
+    )
+    second_before = _snapshot(second_scope, second_run)
+
+    with pytest.raises(
+        log_repository.HistoricalRawClaimConflictError
+    ) as exc_info:
+        _strict_reconcile(
+            second_scope,
+            second_run,
+            second_event_uuid,
+            artifacts=_artifacts(second_event_uuid),
+            event_profile=second_profiles[0],
+            run_profile=second_profiles[1],
+            expected_sequence_no=second_profiles[2],
+            expected_next_sequence_no=second_profiles[3],
+        )
+
+    assert exc_info.value.error_kind == "historical_artifact_raw_claim_conflict"
+    assert _snapshot(second_scope, second_run) == second_before
+    first_claims = log_repository.get_run_historical_raw_claims(
+        first_scope.database_file,
+        project_id=first_scope.project_id,
+        run_id=first_run,
+    )
+    second_claims = log_repository.get_run_historical_raw_claims(
+        second_scope.database_file,
+        project_id=second_scope.project_id,
+        run_id=second_run,
+    )
+    assert len(first_claims) == 1
+    assert second_claims == []
+
+
+def test_late_projection_failure_rolls_back_persistent_raw_claim(monkeypatch):
+    run_id = "history-claim-rollback"
+    scope, event_uuid, _event = _prepare_event(run_id)
+    profiles = _strict_profiles(scope, run_id, event_uuid)
+    before = _snapshot(scope, run_id)
+
+    def fail_error_insert(*_args, **_kwargs):
+        raise sqlite3.OperationalError("forced failure after raw claim")
+
+    monkeypatch.setattr(log_repository, "insert_error", fail_error_insert)
+    with pytest.raises(log_repository.ArtifactProjectionError):
+        _strict_reconcile(
+            scope,
+            run_id,
+            event_uuid,
+            artifacts=_artifacts(event_uuid),
+            event_profile=profiles[0],
+            run_profile=profiles[1],
+            expected_sequence_no=profiles[2],
+            expected_next_sequence_no=profiles[3],
+        )
+
+    assert _snapshot(scope, run_id) == before
+    assert log_repository.get_run_historical_raw_claims(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run_id,
+    ) == []
