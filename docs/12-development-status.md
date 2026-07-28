@@ -1,6 +1,6 @@
 # 当前开发状态
 
-更新时间：2026-07-28 16:55（Asia/Shanghai）
+更新时间：2026-07-28 17:07（Asia/Shanghai）
 
 ## 当前分支
 
@@ -162,7 +162,8 @@
 - v3-B4.2 初始入口缺失时为预期 `42 failed`；独立复审补齐陈旧 owner、caller 越界、
   祖先 reparse、目录身份变化、持久 lease、合法 POSIX v1 历史和 Windows 根相对路径
   拒绝后，专项 `58 passed in 1.66s`。既有 Monitor 回归 `28 passed in 41.00s`，最终源码
-  main 全量 `120 passed in 51.67s`。
+  main 全量 `120 passed in 51.67s`；合入固定 main 后 test 分支自身源码全量
+  `457 passed, 3 skipped in 249.69s`。
 - 正式项目 22 个 v1 manifest 的只读解析得到 14 个 `resolved`、8 个
   `no_artifacts`、0 个错误；Monitor 文件与正式 SQLite 文件元数据前后不变。该检查
   没有连接正式 SQLite、写任何项目文件或访问 COM3。

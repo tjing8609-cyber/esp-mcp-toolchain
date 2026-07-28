@@ -16,9 +16,10 @@
 v3-B4.1 已完成双分支远端门禁。v3-B4.2 已完成本地候选：历史 Monitor resolver 只从
 当前项目读取 manifest/chunk，以同一安全 fd 生成摘要并复核目录链、终态和精确 chunk
 集合；v1 旧绝对路径不参与 I/O，B3 ownership 会 fail-closed。专项 `58 passed`，
-main 全量 `120 passed`；正式项目 22 个 v1 manifest 的只读检查为 14 个 `resolved`、
-8 个 `no_artifacts`、0 个错误，文件与数据库元数据不变。B4.2 不获取 lease、不访问
-SQLite，也不判断数据库资格；正式数据库、硬件、Marketplace 和安装缓存均未触碰。
+main 全量 `120 passed`，同步后的 test 自身源码 `457 passed, 3 skipped`；正式项目
+22 个 v1 manifest 的只读检查为 14 个 `resolved`、8 个 `no_artifacts`、0 个错误，
+文件与数据库元数据不变。B4.2 不获取 lease、不访问 SQLite，也不判断数据库资格；
+正式数据库、硬件、Marketplace 和安装缓存均未触碰。
 
 当前优先顺序：
 

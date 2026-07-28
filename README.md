@@ -330,7 +330,7 @@ SQLite v3-B2 原子投影专项：15 passed in 1.61s
 SQLite v3-B3 Monitor 终态产物专项：43 passed, 2 skipped
 SQLite v3-B4.1 红灯复审：4 failed, 7 passed；最终专项：11 passed in 1.78s；SQLite 相关：146 passed, 2 skipped in 50.21s
 SQLite v3-B4.2 resolver：初始红灯 42 failed（仅缺入口）；独立复审补强后 58 passed in 1.66s；既有 Monitor 回归 28 passed in 41.00s
-当前软件全量：B4.2 最终源码 main 120 passed in 51.67s；上一同步点的 test 分支自身源码 399 passed, 3 skipped in 249.96s
+当前软件全量：B4.2 最终源码 main 120 passed in 51.67s；合入 B4.2 实现后的 test 分支自身源码 457 passed, 3 skipped in 249.69s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
@@ -908,7 +908,8 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `process_owner`、caller `run_id` 越界、祖先 reparse、目录身份变化和持久 lease 后，
   再加入合法 POSIX v1 历史路径和 Windows 根相对路径拒绝，B4.2 专项为
   `58 passed in 1.66s`。既有 Monitor 回归为
-  `28 passed in 41.00s`，最终源码 main 全量为 `120 passed in 51.67s`。
+  `28 passed in 41.00s`，最终源码 main 全量为 `120 passed in 51.67s`；合入固定
+  main 后，test 分支自身源码全量为 `457 passed, 3 skipped in 249.69s`。
 - 对正式项目执行只读兼容检查：22 个 v1 manifest 中 14 个 `resolved`、8 个
   `no_artifacts`、0 个错误，Monitor 文件与正式 SQLite 文件元数据前后不变。此次没有打开
   COM3、执行板端程序、写正式 SQLite、升级 schema、更新 Marketplace 或安装缓存。
