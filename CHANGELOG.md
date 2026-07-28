@@ -62,6 +62,9 @@
 
 ### Fixed
 
+- Windows Monitor artifact lease 不再为了空锁文件在申请 byte-range lock 前写入占位字节。
+  竞争者现在先尝试非阻塞锁，成功后才重写锁元数据，避免 owner 的零长度 truncate 窗口把
+  正常竞争误报为不可恢复的 `PermissionError [Errno 13]`。
 - 固定串口 capture 不再用秒级文件名覆盖同一 session 的先前日志；文件以 UUID 后缀和
   排他创建保存，并对原始 bytes 执行 flush + fsync。
 - capture 不再把替换解码后的文本重新编码成“原始日志”；非法 UTF-8 现在原样写盘，

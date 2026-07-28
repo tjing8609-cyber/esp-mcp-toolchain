@@ -1041,3 +1041,57 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   祖先目录句柄并使用目录相对打开。
 - 正式项目数据库和已安装插件仍为 schema v2；B4.3/B4.4、v3-C、Marketplace 同步和用户
   重启确认完成前，不得执行正式 v2→v3 升级。
+
+## 2026-07-28：Windows 锁文件零长度窗口会把正常竞争误报为永久失败
+
+### 症状
+
+- B4.2 推送后的 test run `30345364620` 在 Windows/Python 3.10 的
+  `test_concurrent_reconciliation_commits_one_deterministic_bundle` 失败；同一轮其余
+  3 个 test job 和 4 个 main job 成功。
+- 失败线程没有返回 `monitor_artifact_reconciliation_busy`，而是
+  `monitor_artifact_reconciliation_failed`：
+  `SerialLogStoreError: Monitor artifact reconciliation lease could not be acquired:
+  [Errno 13] Permission denied`。
+- 本机使用独立 pytest 进程在第 4 次复现；受控锁测试进一步把异常固定在
+  `SerialRunReconciliationLease.acquire()` 的加锁前 `handle.flush()`。
+
+### 根因
+
+- owner 已锁定 byte 0 后，会在持锁范围内把 `.sqlite-artifacts.lock` 截断为 0，再写入
+  新 metadata。旧 contender 路径在真正调用 `_lock_reconciliation_file()` 前先执行
+  `fstat()`；若正好看到 owner 的零长度窗口，就会先写一个占位字节。
+- Windows byte-range lock 会拒绝第二个 handle 写入 owner 已锁定的 byte 0，因此 buffered
+  write 在 `flush()` 抛出 `PermissionError [Errno 13]`。它发生在 busy 分类函数之前，
+  外层只能把它包装为普通 `SerialLogStoreError`。
+- 这不是 SQLite 事务、B4.2 resolver 或幂等 event UUID 的错误，也不应通过扩大 errno
+  busy 映射来掩盖；真实权限和磁盘错误仍必须保持普通失败。
+
+### 修复
+
+- 删除加锁前的零长度占位写。空锁文件打开并完成普通文件/reparse 校验后，立即尝试
+  `_lock_reconciliation_file()`；只有成功持有 lease 才执行已有 metadata
+  truncate/write/flush/fsync。
+- Microsoft `_locking` 和 Windows byte-range lock 均允许锁定超过当前 EOF 的区域，因此
+  空文件不需要先物理写入 byte 0。POSIX `flock` 同样不要求文件非空。
+- 保留非阻塞语义：owner 仍持锁时 contender 返回 recoverable busy；owner 已释放时 contender
+  可取得锁并执行确定性幂等重试。
+
+### 当前验证
+
+- test 分支的 Windows 专项合同先在旧实现上稳定得到预期红灯，并保留真实异常栈。
+- 修复后，受控的 zero-length owner、busy contender、release/reacquire 检查通过。
+- 双线程独立循环 2000 次共得到 2004 次正常 acquisition、1996 次 busy、0 次普通失败。
+- 新增合同和原并发测试 `2 passed`；原并发测试使用独立 pytest 进程重复 `100/100`；
+  main compileall 和全量 `120 passed in 51.01s`。test 分支自身全量和修复后的双分支
+  GitHub 矩阵将在后续验证提交更新。
+- 本阶段只使用临时目录、假串口和临时 SQLite；没有访问 COM3、板卡、正式数据库、
+  Marketplace 或安装缓存。
+
+### 经验
+
+- 锁文件的任何共享 metadata 写入都必须发生在取得 OS lease 之后；即使是“确保文件非空”
+  的占位写也属于共享写入。
+- 并发测试允许两种合法调度：一次成功加一次 busy，或 owner 释放后两次幂等成功。测试必须
+  拒绝第三种普通失败，但不能强迫调度一定产生 busy。
+- CI 单点并发失败应先保留失败 run、打印实际 report 并构造可控时序，不应靠重跑判断修复。
