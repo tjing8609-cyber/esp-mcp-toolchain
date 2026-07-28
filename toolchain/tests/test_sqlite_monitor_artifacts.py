@@ -679,13 +679,13 @@ def test_safe_binary_reader_transfers_descriptor_ownership_once(
         explicit_close_attempts.append(descriptor)
         original_close(descriptor)
 
-    monkeypatch.setattr(serial_monitor_store.os, "close", recording_close)
-
-    assert serial_monitor_store._read_safe_json_object(
-        manifest,
-        parent=tmp_path,
-        label="Test monitor manifest",
-    ) == {}
+    with monkeypatch.context() as patch:
+        patch.setattr(serial_monitor_store.os, "close", recording_close)
+        assert serial_monitor_store._read_safe_json_object(
+            manifest,
+            parent=tmp_path,
+            label="Test monitor manifest",
+        ) == {}
     assert explicit_close_attempts == []
 
 
@@ -712,20 +712,21 @@ def test_safe_binary_reader_closes_untransferred_descriptor_once(
     def fail_fdopen(*_args, **_kwargs):
         raise OSError("fdopen failed before ownership transfer")
 
-    monkeypatch.setattr(
-        serial_monitor_store,
-        "_open_readonly_no_reparse",
-        recording_open,
-    )
-    monkeypatch.setattr(serial_monitor_store.os, "close", recording_close)
-    monkeypatch.setattr(serial_monitor_store.os, "fdopen", fail_fdopen)
-
-    with pytest.raises(OSError, match="before ownership transfer"):
-        serial_monitor_store._read_safe_json_object(
-            manifest,
-            parent=tmp_path,
-            label="Test monitor manifest",
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            serial_monitor_store,
+            "_open_readonly_no_reparse",
+            recording_open,
         )
+        patch.setattr(serial_monitor_store.os, "close", recording_close)
+        patch.setattr(serial_monitor_store.os, "fdopen", fail_fdopen)
+
+        with pytest.raises(OSError, match="before ownership transfer"):
+            serial_monitor_store._read_safe_json_object(
+                manifest,
+                parent=tmp_path,
+                label="Test monitor manifest",
+            )
 
     assert len(opened_descriptors) == 1
     assert closed_descriptors == opened_descriptors
