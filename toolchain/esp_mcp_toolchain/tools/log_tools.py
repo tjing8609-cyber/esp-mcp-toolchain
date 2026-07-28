@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import shlex
 import stat
+import tempfile
 from threading import RLock
 from typing import Any, Callable, TypeVar
 from uuid import uuid4
@@ -28,6 +29,7 @@ from ..utils.time_utils import now_compact, now_iso
 F = TypeVar("F", bound=Callable[..., dict[str, Any]])
 _PREPARED_DATABASES: set[tuple[str, str]] = set()
 _PREPARE_LOCK = RLock()
+_MIRROR_LOCK = RLock()
 _TASK_RUN_CONTEXT: ContextVar[tuple[str, "LogScope"] | None] = ContextVar(
     "esp_mcp_task_run_context",
     default=None,
@@ -433,19 +435,31 @@ def finish_run(
     return run
 
 
-def _event_is_mirrored(path: Path, event_uuid: str) -> bool:
+def _event_is_mirrored(path: Path, expected: dict[str, Any]) -> bool:
     if not path.exists():
         return False
-    return any(
-        row.get("event_uuid") == event_uuid or row.get("event_id") == event_uuid
+    event_uuid = str(expected["event_uuid"])
+    matches = [
+        row
         for row in read_jsonl(path)
-    )
+        if (
+            row.get("event_uuid") == event_uuid
+            or row.get("event_id") == event_uuid
+        )
+    ]
+    if not matches:
+        return False
+    if len(matches) != 1 or matches[0] != expected:
+        raise ValueError(
+            f"Session mirror conflicts with event_uuid {event_uuid}."
+        )
+    return True
 
 
-def _mirror_event(event: dict[str, Any], scope: LogScope) -> None:
-    path = session_path(event["run_id"], scope.log_root)
-    if _event_is_mirrored(path, event["event_uuid"]):
-        return
+def _event_mirror_record(
+    event: dict[str, Any],
+    scope: LogScope,
+) -> dict[str, Any]:
     mirror = dict(event)
     run = log_repository.get_run(
         scope.database_file,
@@ -455,10 +469,53 @@ def _mirror_event(event: dict[str, Any], scope: LogScope) -> None:
     if run is not None:
         mirror["task_type"] = run["task_type"]
         mirror["selected_port"] = run["selected_port"]
-    append_jsonl(path, mirror)
+    return mirror
+
+
+def _mirror_event(event: dict[str, Any], scope: LogScope) -> None:
+    with _MIRROR_LOCK:
+        path = session_path(event["run_id"], scope.log_root)
+        mirror = _event_mirror_record(event, scope)
+        if _event_is_mirrored(path, mirror):
+            return
+        append_jsonl(path, mirror)
 
 
 def _write_latest_mirror(run: dict[str, Any], scope: LogScope) -> None:
+    with _MIRROR_LOCK:
+        latest = _latest_mirror_record(run, scope)
+        target = latest_path(scope.log_root)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists() and _is_reparse_point(target):
+            raise OSError("latest.json is a symbolic link or reparse point")
+        temporary_name: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=target.parent,
+                prefix=".latest.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temporary_name = handle.name
+                json.dump(latest, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_name, target)
+        finally:
+            if temporary_name is not None:
+                try:
+                    Path(temporary_name).unlink()
+                except FileNotFoundError:
+                    pass
+
+
+def _latest_mirror_record(
+    run: dict[str, Any],
+    scope: LogScope,
+) -> dict[str, Any]:
     events = log_repository.get_run_events(
         scope.database_file,
         project_id=scope.project_id,
@@ -466,19 +523,71 @@ def _write_latest_mirror(run: dict[str, Any], scope: LogScope) -> None:
         tail=1,
     )
     last_event = events[-1] if events else None
-    latest = {
+    return {
         "project_id": scope.project_id,
         "run_id": run["run_id"],
         "task_type": run["task_type"],
         "status": run["status"],
         "last_tool": last_event["tool"] if last_event else run["task_type"],
         "has_error": run["status"] == "failed",
-        "summary": run.get("summary") or (last_event["message"] if last_event else None),
+        "summary": run.get("summary")
+        or (last_event["message"] if last_event else None),
         "updated_at": run.get("ended_at") or run["started_at"],
     }
-    target = latest_path(scope.log_root)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(latest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def committed_event_and_latest_mirrors_match(
+    event: dict[str, Any],
+    scope: LogScope,
+) -> bool:
+    with _MIRROR_LOCK:
+        expected_event = _event_mirror_record(event, scope)
+        if not _event_is_mirrored(
+            session_path(event["run_id"], scope.log_root),
+            expected_event,
+        ):
+            return False
+        latest_run = log_repository.latest_run(
+            scope.database_file,
+            project_id=scope.project_id,
+        )
+        if latest_run is None:
+            return False
+        target = latest_path(scope.log_root)
+        if not target.exists() or _is_reparse_point(target):
+            return False
+        stored_latest = json.loads(target.read_text(encoding="utf-8"))
+        return stored_latest == _latest_mirror_record(latest_run, scope)
+
+
+def mirror_committed_event_and_refresh_latest(
+    event: dict[str, Any],
+    scope: LogScope,
+) -> dict[str, Any]:
+    warnings: list[str] = []
+    session_persisted = False
+    latest_persisted = False
+    try:
+        _mirror_event(event, scope)
+        session_persisted = True
+    except Exception as exc:
+        warnings.append(f"session mirror: {type(exc).__name__}: {exc}")
+    try:
+        latest = log_repository.latest_run(
+            scope.database_file,
+            project_id=scope.project_id,
+        )
+        if latest is not None:
+            _write_latest_mirror(latest, scope)
+        latest_persisted = True
+    except Exception as exc:
+        warnings.append(f"latest mirror: {type(exc).__name__}: {exc}")
+    return {
+        "ok": not warnings,
+        "session_persisted": session_persisted,
+        "latest_persisted": latest_persisted,
+        "warnings": warnings,
+    }
 
 
 def write_event(

@@ -506,6 +506,22 @@ def esp_serial_monitor_start(
         "state": status["state"],
         "monitor": status,
     }
+    if session.startup_recovery_reports:
+        result["recovery_reports"] = list(session.startup_recovery_reports)
+        result["recovery_report_count"] = session.startup_recovery_report_count
+        result["recovery_failure_count"] = (
+            session.startup_recovery_failure_count
+        )
+        if session.startup_recovery_report_count > len(
+            session.startup_recovery_reports
+        ):
+            result["recovery_reports_truncated"] = True
+        if session.startup_recovery_failure_count:
+            result["recovery_warning"] = (
+                f"{session.startup_recovery_failure_count} prior monitor "
+                "run(s) could not be "
+                "fully reconciled; inspect recovery_reports."
+            )
     if prepare_warnings:
         result["logging_persisted"] = False
         result["logging_warning"] = "; ".join(prepare_warnings)
@@ -521,9 +537,56 @@ def esp_serial_monitor_stop(run_id: str, timeout_ms: int = 5000) -> dict:
     context = get_project_context()
     status = SERIAL_MONITOR_MANAGER.stop(run_id, context["project_id"], timeout_ms / 1000)
     if status is None:
-        persisted = SERIAL_MONITOR_MANAGER.persisted_status(Path(context["project_dir"]) / "logs", run_id)
+        log_root = Path(context["project_dir"]) / "logs"
+        persisted = SERIAL_MONITOR_MANAGER.persisted_status(log_root, run_id)
         if persisted is not None and persisted.get("project_id") == context["project_id"]:
-            return {"ok": True, "run_id": run_id, "already_terminal": True, "monitor": persisted}
+            was_terminal = str(persisted.get("state") or "") in {
+                "STOPPED",
+                "FAILED",
+                "DISCONNECTED",
+            }
+            reconciliation = SERIAL_MONITOR_MANAGER.reconcile_persisted(
+                log_root=log_root,
+                run_id=run_id,
+                project_id=context["project_id"],
+            )
+            persisted = (
+                SERIAL_MONITOR_MANAGER.persisted_status(log_root, run_id)
+                or persisted
+            )
+            is_terminal = str(persisted.get("state") or "") in {
+                "STOPPED",
+                "FAILED",
+                "DISCONNECTED",
+            }
+            if not is_terminal:
+                return {
+                    "ok": False,
+                    "error_kind": "monitor_run_not_terminal",
+                    "message": (
+                        "Persisted monitor run is not terminal and could not "
+                        "be safely recovered."
+                    ),
+                    "run_id": run_id,
+                    "monitor": persisted,
+                    "reconciliation": reconciliation,
+                }
+            result = {
+                "ok": True,
+                "run_id": run_id,
+                "already_terminal": was_terminal,
+                "monitor": persisted,
+            }
+            if not was_terminal:
+                result["recovered_stale_run"] = True
+            if isinstance(reconciliation, dict):
+                result["reconciliation"] = reconciliation
+                if not reconciliation.get("ok"):
+                    result["logging_warning"] = str(
+                        reconciliation.get("message")
+                        or "Persisted monitor reconciliation failed."
+                    )
+            return result
         return execution_error("monitor_run_not_found", f"No monitor run {run_id} exists in the active project.", tool=tool)
     if status.get("worker_alive"):
         return execution_error(
