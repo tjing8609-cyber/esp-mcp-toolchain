@@ -914,6 +914,18 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `no_artifacts`、0 个错误，Monitor 文件与正式 SQLite 文件元数据前后不变。此次没有打开
   COM3、执行板端程序、写正式 SQLite、升级 schema、更新 Marketplace 或安装缓存。
 
+### 2026-07-28 17:24 - 固化 Windows Monitor lease 零长度竞态合同
+
+- B4.2 的 test 分支 GitHub run `30345364620` 仅在 Windows/Python 3.10 的既有
+  Monitor 并发对账测试失败；其余 7 个双分支矩阵 job 成功。没有用重跑掩盖该失败。
+- 本机独立进程在第 4 次复现同一结果，并用确定性测试确认根因：持锁线程截断并重写
+  `.sqlite-artifacts.lock` 元数据时，竞争线程会在真正申请 byte-range lock 之前看到
+  零长度文件、写入占位字节，并在 `flush()` 得到 `PermissionError [Errno 13]`。该异常
+  被包装为不可恢复的普通对账失败，而不是应有的 recoverable busy。
+- test 分支先加入 Windows 专项红灯合同，并明确并发合法结果只能是两次幂等成功，或一次成功
+  加一次 recoverable busy。此提交只固化原因和验收条件；产品修复将在 main 分支单独完成。
+  本步骤只使用临时目录和临时 SQLite，没有访问 COM3、板卡或正式项目数据库。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

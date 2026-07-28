@@ -2096,8 +2096,11 @@ def test_concurrent_reconciliation_commits_one_deterministic_bundle():
     ]
     assert exceptions == []
     assert len(reports) == 2
+    assert all(type(report.get("ok")) is bool for report in reports)
     successful = [report for report in reports if report["ok"] is True]
     failed = [report for report in reports if report["ok"] is False]
+    assert len(successful) + len(failed) == 2
+    assert (len(successful), len(failed)) in {(2, 0), (1, 1)}
     assert successful
     assert all(report["database_persisted"] is True for report in successful)
     assert all(
@@ -2110,7 +2113,7 @@ def test_concurrent_reconciliation_commits_one_deterministic_bundle():
         report["error_kind"] == "monitor_artifact_reconciliation_busy"
         and report["recoverable"] is True
         for report in failed
-    )
+    ), failed
 
     events = log_repository.get_run_events(
         scope.database_file,
@@ -2189,6 +2192,30 @@ def test_recovery_can_hold_the_run_lease_through_terminal_reconciliation():
     replacement = SerialRunReconciliationLease.acquire(run_dir)
     replacement.release()
     assert _projection(manifest_path)["state"] == "committed"
+
+
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason="Windows byte-range locks make the zero-length race observable.",
+)
+def test_windows_zero_length_locked_lease_reports_a_busy_contender(tmp_path):
+    run_dir = tmp_path / "monitor-zero-length-lock-race"
+    run_dir.mkdir()
+    owner = SerialRunReconciliationLease.acquire(run_dir)
+    try:
+        assert owner.held is True
+        owner._handle.seek(0)
+        owner._handle.truncate(0)
+        owner._handle.flush()
+        os.fsync(owner._handle.fileno())
+        assert owner.path.stat().st_size == 0
+
+        with pytest.raises(SerialLogReconciliationBusy):
+            SerialRunReconciliationLease.acquire(run_dir)
+    finally:
+        owner.release()
+    replacement = SerialRunReconciliationLease.acquire(run_dir)
+    replacement.release()
 
 
 def test_reconciliation_lease_uses_an_os_lock_without_unlinking_the_owner(
