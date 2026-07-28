@@ -49,6 +49,7 @@
   自动升级。
 - 同步工具统一使用 start/prepare/complete/finish run 生命周期；后台 Monitor 在启动时固定完整 `LogScope`，并由 worker 写入原项目终态。
 - 跨工作树门禁由 `index-test` 明确加载 `index` 源码，并校验实际导入来源，避免测试工作树误测自身旧实现。
+- GitHub Actions 只检出被推送的单个分支；test 推送前必须合入固定、已验证的 main，不能把本地 `ESP_MCP_SOURCE_ROOT` 跨工作树覆盖当作远端分支同步。
 - Monitor 终态恢复改为持有 OS run lease 的单写者流程；lease 覆盖扫描、受限修复、冻结、
   描述符复核、SQLite 原子投影、JSONL/latest 镜像和 sidecar 发布。终态 run 即使已有
   committed sidecar 也会执行可重入深度核验。
@@ -114,15 +115,27 @@
   完全一致时原样复用；不一致时拒绝追加第二条 completion。
 - 修复仅凭 sidecar 布尔值判断 committed、同 UUID JSONL 内容冲突仍成功、latest 取错事件、
   持久 `RUNNING` stop 虚报已终态，以及 malformed startup recovery 返回空失败摘要的问题。
+- 修复 Monitor 安全读取的 fd 双重所有权：`fdopen(closefd=True)` 成功后由 file object
+  单独关闭，外层不再二次 `os.close` 已可能被并发复用的 fd；只有 `fdopen` 构造失败时才
+  显式清理 descriptor 一次。
+- 修复 test 分支只同步到 v3-B2 却直接加入 v3-B3 合同的问题；固定
+  `main@98d9403` 已合入 test，README 继续由 main 单点维护。
+- 修正 POSIX symlink 合同：恢复预检拒绝 reparse 后不应生成失败 sidecar。测试现在验证
+  manifest 原字节不变、`artifact_marker=None`、无 sidecar、无 SQLite raw 和外部目标不变；
+  生产 fail-closed 实现保持不变。
 
 ### Validation
 
-- SQLite v3-B3 Monitor 终态产物专项为 `43 passed, 2 skipped`；main 全量
-  `119 passed in 40.95s`；test 显式加载 main 的全量门禁
-  `385 passed, 3 skipped in 192.71s`；`compileall` 通过。2 个新增 skip 来自本机普通文件
-  symlink 创建权限（WinError 1314），目录 junction 和合成 fd/reparse 合同已执行。
-  全部使用临时项目/SQLite 和模拟对象，未升级正式数据库、访问 COM3、更新 Marketplace
-  或安装缓存；本次推送后的远端矩阵仍待独立确认。
+- SQLite v3-B3 Monitor 终态产物专项为 `43 passed, 2 skipped`；fd 所有权和 POSIX
+  fail-closed 合同修复后，main 全量 `119 passed in 40.92s`，test 标准全量
+  `387 passed, 3 skipped in 229.87s`，显式加载 main 的跨工作树门禁
+  `387 passed, 3 skipped in 247.38s`。本机 skip 来自 Windows symlink 权限与既有平台
+  边界；Linux 两套远端环境已执行真实 symlink 合同。main
+  [run 30333882504](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30333882504)
+  与 test
+  [run 30334699560](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30334699560)
+  共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功。全部使用临时项目/SQLite 和
+  模拟对象，未升级正式数据库、访问 COM3、更新 Marketplace 或安装缓存。
 - SQLite v3-B2 合同在旧实现上先得到预期 `11 failed, 1 passed`；最终原子投影专项
   `15 passed in 1.61s`，main 全量 `119 passed in 14.54s`，test 显式加载 main 全量
   `342 passed, 1 skipped in 35.69s`。两轮独立终审均为 P0=0、P1=0；测试只使用

@@ -299,9 +299,9 @@ MicroPython 方向：
 - `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。当前安装插件 `0.1.0+codex.20260726165544` 已在用户重启后核对为 `48 tools / 12 resources / 12 prompts`；实板验收发现的主机相对路径缺陷已在本地源码修复，仍待双分支推送、Marketplace 更新和再次重启验证。
+- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。当前安装插件 `0.1.0+codex.20260726165544` 已在用户重启后核对为 `48 tools / 12 resources / 12 prompts`；实板验收发现的主机相对路径缺陷和 v3-B3 软件候选已经推送并通过双分支远端矩阵，Marketplace 源、安装缓存和重启后复验仍待后续步骤。
 - 初始测试集。
-- 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；门禁从 `index-test` 加载 `index` 的主线源码执行。当前测试入口为 `toolchain/tests/`。
+- 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；本地门禁可从 `index-test` 显式加载 `index` 的主线源码。GitHub Actions 只检出被推送的单个分支，因此推送 test 前必须把固定、已验证的 main 合入 test，不能用本地跨工作树绿灯代替 test 分支自身的远端合同。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
 - 已实现 `project_migrate_legacy_data`：支持只读预览、显式确认、SHA-256 比对、冲突不覆盖、复制或审计失败回滚和原子 JSONL 审计；不会递归迁移旧 `data/projects/`。
 - 后台串口 Monitor 已完成：四个 MCP 工具、正式状态机、不可变项目绑定、游标读取、有界缓冲、原始字节分块日志、跨进程串口锁和退出清理均已有自动化测试。
@@ -326,14 +326,14 @@ mpremote：1.28.0（仅在项目专属 Conda 环境中验证）
 SQLite v3-B2 红灯：11 failed, 1 passed
 SQLite v3-B2 原子投影专项：15 passed in 1.61s
 SQLite v3-B3 Monitor 终态产物专项：43 passed, 2 skipped
-当前软件全量：main 119 passed in 40.95s；test 显式加载 main 385 passed, 3 skipped in 192.71s
+当前软件全量：main 119 passed in 40.92s；test 分支标准全量 387 passed, 3 skipped in 229.87s；test 显式加载 main 的跨工作树全量 387 passed, 3 skipped in 247.38s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
 当前 SQLite 边界：正式项目数据库和当前安装插件仍保持 schema v2；v3-B3 只在源码与临时数据库完成，没有升级正式数据库、访问 COM3 或操作板卡
-跳过边界：v3-B3 专项的 2 项是本机缺少普通文件 symlink 创建权限（WinError 1314）；目录 junction 与合成 fd/reparse 拒绝合同已执行。跨工作树第 3 项为既有平台权限 skip
+跳过边界：Windows 本地 3 项 skip 来自普通文件 symlink 创建权限（WinError 1314）及既有平台权限边界；目录 junction 与合成 fd/reparse 拒绝合同已执行。GitHub Linux 两套环境实际创建 symlink 并验证 fail-closed：恢复预检立即拒绝，不创建 sidecar、不写 SQLite、不改 manifest 或外部目标
 未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
-远端与插件：提交前绿色基线为 `main@c3c0fa5`、`test@288a37b`；对应 main run `30284314843` 和 test run `30284329096` 的四矩阵均成功。本次 v3-B3 推送后的远端矩阵尚未作为通过证据；按约定本步骤不更新 Marketplace 源或安装缓存
+远端与插件：`main@98d9403` 的 [run 30333882504](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30333882504) 与 `test@5f93e60` 的 [run 30334699560](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30334699560) 均通过 Windows/Linux、Python 3.10/3.12 四矩阵；按约定本步骤未更新 Marketplace 源或安装缓存
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -819,6 +819,25 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `385 passed, 3 skipped in 192.71s`，`compileall` 通过。测试只使用临时项目、临时
   SQLite 和模拟对象；没有升级正式数据库、访问 COM3、更新 Marketplace 或改安装缓存。
 - 本切片不包含 v3-B4 通用历史对账和 v3-C raw/error 查询接入；两项继续按后续小提交完成。
+
+### 2026-07-28 14:33 - 修复 v3-B3 双分支 CI 暴露的三类合同问题
+
+- main 首轮远端 run `30330801910` 在 Linux/Python 3.10 teardown 报
+  `Bad file descriptor`。根因是 `_safe_binary_reader` 把 fd 交给
+  `fdopen(closefd=True)` 后又在外层执行 `os.close`；并发下同一整数 fd 可能已经被系统
+  复用，第二次关闭会误关另一线程的新文件。
+- 修复后，`fdopen` 成功即由 file object 单独拥有关闭责任；只有 `fdopen` 构造失败时，
+  原始 descriptor 才显式关闭一次。成功转移和构造失败各有独立测试合同。
+- test 首轮 run `30330806829` 失败不是 v3-B2 缺失，而是 test 产品代码只同步到 B2，
+  新增 B3 合同时没有同步 B3 产品实现。GitHub 只检出 test 自身，无法使用本机另一工作树；
+  因此把固定 `main@98d9403` 合入 test，并继续由 main 单点维护 README。
+- Linux 实际 symlink 测试又发现旧断言把“进入终态对账后的投影失败”误套到“恢复预检即
+  拒绝”的路径。生产 fail-closed 行为保持不变；测试改为断言恢复错误、manifest 字节不变、
+  `artifact_marker=None`、无 sidecar、无 SQLite raw 且外部目标不变。
+- 最终本地 Conda 门禁为 main `119 passed`、test `387 passed, 3 skipped`，显式跨工作树
+  同为 `387 passed, 3 skipped`；main run `30333882504` 和 test run `30334699560`
+  共 8 个远端 job 全部成功。
+- 本步骤没有访问 COM3、升级正式 v2 数据库、修改 Marketplace 源或安装缓存。
 
 ## 协作约定
 

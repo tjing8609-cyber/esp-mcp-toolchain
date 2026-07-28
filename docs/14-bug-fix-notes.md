@@ -788,3 +788,60 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   v3-B3、v3-B4 和 v3-C。
 - 正式项目数据库和当前安装插件仍为 v2；只有 Marketplace 源更新、用户重启并确认新插件后，
   才能另行执行正式 v2→v3 迁移。
+
+## 2026-07-28：v3-B3 双分支 CI 暴露 fd 所有权、分支同步和 POSIX fail-closed 合同问题
+
+### 症状
+
+- main 首轮 [run 30330801910](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30330801910)
+  的 Linux/Python 3.10 在测试 teardown 报 `Bad file descriptor`；Windows 和其他矩阵
+  没有稳定复现。
+- test 首轮 [run 30330806829](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30330806829)
+  在收集阶段无法导入 v3-B3 新符号。test 并非缺少 v3-B2，而是产品代码只同步到 B2，
+  新增 B3 合同时没有同步 B3 产品实现。
+- 同步实现后，Linux 真实 symlink 用例在读取 `sqlite-artifacts-v1.json` 时得到
+  `FileNotFoundError`；原测试错误地要求恢复预检拒绝后仍生成 failed sidecar。
+
+### 根因
+
+- `_safe_binary_reader` 把整数 fd 交给 `fdopen(closefd=True)` 后，外层 `finally` 又调用
+  `os.close`。file object 已经关闭 fd 后，操作系统可把同一整数编号分配给另一线程；
+  第二次关闭会误关新资源。这是所有权错误，不是普通“多关一次无害”。
+- 本地 `index-test` 可用 `ESP_MCP_SOURCE_ROOT` 加载另一工作树的 main 源码，但 GitHub
+  Actions 只检出被推送的 test 分支。本地跨工作树绿灯没有证明 test 分支自身包含 B3 实现。
+- 安全流程在 `_require_safe_regular_file` 预检阶段发现 symlink 后就返回 recovery error，
+  尚未冻结可信 terminal marker，也没有进入 SQLite 对账。原测试把“进入对账后失败”的
+  sidecar 语义套到了“写入前拒绝”的路径。
+
+### 修复
+
+- `fdopen` 成功后由 file object 单独拥有关闭责任；只有 `fdopen` 构造失败时，原始
+  descriptor 才由失败清理路径显式关闭一次。新增成功所有权转移与构造失败各一条合同。
+- 把固定 `main@98d9403` 合入 test；test 专属差异继续只维护测试和验证脚本，README
+  恢复为 main 权威版本。推送 test 前必须验证 main 是其祖先。
+- 保持生产 fail-closed 代码不变。symlink 测试改为直接断言 recovery error 含 reparse、
+  manifest 原始 bytes 不变、上层报告 `artifact_marker=None`、sidecar 不存在、SQLite
+  raw 为空且外部目标内容不变。
+
+### 验证
+
+- main 本地 Conda 全量：`119 passed in 40.92s`。
+- test 本地 Conda 标准全量：`387 passed, 3 skipped in 229.87s`。
+- test 显式加载 main 的 Conda 跨工作树全量：`387 passed, 3 skipped in 247.38s`。
+- [main run 30333882504](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30333882504)
+  和 [test run 30334699560](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30334699560)
+  共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功。Linux 两组实际执行 symlink
+  用例，证明了本机 Windows 权限 skip 没有掩盖远端合同。
+- 本轮只使用临时工程、临时 SQLite 和模拟对象；没有访问 COM3、升级正式 v2 数据库、
+  更新 Marketplace 或修改安装缓存。
+
+### 经验
+
+- fd 的整数编号不是稳定资源身份；资源所有权一旦转交，就不能在旧作用域再次释放。
+- 本地跨工作树测试证明“测试可在指定源码上通过”，不证明远端单分支 checkout 已同步实现。
+- 安全测试应断言最早拒绝边界和零副作用；不能为了得到错误 sidecar 而让不可信输入进入写阶段。
+
+### 剩余风险
+
+- v3-B3 已完成软件与远端门禁，但正式项目数据库和已安装插件仍为 v2。后续仍需完成
+  v3-B4 历史对账、v3-C 查询接入、Marketplace 源更新和用户重启确认，才能另行授权正式升级。

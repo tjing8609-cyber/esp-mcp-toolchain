@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-28 13:03（Asia/Shanghai）
+更新时间：2026-07-28 14:33（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。Flash、SQLite v3-A 和固定 capture 原始字节前置修复的 main/test 远端矩阵已通过；v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已在本地完成 Monitor 终态 chunk/错误的精确、可重入对账。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、Marketplace 或安装缓存；本次双分支推送后的远端矩阵尚待独立确认。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；fd 所有权、test 分支同步和 POSIX fail-closed 测试合同修复后，main/test 最新远端四矩阵均已通过。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、Marketplace 或安装缓存。
 
 ## 本轮已完成实现
 
@@ -77,6 +77,9 @@
 - 旧 stale UUID/`ended_at` 仅在历史 event/run 内容与最后事件完全一致时复用；持久
   `RUNNING` stop 会先恢复为 FAILED 后对账，运行期首错冻结、可重试 close、镜像冲突和
   有界 startup recovery 报告均有对应合同。
+- Monitor 文件读取采用单一 fd 所有权：`fdopen(closefd=True)` 成功后只由 file object
+  关闭；只有构造失败时才显式关闭原 descriptor。成功转移和构造失败均有独立回归合同，
+  避免并发 fd 复用后被第二次关闭。
 
 ## 本地验证
 
@@ -115,11 +118,15 @@
   `342 passed, 1 skipped in 35.69s`。skip 是既有 Windows 目录 symlink 权限限制；
   同一 reparse 拒绝分支另有确定性 monkeypatch 合同。所有新增测试只使用临时 SQLite、
   临时工程和假串口，没有迁移正式项目数据库或访问 COM3。
-- v3-B3 Monitor 终态产物专项 `43 passed, 2 skipped`；main 全量
-  `119 passed in 40.95s`；test 显式加载 main 全量
-  `385 passed, 3 skipped in 192.71s`；`compileall` 通过。2 个新增 skip 是本机缺少
-  普通文件 symlink 创建权限（WinError 1314），目录 junction 与合成 fd/reparse 合同已
-  执行。测试只使用临时工程、临时 SQLite 和模拟对象。
+- v3-B3 Monitor 终态产物专项 `43 passed, 2 skipped`；最终 main 全量
+  `119 passed in 40.92s`，test 标准全量 `387 passed, 3 skipped in 229.87s`，test
+  显式加载 main 的跨工作树全量 `387 passed, 3 skipped in 247.38s`。test 产品代码原来
+  只同步到 B2，已合入固定 `main@98d9403`；不能用本机跨工作树覆盖代替 GitHub 的单分支
+  检出。Windows 本地普通文件 symlink 因权限跳过，Linux 远端已验证恢复预检 fail-closed
+  且零副作用。
+- v3-B3 最终远端门禁：[main run 30333882504](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30333882504)
+  与 [test run 30334699560](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30334699560)
+  共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -139,14 +146,12 @@
 
 ## 待完成
 
-1. 确认本次 v3-B3 main/test 推送触发的 GitHub Actions 远端四矩阵；在远端结果出来前，
-   不把本候选记为远端通过。
-2. v3-B4：为已有 event/manifest/JSONL 增加独立、可重复的历史对账，不复用旧
+1. v3-B4：为已有 event/manifest/JSONL 增加独立、可重复的历史对账，不复用旧
    JSONL marker，也不信任 manifest 中的绝对路径。
-3. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
+2. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
    同时保留有界兼容路径和项目边界。
-4. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+3. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
    48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
    v2 数据库升级。
-5. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
+4. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
    精确动作单独确认。
