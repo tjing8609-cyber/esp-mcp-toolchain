@@ -666,6 +666,29 @@ def test_fd_bound_chunk_verification_rejects_identity_change(monkeypatch, tmp_pa
     assert calls == 2
 
 
+def test_safe_binary_reader_transfers_descriptor_ownership_once(
+    monkeypatch,
+    tmp_path,
+):
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    original_close = serial_monitor_store.os.close
+    explicit_close_attempts: list[int] = []
+
+    def recording_close(descriptor: int) -> None:
+        explicit_close_attempts.append(descriptor)
+        original_close(descriptor)
+
+    monkeypatch.setattr(serial_monitor_store.os, "close", recording_close)
+
+    assert serial_monitor_store._read_safe_json_object(
+        manifest,
+        parent=tmp_path,
+        label="Test monitor manifest",
+    ) == {}
+    assert explicit_close_attempts == []
+
+
 def test_first_runtime_error_is_frozen_before_monitor_cleanup():
     traceback = (
         b"Traceback (most recent call last):\r\n"
