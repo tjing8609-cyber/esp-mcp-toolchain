@@ -7,7 +7,7 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语与 B4.2 历史 Monitor resolver 已通过双分支远端矩阵，v3-B4.3 历史固定 capture/JSONL 纯只读 adapter 已完成本地实现、正式样本只读检查和首轮独立复审。下一步是完成 B4.3 双分支门禁后停止；后续 B4.4 尚未启动。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、连接/写入正式 SQLite、升级 schema、更新 Marketplace 或安装缓存。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语、B4.2 历史 Monitor resolver 与 B4.3 历史固定 capture/JSONL 纯只读 adapter 均已通过双分支本地和远端矩阵。当前按用户要求停在 B4.3 完成存档点；B4.4 尚未启动。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、连接/写入正式 SQLite、升级 schema、更新 Marketplace 或安装缓存。
 
 ## 本轮已完成实现
 
@@ -204,6 +204,13 @@
   第一轮修复后，第二轮复审又发现合法失败可没有 payload port；对应合同先得到
   `2 failed, 48 passed, 1 skipped`。全部修复后专项
   `50 passed, 1 skipped in 1.31s`，main 全量 `120 passed in 49.93s`。
+- 固定 main 合入 test 后，test 分支自身源码全量
+  `508 passed, 4 skipped in 254.09s`。B4.3
+  [main run 30356471000](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356471000)
+  首次仅 Windows/Python 3.10 的既有 Monitor 跨进程用例在固定 8 秒 ready 窗口超时；
+  该用例本地独立进程 `10/10` 通过后只重跑失败 job，attempt 2 成功。
+  [test run 30356899571](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356899571)
+  四个 job 首次全部成功；最终两分支共 8 个矩阵 job 成功。
 - 正式项目 4 个 capture 的只读解析为 1 个 native `resolved`、3 个 legacy
   `ineligible`；四项均为旧 writer 的 `serial_capture_legacy_text`。探针将
   `sqlite3.connect` 替换为失败函数仍全部完成，前后 189 个正式项目文件的路径、长度、
@@ -227,15 +234,14 @@
 
 ## 待完成
 
-1. 完成 v3-B4.3 的独立复审、双分支本地全量与远端四矩阵，然后按用户要求停止。
-2. v3-B4.4：使用项目级 claim/lease 二次执行 B4.2/B4.3，拒绝跨 run 同一 capture
+1. v3-B4.4：使用项目级 claim/lease 二次执行 B4.2/B4.3，拒绝跨 run 同一 capture
    raw 的歧义，校验 native SQLite profile 和最后一个
    `complete` event 资格，再调用 B4.1；提供项目扫描、启动、状态/marker、严格幂等
    报告和有界失败。
-3. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
+2. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
    同时保留有界兼容路径和项目边界。
-4. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+3. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
    48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
    v2 数据库升级。
-5. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
+4. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
    精确动作单独确认。
