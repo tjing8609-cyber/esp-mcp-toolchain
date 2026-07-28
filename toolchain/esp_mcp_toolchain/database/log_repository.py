@@ -59,6 +59,18 @@ class RunNotRunningError(LogRepositoryError):
     error_kind = "run_not_running"
 
 
+class RunNotTerminalError(LogRepositoryError):
+    error_kind = "run_not_terminal"
+
+
+class EventNotFoundError(LogRepositoryError):
+    error_kind = "event_not_found"
+
+
+class EventNotTerminalError(LogRepositoryError):
+    error_kind = "event_not_terminal"
+
+
 class RunStateConflictError(LogRepositoryError):
     error_kind = "run_state_conflict"
 
@@ -399,6 +411,139 @@ def append_event_with_artifacts(
         return {
             "event": event,
             "event_inserted": inserted,
+            "raw_logs": raw_reports,
+            "errors": error_reports,
+        }
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def reconcile_existing_event_artifacts(
+    database: str | Path,
+    *,
+    project_id: str,
+    run_id: str,
+    event_uuid: str,
+    artifacts: EventArtifacts = EMPTY_EVENT_ARTIFACTS,
+) -> dict[str, Any]:
+    """Atomically add evidence to an existing event on a terminal run.
+
+    Historical reconciliation is intentionally existing-only: this entry point
+    never creates an event, changes a run, or advances its sequence.
+    """
+
+    if not isinstance(artifacts, EventArtifacts):
+        raise TypeError("artifacts must be an EventArtifacts value")
+    if not all(isinstance(item, RawLogArtifact) for item in artifacts.raw_logs):
+        raise TypeError("artifacts.raw_logs must contain only RawLogArtifact values")
+    if not all(isinstance(item, ErrorArtifact) for item in artifacts.errors):
+        raise TypeError("artifacts.errors must contain only ErrorArtifact values")
+    if not isinstance(event_uuid, str) or not event_uuid.strip():
+        raise LogRepositoryError("event_uuid is required")
+    canonical_uuid = normalize_event_uuid(event_uuid)
+
+    connection = connect(database)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        run = _get_run_row(connection, project_id, run_id)
+        if run is None:
+            raise RunNotFoundError(
+                f"No run {run_id} exists in project {project_id}"
+            )
+        event = get_event_by_uuid(connection, canonical_uuid)
+        if (
+            event is None
+            or event["project_id"] != project_id
+            or event["run_id"] != run_id
+        ):
+            raise EventNotFoundError(
+                f"No event {canonical_uuid} exists for run {run_id} "
+                f"in project {project_id}"
+            )
+        if run["status"] == "running":
+            raise RunNotTerminalError(
+                f"run {run_id} is running and cannot reconcile historical artifacts"
+            )
+        if (
+            event["phase"] != "complete"
+            or int(event["sequence_no"]) != int(run["next_sequence_no"]) - 1
+        ):
+            raise EventNotTerminalError(
+                f"event {canonical_uuid} is not the terminal completion event "
+                f"for run {run_id}"
+            )
+        try:
+            event_ts = normalize_timestamp(str(event["ts"]))
+            raw_reports: list[dict[str, Any]] = []
+            error_reports: list[dict[str, Any]] = []
+            for artifact in artifacts.raw_logs:
+                raw_log_id = stable_raw_log_id(
+                    project_id=project_id,
+                    run_id=run_id,
+                    kind=artifact.kind,
+                    path=artifact.path,
+                )
+                record, inserted = insert_raw_log(
+                    connection,
+                    project_id=project_id,
+                    raw_log_id=raw_log_id,
+                    run_id=run_id,
+                    kind=artifact.kind,
+                    path=artifact.path,
+                    created_at=event_ts,
+                    sha256=artifact.sha256,
+                )
+                raw_reports.append({"record": record, "inserted": inserted})
+            for artifact in artifacts.errors:
+                error_created_at = (
+                    normalize_timestamp(artifact.created_at)
+                    if artifact.created_at is not None
+                    else event_ts
+                )
+                error_id = stable_error_id(
+                    project_id=project_id,
+                    run_id=run_id,
+                    occurrence_key=artifact.occurrence_key,
+                    error_kind=artifact.error_kind,
+                    file=artifact.file,
+                    line=artifact.line,
+                    column=artifact.column,
+                    exception_type=artifact.exception_type,
+                    message=artifact.message,
+                    raw_text=artifact.raw_text,
+                )
+                record, inserted = insert_error(
+                    connection,
+                    project_id=project_id,
+                    error_id=error_id,
+                    run_id=run_id,
+                    error_kind=artifact.error_kind,
+                    file=artifact.file,
+                    line=artifact.line,
+                    column=artifact.column,
+                    exception_type=artifact.exception_type,
+                    message=artifact.message,
+                    raw_text=artifact.raw_text,
+                    recoverable=artifact.recoverable,
+                    created_at=error_created_at,
+                )
+                error_reports.append({"record": record, "inserted": inserted})
+            connection.commit()
+        except (
+            RawLogRepositoryError,
+            ErrorRepositoryError,
+            EventRepositoryError,
+            sqlite3.Error,
+        ) as exc:
+            raise ArtifactProjectionError(
+                f"Could not reconcile historical event artifacts: {exc}"
+            ) from exc
+        return {
+            "event": event,
+            "event_inserted": False,
             "raw_logs": raw_reports,
             "errors": error_reports,
         }

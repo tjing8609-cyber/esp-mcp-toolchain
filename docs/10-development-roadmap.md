@@ -13,12 +13,15 @@
 9. 任务书 12 项能力：6 项基础和 6 项提高均已有正式工具或闭环实现；公开提示词重组为 12 套，工具面为 48 tools / 12 resources / 12 prompts。独立 Conda 启动器已绑定 `esp-mcp-toolchain` 环境，其中 `mpremote 1.28.0` 已验证。已安装插件 `0.1.0+codex.20260726165544` 和 48/12/12 工具面已在用户重启后核对。实板验收已确认 runtime、串口 Monitor 和文件上传/读取/列表；相对下载误写插件缓存后暂停。主机路径边界已在本地通过 main `119 passed` 与 test 跨工作树 `243 passed`，但新提交、远端 CI、Marketplace 重载和后续板端能力仍待完成。
 10. 项目数据迁移体系：工程路径重绑定、项目合并、导出、导入和完整性校验。与数据库 schema 迁移是两类任务，继续排在本轮任务书能力发布之后。
 
+v3-B4.1 已完成本地软件门禁：仓储 API 只向既有终态 run 的最后一个 `complete` event
+原子补入 raw/error，不新建 run/event、不改变 sequence；专项 `11 passed`，独立复审
+P0=0、P1=0。正式数据库、插件和硬件均未触碰，双分支远端矩阵仍待推送验证。
+
 当前优先顺序：
 
-1. v3-B4.1：新增只对既有终态 event 原子补入 raw/error 的 repository API；不得新建 event/run、改变 run/sequence 或触碰正式数据库。
-2. v3-B4.2：建立历史 Monitor resolver，只接受项目内可信 manifest/chunk 身份，不信任旧绝对路径。
-3. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation 版本，不复用 legacy JSONL import marker。
-4. v3-B4.4：接入项目范围启动/状态报告，保持重复执行严格幂等并暴露有界失败。
-5. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，同时保留有界兼容路径。
-6. v3-B/v3-C 软件门禁通过后，只同步个人 Marketplace 源并执行 validator、发布测试和 48/12/12 枚举；用户重启确认后才允许正式 v2→v3 升级。
-7. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。
+1. v3-B4.2：建立历史 Monitor resolver，只接受项目内可信 manifest/chunk 身份，不信任旧绝对路径。
+2. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation 版本，不复用 legacy JSONL import marker。
+3. v3-B4.4：接入项目范围启动/状态报告，保持重复执行严格幂等并暴露有界失败。
+4. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，同时保留有界兼容路径。
+5. v3-B/v3-C 软件门禁通过后，只同步个人 Marketplace 源并执行 validator、发布测试和 48/12/12 枚举；用户重启确认后才允许正式 v2→v3 升级。
+6. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。

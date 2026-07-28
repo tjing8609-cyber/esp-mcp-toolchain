@@ -24,6 +24,9 @@
 - 新增 Monitor 终态 artifact 对账协议：`sqlite-artifacts-v1.json` 与旧
   `sqlite_reconciled` 生命周期标记分离，并记录规范 event/run/raw/error 集及确定性
   bundle SHA-256。
+- 新增 v3-B4.1 `reconcile_existing_event_artifacts()`：只向既有终态 run 的最后一个
+  `complete` event 原子补入 raw/error，不创建 run/event、不改变 sequence，并支持严格
+  幂等重试和同 bundle 并发单次提交。
 
 ### Changed
 
@@ -123,9 +126,22 @@
 - 修正 POSIX symlink 合同：恢复预检拒绝 reparse 后不应生成失败 sidecar。测试现在验证
   manifest 原字节不变、`artifact_marker=None`、无 sidecar、无 SQLite raw 和外部目标不变；
   生产 fail-closed 实现保持不变。
+- 修复历史补投影只检查 run 已终态、却允许 `prepare` 或非最后 `complete` event 接受证据
+  的问题；现在 event 必须同时满足 `phase=complete` 与
+  `sequence_no=next_sequence_no-1`。
+- 修复历史补投影在验证 event 归属前先返回 running 状态的问题；现在先校验
+  project/run/event 绑定，错误或跨域 UUID 统一拒绝，再判断 run 是否终态。
+- 修复非法 artifact 时间戳和 SQLite commit 失败逃出统一投影错误边界的问题；时间规范化、
+  raw/error 写入和 commit 现在共同包装为 `artifact_projection_failed`、保留原始 cause，
+  并在任一步失败时回滚整个 bundle。
 
 ### Validation
 
+- SQLite v3-B4.1 独立复审补强后先得到预期 `4 failed, 7 passed`；修复后专项
+  `11 passed in 1.78s`、SQLite 相关 `146 passed, 2 skipped in 50.21s`、main 全量
+  `119 passed in 49.32s`、test 显式加载 main 的跨工作树全量
+  `398 passed, 3 skipped in 239.99s`，复审 P0=0、P1=0。测试只使用临时 SQLite，
+  未访问 COM3、升级正式数据库、更新 Marketplace 或安装缓存；双分支远端矩阵待推送验证。
 - SQLite v3-B3 Monitor 终态产物专项为 `43 passed, 2 skipped`；fd 所有权和 POSIX
   fail-closed 合同修复后，main 全量 `119 passed in 40.92s`，test 标准全量
   `387 passed, 3 skipped in 229.87s`，显式加载 main 的跨工作树门禁

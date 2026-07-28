@@ -845,3 +845,67 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 
 - v3-B3 已完成软件与远端门禁，但正式项目数据库和已安装插件仍为 v2。后续仍需完成
   v3-B4 历史对账、v3-C 查询接入、Marketplace 源更新和用户重启确认，才能另行授权正式升级。
+
+## 2026-07-28：历史证据补投影缺少终态 event 资格和统一事务错误边界
+
+### 症状
+
+- 初版 `reconcile_existing_event_artifacts()` 只确认 run 已结束。终态 run 中最后一个
+  `prepare` event，或后面已有更高 sequence 的旧 `complete` event，仍会接受 raw/error。
+  这会把证据挂到不是该 run 最终完成事实的事件上。
+- 对 running run 提供随机、其他 run 或其他 project 的 event UUID 时，初版先返回
+  `run_not_terminal`，随后才验证 event 归属；错误身份尚未通过边界校验就暴露了目标 run 状态。
+- `ErrorArtifact.created_at` 非法时抛出原始 `InvalidEventError`；`connection.commit()`
+  失败时抛出原始 `sqlite3.Error`。两者虽由外层回滚，但没有遵守统一
+  `artifact_projection_failed` 契约。
+
+### 根因
+
+- “run 已终态”被误当作“给定 event 是终态 event”。run 状态只能证明生命周期已经结束，
+  不能证明 event 的 phase 和在该 run 中的位置。
+- 校验顺序以目标 run 状态为先，没有先建立 project/run/event 的完整作用域绑定。
+- artifact 投影的异常捕获只包含 raw/error 仓储错误和循环内部 SQLite 错误，漏掉
+  `normalize_timestamp()` 使用的 `EventRepositoryError`；`commit()` 又位于捕获块之外。
+
+### 修复
+
+- 新增 `EventNotTerminalError(error_kind="event_not_terminal")`。补投影前同时要求
+  `event.phase == "complete"` 且
+  `event.sequence_no == run.next_sequence_no - 1`；已结束 run 的其他 event 全部拒绝。
+- 顺序改为：先 scoped 获取 run，再核对 event UUID 的 project/run 归属；只有绑定正确后
+  才检查 run 是否仍为 running，避免用越界 event 探测运行状态。
+- event 时间规范化、raw/error 稳定 ID 与写入、以及最终 commit 全部放入同一
+  `BEGIN IMMEDIATE` 投影错误边界。`RawLogRepositoryError`、`ErrorRepositoryError`、
+  `EventRepositoryError` 和 `sqlite3.Error` 均包装为 `ArtifactProjectionError`，
+  保留 `__cause__`；外层对任何失败完整 rollback。
+- API 仍然 existing-only：没有 run/event INSERT 或 UPDATE，不改变 sequence；完全相同
+  bundle 重试返回 `inserted=false`，同 bundle 两个并发调用只提交一次。
+
+### 验证
+
+- B4.1 旧基线缺少 API 时，首轮 8 项合同为预期 `8 failed`；实现初版通过 8 项。
+- 独立复审补入终态 event、binding 优先级、非法时间戳和 commit 故障后，初版得到预期
+  `4 failed, 7 passed in 1.40s`，证明四个缺口各自可复现。
+- 修复后 B4.1 专项 `11 passed in 1.78s`；SQLite 相关
+  `146 passed, 2 skipped in 50.21s`；main 全量 `119 passed in 49.32s`；
+  test 显式加载 main 的跨工作树全量 `398 passed, 3 skipped in 239.99s`。
+- 第二轮独立只读复审为 P0=0、P1=0。全部测试使用临时项目和临时 SQLite；未访问 COM3、
+  未执行板端程序、未升级正式数据库、未更新 Marketplace 或安装缓存。提交后的双分支远端
+  矩阵尚待验证。
+
+### 经验
+
+- 终态 run 与终态 event 是两个不变量；补历史证据时必须同时验证 phase 和最后序号。
+- 身份与作用域校验应先于状态信息返回，避免越界标识符成为状态探针。
+- 原子性不仅是“失败会 rollback”，还包括所有同类失败使用稳定的上层错误契约；commit
+  本身也是事务的一部分，不能放在包装边界之外。
+- 幂等测试必须同时验证成功重试和并发重试；回滚测试必须证明前序 raw 确实已插入事务，
+  才能排除“根本没执行写入”的假绿。
+
+### 剩余风险
+
+- B4.1 只提供既有终态 event 的仓储补投影原语，不扫描文件，也不解释旧 manifest/JSONL。
+  B4.2-B4.4 仍需分别实现历史 Monitor resolver、固定 capture/JSONL adapter 和项目级
+  启动/状态报告。
+- 正式项目数据库与已安装插件仍为 schema v2；只有 B4/v3-C 软件门禁、Marketplace 源同步、
+  用户重启确认均完成后，才能另行申请正式 v2→v3 升级。

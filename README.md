@@ -294,6 +294,7 @@ MicroPython 方向：
 - SQLite schema v3-A 与正式日志仓储：project-scoped runs/events/raw_logs/errors、复合外键、查询索引、事务 sequence、UUID/时间戳严格幂等、终态约束和显式可回滚迁移。
 - SQLite v3-B2 原子 completion 证据投影：固定 capture 只登记当前项目 `logs/raw` 内经大小、普通文件、reparse 和实际 SHA-256 校验的正式文件；capture 的 result/structured error 与 `esp_program_stop` 的明确失败使用 completion UUID 区分 occurrence，并与 event、sequence 在同一事务提交。
 - SQLite v3-B3 Monitor 终态产物对账：精确核对 manifest 与磁盘 chunk 集、原子登记 raw/error/run/event、计算确定性 bundle SHA-256，并以独立 `sqlite-artifacts-v1.json` sidecar、进程级 run lease 和描述符复核抵御重复恢复、并发恢复、ABA 与路径替换。
+- SQLite v3-B4.1 历史证据补投影原语：只允许向既有终态 run 的最后一个 `complete` event 原子补入 raw/error；不创建 run/event、不改变 event 或 sequence，并对项目/run/event 归属、重试、并发和失败回滚执行严格合同。
 - Codex skill 文件和示例工作流。
 - Codex 插件 manifest 补齐 `name`、`version`、`description`、`author`、`homepage`、`repository`、`license`、`keywords`、`skills`、`apps`、`mcpServers` 和 `interface`。`hooks.json` 已创建；`hooks` 未写入 `plugin.json`，因为当前插件验证器会拒绝该字段，优先保证插件可见和可验证。
 - `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
@@ -326,14 +327,15 @@ mpremote：1.28.0（仅在项目专属 Conda 环境中验证）
 SQLite v3-B2 红灯：11 failed, 1 passed
 SQLite v3-B2 原子投影专项：15 passed in 1.61s
 SQLite v3-B3 Monitor 终态产物专项：43 passed, 2 skipped
-当前软件全量：main 119 passed in 40.92s；test 分支标准全量 387 passed, 3 skipped in 229.87s；test 显式加载 main 的跨工作树全量 387 passed, 3 skipped in 247.38s
+SQLite v3-B4.1 红灯复审：4 failed, 7 passed；最终专项：11 passed in 1.78s；SQLite 相关：146 passed, 2 skipped in 50.21s
+当前软件全量：main 119 passed in 49.32s；test 显式加载 main 的跨工作树全量 398 passed, 3 skipped in 239.99s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
-覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
+覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
-当前 SQLite 边界：正式项目数据库和当前安装插件仍保持 schema v2；v3-B3 只在源码与临时数据库完成，没有升级正式数据库、访问 COM3 或操作板卡
+当前 SQLite 边界：正式项目数据库和当前安装插件仍保持 schema v2；v3-B4.1 只在源码与临时数据库完成，历史 Monitor resolver、固定 capture/JSONL adapter 和项目级启动/状态工具仍待 B4.2-B4.4；没有升级正式数据库、访问 COM3 或操作板卡
 跳过边界：Windows 本地 3 项 skip 来自普通文件 symlink 创建权限（WinError 1314）及既有平台权限边界；目录 junction 与合成 fd/reparse 拒绝合同已执行。GitHub Linux 两套环境实际创建 symlink 并验证 fail-closed：恢复预检立即拒绝，不创建 sidecar、不写 SQLite、不改 manifest 或外部目标
 未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
-远端与插件：`main@98d9403` 的 [run 30333882504](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30333882504) 与 `test@5f93e60` 的 [run 30334699560](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30334699560) 均通过 Windows/Linux、Python 3.10/3.12 四矩阵；按约定本步骤未更新 Marketplace 源或安装缓存
+远端与插件：v3-B3 的 `main@98d9403` [run 30333882504](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30333882504) 与 `test@5f93e60` [run 30334699560](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30334699560) 均通过 Windows/Linux、Python 3.10/3.12 四矩阵；v3-B4.1 尚待提交后的双分支远端门禁，且本步骤未更新 Marketplace 源或安装缓存
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -838,6 +840,28 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   同为 `387 passed, 3 skipped`；main run `30333882504` 和 test run `30334699560`
   共 8 个远端 job 全部成功。
 - 本步骤没有访问 COM3、升级正式 v2 数据库、修改 Marketplace 源或安装缓存。
+
+### 2026-07-28 15:17 - 完成 SQLite v3-B4.1 既有终态 event 证据补投影
+
+- 新增 `reconcile_existing_event_artifacts()`，只向已存在、已结束 run 的最后一个
+  `complete` event 补入 raw/error；返回原 event 且 `event_inserted=false`，不写
+  run/event、不改变 `next_sequence_no`。同 bundle 精确重试返回 `inserted=false`，
+  两个并发调用只提交一组记录。
+- 第一轮实现只检查 run 已终态，导致该 run 的 `prepare` event 或后续还有更高序号的旧
+  `complete` event 也能补证据；同时先检查 run 状态再验证 event 归属，会在错误 UUID
+  尚未通过作用域校验时暴露运行状态。修复后先验证 project/run/event 绑定，再检查 run，
+  并同时要求 `phase=complete`、`sequence_no=next_sequence_no-1`。
+- 第一轮异常边界漏掉 `EventRepositoryError`，且 `commit()` 位于包装块之外，因此非法
+  artifact 时间戳和提交失败会泄出底层异常。现在 raw、error、时间规范化和 commit 均位于
+  同一 `BEGIN IMMEDIATE` 投影边界，统一抛 `artifact_projection_failed`、保留 cause，
+  并由外层完整回滚。
+- 独立复审补强后的红灯为 `4 failed, 7 passed`；修复后专项 `11 passed in 1.78s`，
+  SQLite 相关 `146 passed, 2 skipped in 50.21s`，main 全量
+  `119 passed in 49.32s`，test 显式加载 main 全量
+  `398 passed, 3 skipped in 239.99s`。复审结论为 P0=0、P1=0。
+- 本切片只完成 B4.1 仓储原语；B4.2-B4.4 的历史 manifest/chunk resolver、
+  capture/JSONL adapter 和项目级启动/状态入口尚未开发。本步骤只使用临时 SQLite，
+  未访问 COM3、未升级正式数据库、未更新 Marketplace 或安装缓存；远端矩阵待推送验证。
 
 ## 协作约定
 
