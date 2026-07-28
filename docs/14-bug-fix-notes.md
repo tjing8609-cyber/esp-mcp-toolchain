@@ -909,3 +909,62 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   启动/状态报告。
 - 正式项目数据库与已安装插件仍为 schema v2；只有 B4/v3-C 软件门禁、Marketplace 源同步、
   用户重启确认均完成后，才能另行申请正式 v2→v3 升级。
+
+## 2026-07-28：Monitor 断连终态被测试误当作线程清理完成
+
+### 症状
+
+- B4.1 首轮 [main run 30338443462](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30338443462)
+  的 Windows/Python 3.12 在
+  `test_monitor_disconnect_preserves_buffer_and_terminal_reason` 失败，结果为
+  `1 failed, 118 passed`。
+- 失败断言是状态已为 `DISCONNECTED`，但 `worker_alive` 在固定 1 秒轮询后仍为 true。
+  同一 main 的另外 3 个 job 与
+  [test run 30338445078](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30338445078)
+  的 4 个 job 均成功。
+
+### 根因
+
+- worker 捕获断连后先切换到 `DISCONNECTED`，随后才在 `finally` 中关闭串口、释放 lease、
+  关闭日志存储并执行 SQLite/JSONL 终态对账。`worker_alive` 直接读取线程存活状态，因此
+  这段收尾期间合法地仍为 true。
+- `DISCONNECTED` 的合同是“终止原因已经确定”，不是“所有资源已经清理”。旧测试用固定
+  1 秒轮询等待另一个不变量，既没有同步事件，也没有调用 API 已提供的 join 屏障。
+- B4.1 没有改变这段生产状态机；Windows/Python 3.12 只暴露了从旧提交开始潜伏的时间竞态。
+  现有证据不能进一步确定该次 runner 的具体调度或磁盘延迟来源，因此不作猜测。
+
+### 修复
+
+- 保留生产状态迁移顺序，避免延迟 `DISCONNECTED` 导致读端不能及时返回断连前缓冲。
+- 断连原因断言完成后，测试调用
+  `esp_serial_monitor_stop(run_id, timeout_ms=5000)`。该 API 使用线程 join，是明确的
+  cleanup barrier；随后断言状态仍为 `DISCONNECTED`，且 `worker_alive=false`、
+  `log_store_closed=true`、`cleanup_complete=true`。
+- 新增 Event 门控回归，故意阻塞 terminal reconciliation。`timeout_ms=0` 必须返回
+  `monitor_cleanup_timeout` 和存活 worker；释放 Event 后再次 stop 必须完成。这样真正的
+  清理卡死不会被当作偶发慢测试跳过。
+- 自动 fixture 在每项测试前后调用 `shutdown_all(5)` 并断言成功，防止残留 worker 静默
+  污染后续用例。
+
+### 验证
+
+- 两项针对性测试：`2 passed in 1.31s`。
+- 两项测试使用独立 pytest 进程连续重复：`30/30`。
+- Monitor 测试文件：`23 passed in 35.85s`。
+- main 全量：`120 passed in 50.72s`。
+- 两轮独立只读审查均认为不需要修改生产状态机；最终复审 P0=0、P1=0。
+- 修复后的 main/test 远端四矩阵仍待提交验证。本地测试使用假串口、临时项目和临时
+  SQLite，没有访问 COM3、板卡、正式数据库、Marketplace 或安装缓存。
+
+### 经验
+
+- 业务终态和资源清理完成是两个不同状态；测试必须分别选择对应的同步信号。
+- 固定等待只能作为死锁上限，不能替代 Event 或 join。
+- 修复并发测试时应增加“故意卡住仍会显式超时”的反例，证明新等待没有掩盖真实泄漏。
+- 单个 CI job 暴露旧竞态时，应先沿生产状态机确认不变量，不能为了测试变绿改变正确语义。
+
+### 剩余风险
+
+- 新测试只覆盖模拟断连和线程清理合同，不证明真实 USB 断连、瞬时电流导致的掉线或板卡供电
+  稳定性。
+- 远端复验完成前，B4.1 仍不能标记为双分支四矩阵全部通过。

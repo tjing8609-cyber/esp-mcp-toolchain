@@ -15,14 +15,17 @@
 
 v3-B4.1 已完成本地软件门禁：仓储 API 只向既有终态 run 的最后一个 `complete` event
 原子补入 raw/error，不新建 run/event、不改变 sequence；专项 `11 passed`，独立复审
-P0=0、P1=0。正式数据库和硬件均未触碰；本切片未更新 Marketplace 源、安装缓存或运行中
-插件，双分支远端矩阵仍待推送验证。
+P0=0、P1=0。首轮远端中 test 四矩阵和 main 三矩阵成功，main Windows/Python 3.12
+暴露既有 Monitor 测试把 `DISCONNECTED` 误作清理完成屏障的竞态；确定性 join 回归已在
+本地通过，待双分支远端复验。正式数据库和硬件均未触碰；本切片未更新 Marketplace 源、
+安装缓存或运行中插件。
 
 当前优先顺序：
 
-1. v3-B4.2：建立历史 Monitor resolver，只接受项目内可信 manifest/chunk 身份，不信任旧绝对路径。
-2. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation 版本，不复用 legacy JSONL import marker。
-3. v3-B4.4：接入项目范围启动/状态报告，保持重复执行严格幂等并暴露有界失败。
-4. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，同时保留有界兼容路径。
-5. v3-B/v3-C 软件门禁通过后，只同步个人 Marketplace 源并执行 validator、发布测试和 48/12/12 枚举；用户重启确认后才允许正式 v2→v3 升级。
-6. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。
+1. 完成 Monitor 清理屏障修复的 main/test 同步与四矩阵远端复验，收口 v3-B4.1。
+2. v3-B4.2：建立历史 Monitor resolver，只接受项目内可信 manifest/chunk 身份，不信任旧绝对路径。
+3. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation 版本，不复用 legacy JSONL import marker。
+4. v3-B4.4：接入项目范围启动/状态报告，保持重复执行严格幂等并暴露有界失败。
+5. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，同时保留有界兼容路径。
+6. v3-B/v3-C 软件门禁通过后，只同步个人 Marketplace 源并执行 validator、发布测试和 48/12/12 枚举；用户重启确认后才允许正式 v2→v3 升级。
+7. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。

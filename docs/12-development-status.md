@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-28 15:17（Asia/Shanghai）
+更新时间：2026-07-28 15:46（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 已完成只对既有最后 `complete` event 补入历史 raw/error 的仓储原语和本地门禁，B4.2-B4.4 尚待开发且本切片远端矩阵待推送验证。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、Marketplace 或安装缓存。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语和本地门禁已完成。首轮远端只有 main Windows/Python 3.12 因既有 Monitor 测试竞态失败，确定性清理屏障修复已本地通过、待双分支复验；B4.2-B4.4 尚待开发。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、Marketplace 或安装缓存。
 
 ## 本轮已完成实现
 
@@ -137,8 +137,13 @@
 - v3-B4.1 独立复审补强后先得到预期 `4 failed, 7 passed`；修复后专项
   `11 passed in 1.78s`，SQLite 相关 `146 passed, 2 skipped in 50.21s`，main 全量
   `119 passed in 49.32s`，test 显式加载 main 的跨工作树全量
-  `398 passed, 3 skipped in 239.99s`。独立复审 P0=0、P1=0；双分支远端矩阵尚待本次
-  提交和同步后验证。
+  `398 passed, 3 skipped in 239.99s`。独立复审 P0=0、P1=0。
+- B4.1 首轮远端中，[main run 30338443462](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30338443462)
+  的 Windows/Python 3.12 在旧 Monitor 固定 1 秒轮询处失败，另外 3 个 main job 和
+  [test run 30338445078](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30338445078)
+  的 4 个 job 成功。改用公开 stop join 屏障并补慢清理合同后，针对性测试 `2 passed in
+  1.31s`、独立进程重复 `30/30`、Monitor 文件 `23 passed in 35.85s`、main 全量
+  `120 passed in 50.72s`；修复后的双分支远端矩阵待提交验证。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
