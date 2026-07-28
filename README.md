@@ -679,39 +679,12 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - `esp_file_download` 对相对输出路径返回 `ok=true`、21 字节且未截断，但项目工作区没有目标文件；同名文件实际写入版本化 Codex 插件安装缓存。根因是上传、下载和本地运行直接使用 `Path(...)`，相对路径继承 MCP 进程 `cwd`。
 - 发现后立即暂停远程文件管理及后续板端验收；没有擅自删除安装缓存中的误写文件，也没有把该能力记为通过。
 
-### 2026-07-27 13:47 - 建立本地路径工作区边界红灯合同
-
-- MicroPython 实板验收中，`esp_file_download` 对相对 `local_path` 报告成功并写入 21 字节，但文件没有出现在已选择的项目工作区，而是落入当前已安装插件缓存目录。生产代码直接使用 `Path(...)`，因此本地上传、下载和 `esp_run_file(path_type="local")` 都受 MCP 进程当前目录影响。
-- test 分支新增 15 个路径域合同，模拟插件缓存作为当前目录，覆盖 mpremote / Raw REPL 上传下载、本地脚本执行、`..` 逃逸、工作区外绝对路径、后端不调用和下载不落盘。
-- 使用项目专属 Conda Python 3.12.13、由 test 跨工作树加载旧 `main@5985230` 运行专项，结果为预期的 `15 failed in 2.60s`；失败均对应上述路径域缺陷，证明测试不是假绿。
-- 本步骤只增加验证合同，没有修改生产实现、插件 Marketplace 或安装缓存，也没有访问 COM3。红灯 test 提交未单独推送，随后由 main 复用 `safe_project_path()` 将同一合同转为绿灯。
-
 ### 2026-07-27 14:04 - 完成本地主机路径边界软件修复
 
 - test 分支先增加 15 个路径域合同；旧 `main@5985230` 得到预期的 `15 failed in 2.60s`。合同模拟插件缓存作为当前目录，覆盖 mpremote / Raw REPL 上传下载、本地脚本执行、父目录逃逸和工作区外绝对路径。
 - main 的五个本地路径入口统一复用 `safe_project_path()`：相对路径绑定当前 `workspace_root`，越界在任何读取、建目录、写入或后端调用前返回 `unsafe_local_path`，板端 `remote_path` 语义不变。
 - 修复后 main 专项为 `32 passed in 4.15s`，test 跨工作树专项为 `48 passed in 9.26s`，提交前 main 全量为 `119 passed in 17.64s`，test 加载 main 源码的全量门禁为 `243 passed in 31.50s`。
-- 合并态 test 自身路径专项为 `48 passed in 10.64s`，全量为 `243 passed in 29.50s`。以上仅是本地软件结论；GitHub CI、Marketplace 同步、cachebuster 和重启后实板相对下载复验仍待完成。
-
-### 2026-07-27 20:55 - 建立 reset 原始输出持久化合同
-
-- test 分支新增正常 UTF-8、非法 UTF-8、Base64/SHA-256 字节一致性、65,536 字节上限和捕获失败默认状态合同，并核对返回值与 SQLite completion 事件。
-- `logged_task` 合同证明默认工具不会保存通用 `text`，只有工具显式声明的额外字段才会落库；非法字段声明必须在调用业务函数前抛出 `TypeError`。
-- test 显式加载 main 源码后，reset / SQLite / 任务书 prompt 定向门禁为 `58 passed in 5.71s`，全量为 `247 passed in 28.82s`；main 自身全量为 `119 passed in 15.18s`。
-- 以上均使用假串口和临时 SQLite；没有访问 `COM3`，也没有把输出持久化解释为 `reset_confirmed` 或因果确认。
-
-### 2026-07-27 21:05 - 建立 ESP-IDF 示例 4 MiB 配置合同
-
-- test 分支新增纯静态合同，要求受版本控制的 defaults 只能启用 4 MB Flash choice，并固定 ESP32、DIO、40 MHz 和 single-app；同时禁止派生字符串与烧录时 header 改写选项进入 defaults。
-- 合同还要求示例 README 说明物理 4 MiB、single-app 不扩容，以及 defaults 不会覆盖已有的 ignored `sdkconfig`。
-- 修复前为预期的 `2 failed`；main 新增 defaults 和说明后为 `2 passed in 0.43s`。随后普通 ESP-IDF build 生成 4 MB / 40 MHz / DIO bootloader；main 全量为 `119 passed in 13.99s`，test 跨工作树全量为 `249 passed in 28.88s`，但没有烧录或访问 `COM3`。
-
-### 2026-07-27 21:14 - 建立性能结果持久化与输入边界合同
-
-- test 分支先证明成功和失败样本未进入 SQLite completion，旧实现得到预期 `2 failed`；随后增加异常截断、128 KiB marker、固定字段、样本数/序号/类型/差值和巨整数合同。
-- 未补强实现对新增安全合同得到预期 `7 failed, 16 passed in 2.90s`；复审还复现约 4000 位整数触发 `statistics.fmean` 的 `OverflowError`，因此增加时长与 32 位堆范围门禁。
-- 最终性能专项为 `24 passed in 3.47s`，相关定向门禁为 `65 passed in 6.64s`；test 显式加载 main 源码的全量门禁为 `256 passed in 29.70s`，main 自身全量为 `119 passed in 13.97s`；合并后 test 使用自身源码的标准门禁为 `256 passed in 30.09s`。
-- 测试使用模拟 Raw REPL 和临时 SQLite，没有访问 `COM3` 或重复执行真实目标；异常前 256 字符仍是诊断数据，不等于自动脱敏。
+- 以上仅是本地软件结论；新提交、GitHub CI、Marketplace 同步、cachebuster 和重启后实板相对下载复验仍待完成。
 
 ### 2026-07-27 20:55 - 持久化 reset 有界原始输出证据
 
@@ -738,18 +711,6 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 新合同覆盖成功/失败样本、超长异常、最坏控制字符、超大 marker、巨整数和畸形样本。性能专项为 `24 passed in 3.47s`，相关定向门禁为 `65 passed in 6.64s`，main 全量为 `119 passed in 13.97s`，test 加载 main 源码的全量门禁为 `256 passed in 29.70s`。
 - 本切片没有访问板卡或重复执行用户程序；历史 run 不会被反向补写。截断不是秘密检测，目标代码不得把凭据写入异常信息。该工具仍是插桩 wall-time/heap delta，不是采样 profiler，也不能推断功耗或电流。
 
-### 2026-07-27 21:35 - 建立 MicroPython 自动化回归套件红灯合同
-
-- 根因是 `examples/micropython_project` 仍只有占位 README，没有受版本控制的回归 manifest 或板端脚本；`esp_regression_test` 的完整 `results` 只在即时响应中存在，SQLite completion 也没有不含 stdout 的逐项摘要，响应还缺少保守的复位边界字段。
-- test 分支新增静态合同，要求 main 跟踪 `manifest.json` 及 safe、hardware_readonly、stateful、negative 四个脚本。manifest 只是受审选择源：默认 profile 只能是 safe，hardware_readonly/stateful 必须显式选择，negative 必须独立且不得混入 all_positive；没有要求工具解析 manifest、自动发现板端文件或猜测上传状态。
-- AST 门禁要求 safe 不导入 machine/网络/文件模块且不执行文件写入，GPIO34 脚本只能无模式变更地读取，GPIO32 状态脚本必须在 `finally` 中回到 LED-off；所有脚本禁止 GPIO25、buzzer 和 PWM。现有 synthetic 回归路径同步从 `test_buzzer.py` 改名为 `test_key_read.py`。
-- SQLite 合同只允许额外持久化 `result_summaries=[path, ok, duration_us, error_kind]`，禁止把逐项 stdout 或完整 `results` 落库；响应必须明确 `reset_command_sent=false`、`physical_reset_excluded=false`，不能把 Raw REPL 串口会话描述为已排除物理复位。
-- 使用项目专属 Conda Python 3.12.13、由 test 加载 `main@5245788` 运行两个新合同，最终得到预期 `2 failed, 24 deselected in 0.38s`：一个失败完整列出缺失的 manifest 和四个脚本，另一个因响应缺少 `result_summaries` 返回 `KeyError`。后续修复应只新增受审静态资产和 stdout-free 摘要，不扩展公开 MCP API。
-- 随后补充异常截断、16 KiB marker 预解析上限、布尔伪装整数、超时长和错误状态组合合同，旧实现得到预期 `9 failed, 3 passed, 20 deselected in 1.43s`。
-- 只读复审进一步用低于 16 KiB 的 5000 层 JSON 数组复现未捕获 `RecursionError`；新增单测先失败，修复后为 `1 passed in 0.91s`，错误被转换为 `probe_result_invalid` 且原始 marker 不落库。
-- 最终回归/prompt/SQLite 定向门禁为 `74 passed in 7.30s`；main 全量为 `119 passed in 14.06s`，test 加载 main 源码的全量门禁为 `265 passed in 30.57s`；合并后 test 使用自身源码的标准门禁为 `265 passed in 31.12s`。
-- 本切片完成 TDD 红灯和软件修复验证，但没有访问 `COM3`、上传板端文件、执行回归脚本、烧录、复位或驱动 GPIO。
-
 ### 2026-07-27 21:43 - 建立分层 MicroPython 自动回归套件
 
 - `examples/micropython_project/regression/manifest.json` 现在跟踪 safe、hardware_readonly、stateful、negative 四层共四个脚本；默认档只有无硬件/网络/文件写入的运行时烟测。GPIO34 只读和 GPIO32 LED 状态脚本必须显式选择，negative 必须单独运行，整套明确排除 GPIO25、蜂鸣器和 PWM。
@@ -759,7 +720,7 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 初始静态/SQLite 合同在旧实现上得到预期 `2 failed`；补充安全合同后为预期 `9 failed, 3 passed`；复审发现的深层 JSON 崩溃也先由单测复现再修复。最终相关定向门禁为 `74 passed in 7.30s`，main 全量为 `119 passed in 14.06s`，test 加载 main 源码的全量门禁为 `265 passed in 30.57s`。
 - 以上均为软件合同和模拟 Raw REPL 结果；没有访问 `COM3`、上传或执行板端脚本，也没有驱动 GPIO。真实 safe/只读/stateful/negative 验收须在板上恢复 MicroPython 后分别确认。
 
-### 2026-07-27 22:27 - Flash 备份/恢复路径安全与回归合同
+### 2026-07-27 22:27 - 收紧 Flash 备份与恢复的主机路径边界
 
 - `esp_backup_flash` / `esp_restore_flash` 只接受当前 workspace 或当前项目经校验的
   `artifacts/flash`；artifact 与 staging 目录中的 symlink/junction 会被拒绝。
@@ -768,29 +729,10 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   不把安全失败伪装成成功，也不删除唯一可恢复副本。
 - 恢复继续要求 `confirm=True`，并先把源镜像复制到每次调用独占的 UUID staging，再交给 esptool；
   这样源文件在校验后被替换不会改变实际交给后端的镜像。
-- 旧实现定向红灯为 `8 failed, 15 passed`；最终合同覆盖 canonical 双根边界、确认门优先、
-  输出父目录替换、UUID partial 所有权、no-replace 发布、完整 recovery 镜像、恢复源变化，
-  以及权限/I/O 清理异常不得覆盖原结果。
-- 最终本地软件门禁：Flash 定向 `36 passed, 1 skipped in 2.67s`、main 全量
-  `119 passed in 15.53s`、test 显式加载 main 源码
-  `287 passed, 1 skipped in 33.01s`。跳过项是本机缺少目录 symlink 创建权限；同一拒绝
-  分支有不依赖该权限的确定性测试。
-- 合并后 test 使用自身源码的标准门禁为 `287 passed, 1 skipped in 32.42s`。
-- 测试只使用临时文件和模拟 esptool；本步骤没有访问 COM3、备份、擦除、烧录或恢复板卡，
-  不能作为新的实板结论。
-
-### 2026-07-27 23:05 - 修复高频串口测试的持久化等待竞态
-
-- test 分支远端矩阵中，Ubuntu/Python 3.12 的高频串口用例曾出现
-  `bytes_received=262144`、`persisted_bytes=258048`；差值正好是一条 4096 字节测试记录，
-  另外三个系统/Python 组合均成功。
-- 根因是测试把“全部字节已从串口读取”误当成“全部字节已完成日志持久化”，在最后一次
-  `SerialLogStore.append()` 尚未结束时提前退出等待循环；这不是已确认的数据丢失。
-- 完成条件现在同时等待 `bytes_received` 和 `persisted_bytes` 达到目标，并核对
-  `unpersisted_bytes=0` 以及显式停止后的最终计数。生产代码没有为测试引入包住磁盘 I/O
-  的全局大锁，因此不会牺牲 status/read 的响应性来掩盖测试竞态。
-- 修复后目标用例 `1 passed in 1.09s`，test 自身源码全量
-  `287 passed, 1 skipped in 33.19s`；仍未访问真实串口或板卡。
+- 最终本地软件门禁：Flash 定向 `36 passed, 1 skipped`、main 全量 `119 passed`、
+  test 显式加载 main 源码 `287 passed, 1 skipped`。跳过项是本机缺少目录 symlink
+  创建权限；同一拒绝分支有不依赖该权限的确定性测试。本步骤没有访问 COM3、备份、
+  擦除、烧录或恢复板卡，不能作为新的实板结论。
 
 ### 2026-07-27 23:28 - 完成 SQLite v3-A 仓储与可回滚迁移
 
@@ -810,9 +752,6 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 本阶段只操作临时 SQLite。正式项目数据库仍保持 v2，现有运行插件也仍只支持 v2；
   event/Monitor 写入、历史数据对账和 MCP 查询接入属于后续 v3-B/v3-C，不能把本阶段
   描述为日志闭环已经完成。本阶段没有访问 COM3 或执行任何板端动作。
-- `main@5ad8f3d` 合入 test 后，分支自身源码的 v3-A 合同为
-  `33 passed in 2.33s`，全量门禁为 `320 passed, 1 skipped in 34.56s`；
-  skip 仍是既有 Windows 目录 symlink 权限用例，不是 SQLite 失败。
 
 ### 2026-07-28 00:06 - 修复固定串口 capture 的覆盖与字节失真
 
@@ -830,9 +769,6 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `25 passed`，main 全量 `119 passed`，test 显式加载 main 全量
   `327 passed, 1 skipped`。合同还强制 UUID 碰撞/耗尽、fsync/close 失败和读取失败；
   测试使用假串口和临时目录，没有访问 COM3。
-- test 分支合入 main 后以自身源码复跑为 `327 passed, 1 skipped in 34.28s`；新增 7 项
-  分支合同锁定非 UTF-8 原始字节、排他碰撞、碰撞耗尽、fsync/close 失败、目录预检和
-  读取失败语义。
 - 这一小步只修复 v3-B 入库前的文件证据正确性；`raw_logs` / `errors` 原子投影、
   Monitor chunk 对账与正式查询仍按后续小提交完成。
 
