@@ -347,6 +347,39 @@ def test_native_complete_old_filename_remains_legacy_text_even_when_empty():
     assert candidate.artifacts.raw_logs[0].kind == "serial_capture_legacy_text"
 
 
+def test_legacy_jsonl_cannot_claim_exact_raw_with_a_modern_looking_filename():
+    scope = _scope()
+    run_id = "serial_capture_legacy_modern_name"
+    source_name = "legacy-modern-name.jsonl"
+    raw_name = "renamed_20260728_120000_012345abcdef.log"
+    event_id = "evt_legacy_modern_name"
+    event_uuid = _legacy_uuid(scope.project_id, run_id, event_id)
+    _write_source(
+        scope,
+        source_name=source_name,
+        records=[
+            _legacy_record(
+                run_id=run_id,
+                raw_name=raw_name,
+                event_id=event_id,
+            )
+        ],
+        raw_name=raw_name,
+        raw_bytes="\uFFFD".encode("utf-8"),
+    )
+
+    candidate = _resolve(
+        scope,
+        source_name=source_name,
+        run_id=run_id,
+        event_uuid=event_uuid,
+    )
+
+    assert candidate.raw_bytes_exact is False
+    assert candidate.artifact_content_kind == "legacy_utf8_replacement_text"
+    assert candidate.artifacts.raw_logs[0].kind == "serial_capture_legacy_text"
+
+
 @pytest.mark.parametrize("style", ["windows", "posix"])
 def test_moved_absolute_path_is_only_identity_metadata(style: str):
     scope = _scope()
@@ -655,7 +688,21 @@ def test_rejects_malformed_non_object_or_oversized_jsonl(case: str):
 
 @pytest.mark.parametrize(
     "mutation",
-    ["run", "project", "payload_mirror", "non_terminal", "not_last", "duplicate"],
+    [
+        "run",
+        "project",
+        "payload_mirror",
+        "non_terminal",
+        "not_last",
+        "duplicate",
+        "duplicate_event_uuid",
+        "first_phase",
+        "intermediate_execute",
+        "task_type",
+        "source",
+        "selected_port",
+        "payload_port",
+    ],
 )
 def test_rejects_ambiguous_or_conflicting_native_profile(mutation: str):
     scope = _scope()
@@ -689,12 +736,34 @@ def test_rejects_ambiguous_or_conflicting_native_profile(mutation: str):
                 "phase": "verify",
             }
         )
-    else:
+    elif mutation == "duplicate":
         duplicate = json.loads(json.dumps(records[-1]))
         duplicate["event_uuid"] = str(uuid4())
         duplicate["event_id"] = duplicate["event_uuid"]
         duplicate["sequence_no"] = 3
         records.append(duplicate)
+    elif mutation == "duplicate_event_uuid":
+        records[0]["event_uuid"] = event_uuid
+        records[0]["event_id"] = event_uuid
+    elif mutation == "first_phase":
+        records[0]["phase"] = "verify"
+    elif mutation == "intermediate_execute":
+        intermediate = json.loads(json.dumps(records[0]))
+        intermediate["event_uuid"] = str(uuid4())
+        intermediate["event_id"] = intermediate["event_uuid"]
+        intermediate["sequence_no"] = 2
+        intermediate["phase"] = "execute"
+        records[-1]["sequence_no"] = 3
+        records.insert(1, intermediate)
+    elif mutation == "task_type":
+        records[0]["task_type"] = "other_task"
+    elif mutation == "source":
+        records[0]["source"] = "other_source"
+    elif mutation == "selected_port":
+        records[0]["selected_port"] = "COM4"
+    else:
+        records[-1]["payload_json"]["port"] = "COM4"
+        records[-1]["data"]["port"] = "COM4"
     _write_source(
         scope,
         source_name=source_name,
