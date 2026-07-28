@@ -330,7 +330,7 @@ SQLite v3-B2 原子投影专项：15 passed in 1.61s
 SQLite v3-B3 Monitor 终态产物专项：43 passed, 2 skipped
 SQLite v3-B4.1 红灯复审：4 failed, 7 passed；最终专项：11 passed in 1.78s；SQLite 相关：146 passed, 2 skipped in 50.21s
 SQLite v3-B4.2 resolver：初始红灯 42 failed（仅缺入口）；独立复审补强后 58 passed in 1.66s；既有 Monitor 回归 28 passed in 41.00s
-当前软件全量：B4.2 最终源码 main 120 passed in 51.67s；合入 B4.2 实现后的 test 分支自身源码 457 passed, 3 skipped in 249.69s
+当前软件全量：B4.2 最终源码 main 120 passed in 51.67s；Windows lease 零长度竞态修复后 main 120 passed in 51.01s，test 分支自身源码 458 passed, 3 skipped in 256.55s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
@@ -338,7 +338,7 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 当前 SQLite 边界：正式项目数据库和当前安装插件仍保持 schema v2；v3-B4.2 只生成文件证据候选，不判断数据库资格、不调用 B4.1，也不写 sidecar。固定 capture/JSONL adapter 和持 lease 的项目级启动/状态工具仍待 B4.3-B4.4；没有升级正式数据库、访问 COM3 或操作板卡
 跳过边界：Windows 本地 3 项 skip 来自普通文件 symlink 创建权限（WinError 1314）及既有平台权限边界；目录 junction 与合成 fd/reparse 拒绝合同已执行。GitHub Linux 两套环境实际创建 symlink 并验证 fail-closed：恢复预检立即拒绝，不创建 sidecar、不写 SQLite、不改 manifest 或外部目标
 未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
-远端与插件：确定性清理屏障修复后的 [main run 30340384047](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340384047) 与 [test run 30340395467](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340395467) 共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功；B4.1 双分支软件门禁完成。本步骤未更新 Marketplace 源或安装缓存
+远端与插件：B4.2 [main run 30345368464](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30345368464) 的 4 个 job 全部成功；[test run 30345364620](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30345364620) 的 Windows/Python 3.10 暴露 lease 零长度竞态，其余 3 个 job 成功。修复后的双分支矩阵尚待推送执行；本步骤未更新 Marketplace 源或安装缓存
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -928,8 +928,9 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - test 分支先固化了预期红灯合同；修复后的确定性 busy/release/reacquire 检查通过，双线程
   独立循环 2000 次得到 2004 次成功、1996 次 busy、0 次普通失败；新增合同和原并发测试
   `2 passed`，原并发测试独立 pytest 进程 `100/100`，main compileall 与全量
-  `120 passed in 51.01s`。test 分支自身全量和双分支 GitHub 门禁仍需在后续验证提交中
-  记录。本步骤没有访问 COM3、板卡或正式项目数据库。
+  `120 passed in 51.01s`，合入固定 main 后 test 分支自身源码
+  `458 passed, 3 skipped in 256.55s`。两轮只读审查均为 P0=0、P1=0；双分支 GitHub
+  门禁仍需在推送后确认。本步骤没有访问 COM3、板卡或正式项目数据库。
 
 ## 协作约定
 

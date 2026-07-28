@@ -167,6 +167,16 @@
 - 正式项目 22 个 v1 manifest 的只读解析得到 14 个 `resolved`、8 个
   `no_artifacts`、0 个错误；Monitor 文件与正式 SQLite 文件元数据前后不变。该检查
   没有连接正式 SQLite、写任何项目文件或访问 COM3。
+- B4.2 推送后的 [main run 30345368464](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30345368464)
+  4 个 job 全部成功；[test run 30345364620](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30345364620)
+  仅 Windows/Python 3.10 失败。没有直接重跑；本机复现并确认是既有 Monitor lease 在
+  owner truncate 窗口内执行加锁前 sentinel flush，正常竞争被误报为
+  `PermissionError [Errno 13]`。
+- 删除 pre-lock sentinel 后，受控 zero-length busy/release/reacquire、双线程 lease
+  2000 轮、原并发测试独立进程 `100/100` 均通过；main 全量
+  `120 passed in 51.01s`，合入固定 main 后 test 自身源码
+  `458 passed, 3 skipped in 256.55s`，两轮审查 P0=0、P1=0。修复后的双分支远端矩阵
+  尚待推送确认。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -186,7 +196,8 @@
 
 ## 待完成
 
-1. 固定 v3-B4.2 提交，合入 test 后执行双分支自身源码全量与远端四矩阵。
+1. 推送 Windows Monitor lease 零长度竞态修复，确认 main/test 各 4 个 GitHub Actions
+   job；全绿后关闭 v3-B4.2。
 2. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation
    版本，不复用 legacy JSONL import marker。
 3. v3-B4.4：持 run lease 二次执行 B4.2，校验 native SQLite profile 和最后一个
