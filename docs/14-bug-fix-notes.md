@@ -972,3 +972,71 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   稳定性。
 - 本次软件门禁不证明真实 USB 驱动在所有断连时序下都能于 5 秒内完成清理；实板断连仍需
   单独的受控验收。
+
+## 2026-07-28：历史 Monitor 的旧绝对路径不能作为当前证据来源
+
+### 症状
+
+- v1 Monitor manifest 把 chunk 保存为生成时工作区的绝对路径。工程移动、复制或从另一
+  操作系统恢复后，该路径可能已经失效，或者指向当前项目边界以外的对象。
+- B4.1 只负责把证据原子补入指定的既有终态 event；它不会选择、读取或解释历史文件。
+  如果把文件发现、数据库资格判断和写入揉在一个入口中，损坏历史也可能先产生锁、SQLite
+  或 sidecar 副作用，失败边界过大。
+
+### 根因
+
+- 旧绝对路径是当时的描述性元数据，不是跨迁移后的文件权威。当前文件权威必须来自活动
+  `LogScope` 下的 `logs/serial/<run_id>`。
+- 项目此前缺少一个独立于 SQLite 的纯文件 resolver，也没有在该层明确区分普通 v1 历史、
+  B3 sidecar/旧 ownership 与释放后仍按设计保留的 lease 文件。
+
+### 修复
+
+- 新增 `resolve_historical_monitor_artifacts()`。调用方必须给出规范的既有 event UUID；
+  resolver 只从当前项目的固定 run 目录读取 `manifest.json` 和由 chunk ID/name 派生的
+  finalized chunk。
+- v1 的 Windows 盘符或 POSIX 旧绝对路径只作控制字符、`.`/`..`、本地绝对路径和
+  `serial/<run_id>/<chunk>` 后缀的词法校验；旧字符串绝不传给
+  `Path/stat/open/resolve/exists`。UNC、Windows 设备路径和根相对路径均拒绝。v2 只接受
+  规范 `name` 并禁止 `path`。
+- manifest 从同一安全 fd 完成大小、UTF-8/JSON、身份和 SHA-256 复核；返回前后比较
+  project/log/serial/run 目录身份，并验证终态、时区时间、精确 chunk 集、连续 ID、
+  `persisted_bytes`、实际长度和 SHA-256。
+- B3 sidecar 或旧 ownership 字段会 fail-closed；陈旧/缺失 `process_owner` 不作为当前
+  所有权。`.sqlite-artifacts.lock` 释放后不会删除，而且 B4.4 必须持该 lease 重跑
+  resolver，因此锁文件本身不能作为 B3 ownership。
+- 返回值明确区分 `resolved` 与合法的 `no_artifacts`，并通过规范 JSON 快照避免调用者修改
+  manifest 的 `last_error`。resolver 不获取 lease、不连接 SQLite，也不写 manifest、
+  sidecar、JSONL 或 latest。
+
+### 验证
+
+- 入口缺失的旧基线为预期 `42 failed`。独立复审继续增加陈旧/缺失 owner、caller
+  `run_id` 越界、log/serial/run reparse、目录身份变化、持久 lease、合法 POSIX v1
+  和 Windows 根相对路径拒绝合同，最终 B4.2 专项 `58 passed in 1.66s`。
+- 既有 Monitor 回归 `28 passed in 41.00s`；最终源码 main 全量
+  `120 passed in 51.67s`。
+- 正式项目 22 个 v1 manifest 的只读检查得到 14 个 `resolved`、8 个
+  `no_artifacts`、0 个错误；Monitor 文件与正式 SQLite 文件元数据前后不变。
+- 本轮没有连接或写正式 SQLite、升级 schema、访问 COM3、执行板端程序、更新 Marketplace
+  或安装缓存。
+
+### 经验
+
+- 路径字符串不是文件权威；迁移后的文件位置必须由当前项目根和受限相对身份重新派生。
+- “解析文件候选”和“持 lease 校验数据库资格并应用”必须分层。这样损坏输入能在零数据库
+  副作用的阶段失败，也避免把 B4.2 候选误称为已对账。
+- `no_artifacts` 是合法历史结果，不应伪装成“已写入”或“已 reconciled”。
+
+### 剩余风险
+
+- B4.2 candidate 不是数据库资格或已对账证明。B4.4 必须在 run lease 内重新调用 resolver，
+  严格校验 native run/event profile 和最后一个 `complete` event，再调用 B4.1 并发布
+  项目级状态/marker；不能缓存 lease 外候选直接写库。
+- B4.3 仍需为历史固定 capture/JSONL 建立独立 adapter 和 reconciliation 版本；不得复用
+  legacy JSONL import marker。
+- 当前前后身份检查面向正常本地工具链故障与普通路径替换，不声称抵御同一主机账户在检查
+  间隙完成“替换为链接、读取、再原样恢复”的恶意 ABA。若威胁模型扩大到该级别，需要固定
+  祖先目录句柄并使用目录相对打开。
+- 正式项目数据库和已安装插件仍为 schema v2；B4.3/B4.4、v3-C、Marketplace 同步和用户
+  重启确认完成前，不得执行正式 v2→v3 升级。
