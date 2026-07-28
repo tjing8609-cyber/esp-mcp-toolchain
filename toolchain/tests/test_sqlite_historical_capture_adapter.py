@@ -347,6 +347,53 @@ def test_native_complete_old_filename_remains_legacy_text_even_when_empty():
     assert candidate.artifacts.raw_logs[0].kind == "serial_capture_legacy_text"
 
 
+@pytest.mark.parametrize("selected_port", ["COM3", None])
+def test_native_failure_without_payload_port_remains_recoverable(
+    selected_port: str | None,
+):
+    scope = _scope()
+    run_id = f"serial_capture_failure_{selected_port or 'none'}"
+    source_name = f"failure-{selected_port or 'none'}.jsonl"
+    event_uuid = str(uuid4())
+    records = _native_records(
+        project_id=scope.project_id,
+        run_id=run_id,
+        raw_name="unused.log",
+        event_uuid=event_uuid,
+        raw_size=0,
+    )
+    for record in records:
+        record["selected_port"] = selected_port
+    completion_payload = {
+        "error_kind": "serial_capture_failed",
+        "bytes_read": 0,
+        "failure_stage": "open",
+    }
+    records[-1]["level"] = "error"
+    records[-1]["message"] = "Could not open the serial port."
+    records[-1]["payload_json"] = completion_payload
+    records[-1]["data"] = completion_payload
+    _write_source(
+        scope,
+        source_name=source_name,
+        records=records,
+    )
+
+    candidate = _resolve(
+        scope,
+        source_name=source_name,
+        run_id=run_id,
+        event_uuid=event_uuid,
+    )
+
+    assert candidate.status == "resolved"
+    assert candidate.expected_run_status == "failed"
+    assert candidate.expected_run_profile["selected_port"] == selected_port
+    assert candidate.artifacts.raw_logs == ()
+    assert len(candidate.artifacts.errors) == 1
+    assert candidate.artifacts.errors[0].error_kind == "serial_capture_failed"
+
+
 def test_legacy_jsonl_cannot_claim_exact_raw_with_a_modern_looking_filename():
     scope = _scope()
     run_id = "serial_capture_legacy_modern_name"
@@ -701,6 +748,7 @@ def test_rejects_malformed_non_object_or_oversized_jsonl(case: str):
         "task_type",
         "source",
         "selected_port",
+        "missing_selected_port",
         "payload_port",
     ],
 )
@@ -761,6 +809,8 @@ def test_rejects_ambiguous_or_conflicting_native_profile(mutation: str):
         records[0]["source"] = "other_source"
     elif mutation == "selected_port":
         records[0]["selected_port"] = "COM4"
+    elif mutation == "missing_selected_port":
+        del records[0]["selected_port"]
     else:
         records[-1]["payload_json"]["port"] = "COM4"
         records[-1]["data"]["port"] = "COM4"

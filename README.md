@@ -330,7 +330,7 @@ SQLite v3-B2 原子投影专项：15 passed in 1.61s
 SQLite v3-B3 Monitor 终态产物专项：43 passed, 2 skipped
 SQLite v3-B4.1 红灯复审：4 failed, 7 passed；最终专项：11 passed in 1.78s；SQLite 相关：146 passed, 2 skipped in 50.21s
 SQLite v3-B4.2 resolver：初始红灯 42 failed（仅缺入口）；独立复审补强后 58 passed in 1.66s；既有 Monitor 回归 28 passed in 41.00s
-SQLite v3-B4.3 historical capture adapter 合同：对 main `b3a4989` 的初始预期红灯为 40 failed, 1 skipped；独立复审再固定 legacy 现代文件名不得冒充精确 raw，以及 native 必须严格为唯一 UUID 的 `prepare → complete` 两条记录、固定 task/source、前后一致的端口元数据，当前加载 main 工作树实现为 47 passed, 1 skipped。skip 仅表示当前 Windows 账户不能创建 symlink 测试夹具；合同同时冻结当前项目安全重派生、B4.1 资格和零 SQLite/lease/marker 副作用。
+SQLite v3-B4.3 historical capture adapter 合同：对 main `b3a4989` 的初始预期红灯为 40 failed, 1 skipped；独立复审再固定 legacy 现代文件名不得冒充精确 raw，以及 native 必须严格为唯一 UUID 的 `prepare → complete` 两条记录、固定 task/source、前后一致的端口元数据。第二轮复审补入合法失败事件可保持 `selected_port=COM3/None` 且省略 completion payload port、成功事件仍必须有一致端口的合同；当前加载 main 工作树实现为 50 passed, 1 skipped。skip 仅表示当前 Windows 账户不能创建 symlink 测试夹具；合同同时冻结当前项目安全重派生、B4.1 资格和零 SQLite/lease/marker 副作用。
 当前软件全量：B4.2 最终源码 main 120 passed in 51.67s；Windows lease 零长度竞态修复后 main 120 passed in 51.01s，test 分支自身源码 458 passed, 3 skipped in 256.55s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
