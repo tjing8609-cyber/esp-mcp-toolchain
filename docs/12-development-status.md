@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-28 14:33（Asia/Shanghai）
+更新时间：2026-07-28 15:17（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；fd 所有权、test 分支同步和 POSIX fail-closed 测试合同修复后，main/test 最新远端四矩阵均已通过。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、Marketplace 或安装缓存。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 已完成只对既有最后 `complete` event 补入历史 raw/error 的仓储原语和本地门禁，B4.2-B4.4 尚待开发且本切片远端矩阵待推送验证。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、Marketplace 或安装缓存。
 
 ## 本轮已完成实现
 
@@ -80,6 +80,13 @@
 - Monitor 文件读取采用单一 fd 所有权：`fdopen(closefd=True)` 成功后只由 file object
   关闭；只有构造失败时才显式关闭原 descriptor。成功转移和构造失败均有独立回归合同，
   避免并发 fd 复用后被第二次关闭。
+- 新增 v3-B4.1 `reconcile_existing_event_artifacts()`：必须提供已存在且归属当前
+  project/run 的 event UUID；run 必须已结束，event 必须是最后一个 `complete`。API
+  只补入 raw/error，返回 `event_inserted=false`，不创建或修改 run/event，也不消耗
+  sequence。精确重试和同 bundle 并发均只保留一组记录。
+- 历史补投影的时间规范化、raw/error 写入和 commit 共用一个 `BEGIN IMMEDIATE` 错误
+  边界；仓储冲突、非法时间戳或 SQLite 提交失败统一包装为
+  `artifact_projection_failed`、保留 cause，并完整回滚。
 
 ## 本地验证
 
@@ -127,6 +134,11 @@
 - v3-B3 最终远端门禁：[main run 30333882504](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30333882504)
   与 [test run 30334699560](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30334699560)
   共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功。
+- v3-B4.1 独立复审补强后先得到预期 `4 failed, 7 passed`；修复后专项
+  `11 passed in 1.78s`，SQLite 相关 `146 passed, 2 skipped in 50.21s`，main 全量
+  `119 passed in 49.32s`，test 显式加载 main 的跨工作树全量
+  `398 passed, 3 skipped in 239.99s`。独立复审 P0=0、P1=0；双分支远端矩阵尚待本次
+  提交和同步后验证。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -146,12 +158,15 @@
 
 ## 待完成
 
-1. v3-B4：为已有 event/manifest/JSONL 增加独立、可重复的历史对账，不复用旧
-   JSONL marker，也不信任 manifest 中的绝对路径。
-2. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
+1. v3-B4.2：建立历史 Monitor resolver，只接受项目内可信 manifest/chunk 身份，
+   不信任旧绝对路径。
+2. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation
+   版本，不复用 legacy JSONL import marker。
+3. v3-B4.4：接入项目范围启动/状态报告，保持重复执行严格幂等并暴露有界失败。
+4. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
    同时保留有界兼容路径和项目边界。
-3. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+5. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
    48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
    v2 数据库升级。
-4. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
+6. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
    精确动作单独确认。
