@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-28 16:05（Asia/Shanghai）
+更新时间：2026-07-28 16:55（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语、本地门禁与 main/test 双分支远端四矩阵均已完成，下一步为 B4.2。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、Marketplace 或安装缓存。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语与双分支远端四矩阵已完成，v3-B4.2 纯只读历史 Monitor resolver、本地合同和正式样本只读兼容检查也已完成。下一步先固定提交并同步 test，再进入 B4.3。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、写 SQLite、升级 schema、更新 Marketplace 或安装缓存。
 
 ## 本轮已完成实现
 
@@ -87,6 +87,17 @@
 - 历史补投影的时间规范化、raw/error 写入和 commit 共用一个 `BEGIN IMMEDIATE` 错误
   边界；仓储冲突、非法时间戳或 SQLite 提交失败统一包装为
   `artifact_projection_failed`、保留 cause，并完整回滚。
+- 新增 v3-B4.2 `resolve_historical_monitor_artifacts()`：只读取当前项目
+  `logs/serial/<run_id>` 的终态 manifest 与 finalized chunks。v1 的 Windows/POSIX
+  旧绝对路径只作本地绝对路径和规范后缀的词法校验，实际 I/O 始终由当前 run 目录派生；
+  v2 只接受规范 `name` 且禁止 `path`。
+- manifest 摘要和 JSON 来自同一安全 fd；resolver 前后复核 project/log/serial/run
+  目录身份，并验证终态、时间、精确 chunk 集、连续 ID、长度/SHA-256、
+  `persisted_bytes` 与 B3 ownership。陈旧或缺失 `process_owner` 是历史元数据；
+  B3 sidecar/旧 ownership 字段会拒绝，释放后保留的 lease 文件不等于 ownership。
+- resolver 只返回 `resolved`/`no_artifacts` 文件证据候选及深拷贝错误快照；不获取 lease、
+  不访问 SQLite、不调用 B4.1，也不写 sidecar、manifest、JSONL 或 latest。数据库
+  native profile、持 lease 二次解析和实际补投影属于 B4.4。
 
 ## 本地验证
 
@@ -148,6 +159,13 @@
   [main run 30340384047](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340384047)
   与 [test run 30340395467](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340395467)
   共 8 个 job 全部成功。
+- v3-B4.2 初始入口缺失时为预期 `42 failed`；独立复审补齐陈旧 owner、caller 越界、
+  祖先 reparse、目录身份变化、持久 lease、合法 POSIX v1 历史和 Windows 根相对路径
+  拒绝后，专项 `58 passed in 1.66s`。既有 Monitor 回归 `28 passed in 41.00s`，最终源码
+  main 全量 `120 passed in 51.67s`。
+- 正式项目 22 个 v1 manifest 的只读解析得到 14 个 `resolved`、8 个
+  `no_artifacts`、0 个错误；Monitor 文件与正式 SQLite 文件元数据前后不变。该检查
+  没有连接正式 SQLite、写任何项目文件或访问 COM3。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -167,11 +185,12 @@
 
 ## 待完成
 
-1. v3-B4.2：建立历史 Monitor resolver，只接受项目内可信 manifest/chunk 身份，
-   不信任旧绝对路径。
+1. 固定 v3-B4.2 提交，合入 test 后执行双分支自身源码全量与远端四矩阵。
 2. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation
    版本，不复用 legacy JSONL import marker。
-3. v3-B4.4：接入项目范围启动/状态报告，保持重复执行严格幂等并暴露有界失败。
+3. v3-B4.4：持 run lease 二次执行 B4.2，校验 native SQLite profile 和最后一个
+   `complete` event 资格，再调用 B4.1；提供项目扫描、启动、状态/marker、严格幂等
+   报告和有界失败。
 4. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
    同时保留有界兼容路径和项目边界。
 5. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和

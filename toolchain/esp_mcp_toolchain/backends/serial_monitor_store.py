@@ -488,6 +488,22 @@ def _read_safe_json_object(
     label: str,
     max_bytes: int = 4 * 1024 * 1024,
 ) -> dict:
+    value, _sha256 = _read_safe_json_object_snapshot(
+        path,
+        parent=parent,
+        label=label,
+        max_bytes=max_bytes,
+    )
+    return value
+
+
+def _read_safe_json_object_snapshot(
+    path: Path,
+    *,
+    parent: Path,
+    label: str,
+    max_bytes: int = 4 * 1024 * 1024,
+) -> tuple[dict, str]:
     with _safe_binary_reader(path, parent=parent, label=label) as (handle, _status):
         raw = handle.read(max_bytes + 1)
     if len(raw) > max_bytes:
@@ -498,7 +514,7 @@ def _read_safe_json_object(
         raise SerialLogStoreError(f"{label} is invalid: {exc}") from exc
     if not isinstance(value, dict):
         raise SerialLogStoreError(f"{label} must be a JSON object.")
-    return value
+    return value, hashlib.sha256(raw).hexdigest()
 
 
 def _directory_size(path: Path) -> int:
@@ -813,6 +829,69 @@ def _read_manifest_strict(run_dir: Path) -> dict:
         parent=run_dir,
         label="Monitor manifest",
     )
+
+
+def read_manifest_snapshot(run_dir: Path) -> tuple[dict, str]:
+    """Read one immutable manifest snapshot and its digest from one safe fd."""
+
+    _require_safe_directory(run_dir, label="Monitor run directory")
+    manifest_path = run_dir / "manifest.json"
+    return _read_safe_json_object_snapshot(
+        manifest_path,
+        parent=run_dir,
+        label="Monitor manifest",
+    )
+
+
+def safe_directory_identity(
+    path: Path,
+    *,
+    label: str,
+    include_metadata: bool,
+) -> tuple[int, ...]:
+    """Return a no-follow directory identity suitable for before/after checks."""
+
+    try:
+        status = path.lstat()
+    except OSError as exc:
+        raise SerialLogStoreError(f"{label} is unavailable: {exc}") from exc
+    if path.is_symlink() or bool(
+        getattr(status, "st_file_attributes", 0) & _WINDOWS_REPARSE_POINT
+    ):
+        raise SerialLogStoreError(f"{label} is a reparse point and is refused.")
+    if not stat.S_ISDIR(status.st_mode):
+        raise SerialLogStoreError(f"{label} is not a directory.")
+    identity: tuple[int, ...] = (
+        int(status.st_dev),
+        int(status.st_ino),
+        int(stat.S_IFMT(status.st_mode)),
+    )
+    if include_metadata:
+        identity += (
+            int(status.st_size),
+            int(status.st_mtime_ns),
+        )
+    return identity
+
+
+def require_unowned_historical_monitor_run(
+    run_dir: Path,
+    manifest: dict,
+) -> None:
+    """Fail closed when B3 already owns a monitor run's artifact state."""
+
+    _require_safe_directory(run_dir, label="Monitor run directory")
+    if any(key in manifest for key in _LEGACY_SQLITE_ARTIFACT_KEYS):
+        raise SerialLogStoreError(
+            "Historical monitor run is already owned by legacy B3 artifact state."
+        )
+    if any(
+        _SQLITE_ARTIFACT_MARKER_PATTERN.fullmatch(candidate.name)
+        for candidate in run_dir.iterdir()
+    ):
+        raise SerialLogStoreError(
+            "Historical monitor run is already owned by a B3 artifact marker."
+        )
 
 
 def _pending_projection(event_uuid: str | None = None) -> dict:

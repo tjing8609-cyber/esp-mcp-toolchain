@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import threading
 import time
 from typing import Any
@@ -34,12 +35,15 @@ from .serial_monitor_store import (
     mark_serial_run_audit_mirror,
     mark_serial_run_artifacts_reconciled,
     read_persisted_records,
+    read_manifest_snapshot,
     record_serial_run_artifact_reconciliation_error,
     recover_serial_runs,
+    require_unowned_historical_monitor_run,
+    safe_directory_identity,
     verified_finalized_chunks,
 )
 from ..database import log_repository
-from ..database.event_repository import normalize_timestamp
+from ..database.event_repository import normalize_event_uuid, normalize_timestamp
 from ..tools.log_tools import (
     LogScope,
     committed_event_and_latest_mirrors_match,
@@ -57,10 +61,22 @@ _INPUT_SLICE_BYTES = MAX_RECORD_BYTES - _UTF8_MAX_PENDING_BYTES
 _SERIAL_READ_MAX_BYTES = 1024
 _SERIAL_IDLE_SLEEP_SECONDS = 0.005
 _TERMINAL_MARKER_VERSION = 1
+_HISTORICAL_MONITOR_ADAPTER_ID = "historical_monitor_manifest_v1"
 
 
 class MonitorConflictError(RuntimeError):
     def __init__(self, error_kind: str, message: str):
+        super().__init__(message)
+        self.error_kind = error_kind
+
+
+class HistoricalMonitorResolutionError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_kind: str = "historical_monitor_resolution_failed",
+    ):
         super().__init__(message)
         self.error_kind = error_kind
 
@@ -108,6 +124,32 @@ class SerialRecord:
     timestamp_utc: str
     raw: bytes
     decode_error: bool
+
+
+@dataclass(frozen=True)
+class HistoricalMonitorArtifactCandidate:
+    status: str
+    adapter_id: str
+    project_id: str
+    run_id: str
+    requested_event_uuid: str
+    manifest_format_version: int
+    manifest_sha256: str
+    state: str
+    terminal_at: str
+    expected_run_status: str
+    artifacts: log_repository.EventArtifacts
+    artifact_bundle_sha256: str
+    _expected_last_error_json: str | None
+
+    @property
+    def expected_last_error(self) -> dict | None:
+        if self._expected_last_error_json is None:
+            return None
+        value = json.loads(self._expected_last_error_json)
+        if not isinstance(value, dict):
+            raise RuntimeError("Historical last_error snapshot is invalid.")
+        return value
 
 
 def _env_positive_int(name: str, default: int) -> int:
@@ -495,7 +537,7 @@ def _validated_terminal_marker(
 
 
 def _terminal_artifacts(
-    binding: MonitorBinding,
+    log_root: Path,
     manifest: dict,
     marker: dict,
 ) -> tuple[
@@ -503,7 +545,7 @@ def _terminal_artifacts(
     tuple[log_repository.ErrorArtifact, ...],
     str,
 ]:
-    verified_chunks = verified_finalized_chunks(binding.log_root, manifest)
+    verified_chunks = verified_finalized_chunks(log_root, manifest)
     event_uuid = str(marker["event_uuid"])
     raw_logs = tuple(
         log_repository.RawLogArtifact(
@@ -573,6 +615,305 @@ def _terminal_artifacts(
     return raw_logs, tuple(errors), artifact_bundle_sha256
 
 
+def _historical_monitor_directory_snapshot(
+    scope: LogScope,
+    run_id: str,
+) -> tuple[Path, tuple[tuple[int, ...], ...]]:
+    if (
+        not isinstance(run_id, str)
+        or not run_id
+        or run_id in {".", ".."}
+        or "/" in run_id
+        or "\\" in run_id
+        or "\0" in run_id
+    ):
+        raise SerialLogStoreError(
+            "Historical monitor run_id is not a safe directory name."
+        )
+    project_dir = Path(scope.project_dir)
+    log_root = Path(scope.log_root)
+    if (
+        not project_dir.is_absolute()
+        or not log_root.is_absolute()
+        or log_root.parent != project_dir
+    ):
+        raise SerialLogStoreError(
+            "Historical monitor log root is not bound to its project directory."
+        )
+    serial_root = log_root / "serial"
+    run_dir = serial_root / run_id
+    paths = (
+        (project_dir, "Monitor project directory", False),
+        (log_root, "Monitor log root", False),
+        (serial_root, "Serial log root", False),
+        (run_dir, "Monitor run directory", True),
+    )
+    identities = tuple(
+        safe_directory_identity(
+            path,
+            label=label,
+            include_metadata=include_metadata,
+        )
+        for path, label, include_metadata in paths
+    )
+    return run_dir, identities
+
+
+def _historical_manifest_version(manifest: dict) -> int:
+    if "format_version" not in manifest:
+        return 1
+    value = manifest["format_version"]
+    if isinstance(value, bool) or not isinstance(value, int) or value not in {1, 2}:
+        raise SerialLogStoreError(
+            "Historical monitor manifest format_version must be 1 or 2."
+        )
+    return value
+
+
+def _validate_historical_v1_chunk_path(
+    supplied_path: object,
+    *,
+    run_id: str,
+    chunk_name: str,
+) -> None:
+    if not isinstance(supplied_path, str) or not supplied_path:
+        raise SerialLogStoreError(
+            "Legacy historical monitor chunk metadata has no path."
+        )
+    if any(character in supplied_path for character in ("\0", "\r", "\n")):
+        raise SerialLogStoreError(
+            "Legacy historical monitor chunk path contains control characters."
+        )
+    lexical = supplied_path.replace("\\", "/")
+    local_windows_path = bool(re.match(r"^[A-Za-z]:/", lexical))
+    local_posix_path = (
+        supplied_path.startswith("/")
+        and not supplied_path.startswith("//")
+        and "\\" not in supplied_path
+    )
+    if not local_windows_path and not local_posix_path:
+        raise SerialLogStoreError(
+            "Legacy historical monitor chunk path is not a local absolute path."
+        )
+    parts = lexical.split("/")
+    if any(part in {"", ".", ".."} for part in parts[1:]):
+        raise SerialLogStoreError(
+            "Legacy historical monitor chunk path has unsafe segments."
+        )
+    if parts[-3:] != ["serial", run_id, chunk_name]:
+        raise SerialLogStoreError(
+            "Legacy historical monitor chunk path conflicts with its run."
+        )
+
+
+def _canonical_historical_manifest(
+    manifest: dict,
+    *,
+    project_id: str,
+    run_id: str,
+    format_version: int,
+) -> tuple[dict, str, str, dict | None]:
+    if manifest.get("project_id") != project_id or manifest.get("run_id") != run_id:
+        raise SerialLogStoreError(
+            "Historical monitor manifest identity conflicts with its scope."
+        )
+    state = manifest.get("state")
+    if not isinstance(state, str) or state not in TERMINAL_STATES:
+        raise SerialLogStoreError(
+            "Historical monitor manifest is not in a terminal state."
+        )
+    stopped_at = manifest.get("stopped_at")
+    if not isinstance(stopped_at, str) or not stopped_at:
+        raise SerialLogStoreError(
+            "Historical monitor manifest has no terminal timestamp."
+        )
+    terminal_at = normalize_timestamp(stopped_at)
+    last_error = manifest.get("last_error")
+    if last_error is not None and not isinstance(last_error, dict):
+        raise SerialLogStoreError(
+            "Historical monitor last_error must be an object or null."
+        )
+    detected_error = manifest.get("detected_error")
+    if detected_error is not None and not isinstance(detected_error, dict):
+        raise SerialLogStoreError(
+            "Historical monitor detected_error must be an object or null."
+        )
+    detected_error_at = manifest.get("detected_error_at")
+    if detected_error_at is not None:
+        if not isinstance(detected_error_at, str) or not detected_error_at:
+            raise SerialLogStoreError(
+                "Historical monitor detected_error_at is invalid."
+            )
+        normalize_timestamp(detected_error_at)
+
+    persisted_bytes = manifest.get("persisted_bytes")
+    if (
+        isinstance(persisted_bytes, bool)
+        or not isinstance(persisted_bytes, int)
+        or persisted_bytes < 0
+    ):
+        raise SerialLogStoreError(
+            "Historical monitor persisted_bytes must be a non-negative integer."
+        )
+    chunks = manifest.get("chunks")
+    if not isinstance(chunks, list):
+        raise SerialLogStoreError(
+            "Historical monitor manifest chunks must be a list."
+        )
+
+    canonical = json.loads(json.dumps(manifest))
+    canonical["format_version"] = format_version
+    canonical_chunks = canonical["chunks"]
+    seen_ids: set[int] = set()
+    declared_bytes = 0
+    for chunk in canonical_chunks:
+        if not isinstance(chunk, dict):
+            raise SerialLogStoreError(
+                "Historical monitor chunk metadata must be an object."
+            )
+        chunk_id = chunk.get("chunk_id")
+        if (
+            isinstance(chunk_id, bool)
+            or not isinstance(chunk_id, int)
+            or chunk_id < 1
+            or chunk_id > 999_999
+            or chunk_id in seen_ids
+        ):
+            raise SerialLogStoreError(
+                "Historical monitor chunk_id is invalid or duplicated."
+            )
+        seen_ids.add(chunk_id)
+        chunk_name = f"chunk-{chunk_id:06d}.bin"
+        byte_length = chunk.get("byte_length")
+        if (
+            isinstance(byte_length, bool)
+            or not isinstance(byte_length, int)
+            or byte_length < 0
+        ):
+            raise SerialLogStoreError(
+                "Historical monitor chunk byte_length is invalid."
+            )
+        declared_bytes += byte_length
+        if format_version == 1:
+            _validate_historical_v1_chunk_path(
+                chunk.get("path"),
+                run_id=run_id,
+                chunk_name=chunk_name,
+            )
+            chunk["path"] = chunk_name
+        else:
+            if "path" in chunk or chunk.get("name") != chunk_name:
+                raise SerialLogStoreError(
+                    "Format v2 historical monitor chunk identity is invalid."
+                )
+    if seen_ids != set(range(1, len(canonical_chunks) + 1)):
+        raise SerialLogStoreError(
+            "Historical monitor chunk IDs must be contiguous from one."
+        )
+    if declared_bytes != persisted_bytes:
+        raise SerialLogStoreError(
+            "Historical monitor persisted_bytes does not match its chunks."
+        )
+    return canonical, state, terminal_at, last_error
+
+
+def resolve_historical_monitor_artifacts(
+    scope: LogScope,
+    *,
+    run_id: str,
+    event_uuid: str | None,
+) -> HistoricalMonitorArtifactCandidate:
+    """Resolve one terminal monitor run without touching SQLite or disk state."""
+
+    if not isinstance(event_uuid, str) or not event_uuid.strip():
+        raise HistoricalMonitorResolutionError(
+            "An explicit historical terminal event_uuid is required.",
+            error_kind="historical_event_uuid_required",
+        )
+    try:
+        requested_event_uuid = normalize_event_uuid(event_uuid)
+        project_id = scope.project_id
+        if not isinstance(project_id, str) or not project_id:
+            raise SerialLogStoreError(
+                "Historical monitor project identity is invalid."
+            )
+        run_dir, directory_snapshot = _historical_monitor_directory_snapshot(
+            scope,
+            run_id,
+        )
+        manifest, manifest_sha256 = read_manifest_snapshot(run_dir)
+        require_unowned_historical_monitor_run(run_dir, manifest)
+        format_version = _historical_manifest_version(manifest)
+        canonical_manifest, state, terminal_at, last_error = (
+            _canonical_historical_manifest(
+                manifest,
+                project_id=project_id,
+                run_id=run_id,
+                format_version=format_version,
+            )
+        )
+        marker = {
+            "event_uuid": requested_event_uuid,
+            "last_error": canonical_manifest.get("last_error"),
+            "detected_error": canonical_manifest.get("detected_error"),
+            "detected_error_at": canonical_manifest.get("detected_error_at"),
+        }
+        raw_logs, errors, artifact_bundle_sha256 = _terminal_artifacts(
+            Path(scope.log_root),
+            canonical_manifest,
+            marker,
+        )
+        _run_dir_after, directory_snapshot_after = (
+            _historical_monitor_directory_snapshot(scope, run_id)
+        )
+        if directory_snapshot_after != directory_snapshot:
+            raise SerialLogStoreError(
+                "Historical monitor directory chain changed during resolution."
+            )
+        artifacts = log_repository.EventArtifacts(
+            raw_logs=raw_logs,
+            errors=errors,
+        )
+        expected_last_error_json = (
+            json.dumps(
+                last_error,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            if last_error is not None
+            else None
+        )
+        return HistoricalMonitorArtifactCandidate(
+            status=(
+                "resolved"
+                if artifacts.raw_logs or artifacts.errors
+                else "no_artifacts"
+            ),
+            adapter_id=_HISTORICAL_MONITOR_ADAPTER_ID,
+            project_id=project_id,
+            run_id=run_id,
+            requested_event_uuid=requested_event_uuid,
+            manifest_format_version=format_version,
+            manifest_sha256=manifest_sha256,
+            state=state,
+            terminal_at=terminal_at,
+            expected_run_status=(
+                "cancelled" if state == MonitorState.STOPPED.value else "failed"
+            ),
+            artifacts=artifacts,
+            artifact_bundle_sha256=artifact_bundle_sha256,
+            _expected_last_error_json=expected_last_error_json,
+        )
+    except HistoricalMonitorResolutionError:
+        raise
+    except Exception as exc:
+        raise HistoricalMonitorResolutionError(
+            f"Historical monitor artifacts could not be resolved: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+
 def _validated_committed_terminal_projection(
     binding: MonitorBinding,
     manifest: dict,
@@ -623,7 +964,7 @@ def _validated_committed_terminal_projection(
             "Committed monitor projection identity conflicts."
         )
     raw_logs, errors, artifact_bundle_sha256 = _terminal_artifacts(
-        binding,
+        binding.log_root,
         manifest,
         marker,
     )
@@ -852,7 +1193,7 @@ def _reconcile_terminal_manifest(
         last_error = marker.get("last_error")
         detected_error = marker.get("detected_error")
         raw_logs, errors, artifact_bundle_sha256 = _terminal_artifacts(
-            binding,
+            binding.log_root,
             manifest,
             marker,
         )

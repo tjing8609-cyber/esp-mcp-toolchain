@@ -27,6 +27,9 @@
 - 新增 v3-B4.1 `reconcile_existing_event_artifacts()`：只向既有终态 run 的最后一个
   `complete` event 原子补入 raw/error，不创建 run/event、不改变 sequence，并支持严格
   幂等重试；同 bundle 并发最终只插入并保留一组记录。
+- 新增 v3-B4.2 `resolve_historical_monitor_artifacts()`：从当前项目内的 v1/v2 终态
+  Monitor manifest/chunk 生成只读 `EventArtifacts` 候选，显式区分 `resolved` 与
+  `no_artifacts`；不获取 lease、不访问 SQLite，也不发布 sidecar。
 
 ### Changed
 
@@ -138,9 +141,21 @@
 - 修复非法 artifact 时间戳和 SQLite commit 失败逃出统一投影错误边界的问题；时间规范化、
   raw/error 写入和 commit 现在共同包装为 `artifact_projection_failed`、保留原始 cause，
   并在任一步失败时回滚整个 bundle。
+- 修复历史 v1 Monitor chunk 绝对路径与原工作区绑定、工程移动后无法安全复用的问题：
+  旧路径现在只作本地盘和规范后缀的词法验证，实际 I/O 只访问当前
+  `logs/serial/<run_id>`。manifest 摘要与 JSON 来自同一安全 fd，project/log/serial/run
+  目录链和 finalized chunk 精确集合在返回前后复核；B3 sidecar/旧 ownership 字段会
+  fail-closed，陈旧 `process_owner` 和释放后保留的 lease 文件不被误当作当前所有权。
 
 ### Validation
 
+- SQLite v3-B4.2 初始 42 条合同在入口缺失时全部按预期失败；独立审查补齐陈旧 owner、
+  caller 路径逃逸、祖先 reparse、目录身份变化、持久 lease、合法 POSIX v1 历史和
+  Windows 根相对路径拒绝后，专项 `58 passed in 1.66s`，既有 Monitor 回归
+  `28 passed in 41.00s`，最终源码 main 全量
+  `120 passed in 51.67s`。正式项目 22 个 v1 manifest 的只读兼容检查得到
+  14 个 `resolved`、8 个 `no_artifacts`、0 个错误，Monitor 文件和正式 SQLite 文件
+  元数据前后不变；未访问 COM3、写正式 SQLite、升级 schema、更新 Marketplace 或安装缓存。
 - v3-B4.1 首轮远端中，[main run 30338443462](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30338443462)
   的 Windows/Python 3.12 因既有 Monitor 固定 1 秒轮询失败，另外 3 个 main job 和
   [test run 30338445078](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30338445078)
