@@ -1361,7 +1361,23 @@ def test_stale_monitor_recovery_finishes_bound_sqlite_run_failed():
     assert stored_run["ended_at"] is not None
     assert reconciled_manifest["sqlite_reconciled"] is True
     assert reconciled_manifest["sqlite_reconciled_at"]
-    assert recover_serial_runs(scope.log_root) == []
+    verification_recovery = recover_serial_runs(scope.log_root)
+    assert len(verification_recovery) == 1
+    assert verification_recovery[0]["sqlite_reconciled"] is True
+    verification_reports = (
+        serial_tools.SERIAL_MONITOR_MANAGER._reconcile_recovered_runs(
+            binding,
+            verification_recovery,
+        )
+    )
+    assert len(verification_reports) == 1
+    assert verification_reports[0]["ok"] is True
+    assert log_repository.get_run_events(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run["run_id"],
+        tail=10,
+    ) == events
     assert events[-1]["phase"] == "complete"
     assert events[-1]["source"] == "monitor_recovery"
 
