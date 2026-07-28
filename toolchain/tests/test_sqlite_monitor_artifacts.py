@@ -689,6 +689,50 @@ def test_safe_binary_reader_transfers_descriptor_ownership_once(
     assert explicit_close_attempts == []
 
 
+def test_safe_binary_reader_closes_untransferred_descriptor_once(
+    monkeypatch,
+    tmp_path,
+):
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    original_open = serial_monitor_store._open_readonly_no_reparse
+    original_close = serial_monitor_store.os.close
+    opened_descriptors: list[int] = []
+    closed_descriptors: list[int] = []
+
+    def recording_open(path: Path) -> int:
+        descriptor = original_open(path)
+        opened_descriptors.append(descriptor)
+        return descriptor
+
+    def recording_close(descriptor: int) -> None:
+        closed_descriptors.append(descriptor)
+        original_close(descriptor)
+
+    def fail_fdopen(*_args, **_kwargs):
+        raise OSError("fdopen failed before ownership transfer")
+
+    monkeypatch.setattr(
+        serial_monitor_store,
+        "_open_readonly_no_reparse",
+        recording_open,
+    )
+    monkeypatch.setattr(serial_monitor_store.os, "close", recording_close)
+    monkeypatch.setattr(serial_monitor_store.os, "fdopen", fail_fdopen)
+
+    with pytest.raises(OSError, match="before ownership transfer"):
+        serial_monitor_store._read_safe_json_object(
+            manifest,
+            parent=tmp_path,
+            label="Test monitor manifest",
+        )
+
+    assert len(opened_descriptors) == 1
+    assert closed_descriptors == opened_descriptors
+    with pytest.raises(OSError):
+        serial_monitor_store.os.fstat(opened_descriptors[0])
+
+
 def test_first_runtime_error_is_frozen_before_monitor_cleanup():
     traceback = (
         b"Traceback (most recent call last):\r\n"
