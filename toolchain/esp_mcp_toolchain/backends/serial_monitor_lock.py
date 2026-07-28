@@ -33,11 +33,16 @@ def _windows_process_info(pid: int) -> tuple[bool, str | None]:
     kernel32.CloseHandle.restype = wintypes.BOOL
     handle = kernel32.OpenProcess(0x1000, False, pid)
     if not handle:
+        if ctypes.get_last_error() == 5:
+            # Access denied proves that a protected process owns the PID; its
+            # liveness is uncertain, so recovery must defer instead of
+            # treating the owner as dead.
+            return True, None
         return False, None
     try:
         exit_code = wintypes.DWORD()
         if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
-            return False, None
+            return True, None
         if exit_code.value != 259:
             return False, None
         creation = wintypes.FILETIME()

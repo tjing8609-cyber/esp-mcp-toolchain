@@ -71,6 +71,10 @@ class ArtifactProjectionError(LogRepositoryError):
     error_kind = "artifact_projection_failed"
 
 
+class RunTaskTypeConflictError(RunConflictError):
+    error_kind = "run_task_type_conflict"
+
+
 @dataclass(frozen=True)
 class RawLogArtifact:
     kind: str
@@ -89,6 +93,7 @@ class ErrorArtifact:
     message: str | None = None
     raw_text: str | None = None
     recoverable: bool | int | None = None
+    created_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -199,6 +204,14 @@ def get_run(database: str | Path, *, project_id: str, run_id: str) -> dict[str, 
     try:
         row = _get_run_row(connection, project_id, run_id)
         return _run_from_row(row) if row is not None else None
+    finally:
+        connection.close()
+
+
+def get_event(database: str | Path, *, event_uuid: str) -> dict[str, Any] | None:
+    connection = connect(database)
+    try:
+        return get_event_by_uuid(connection, normalize_event_uuid(event_uuid))
     finally:
         connection.close()
 
@@ -335,6 +348,11 @@ def append_event_with_artifacts(
                     {"record": record, "inserted": artifact_inserted}
                 )
             for artifact in artifacts.errors:
+                error_created_at = (
+                    normalize_timestamp(artifact.created_at)
+                    if artifact.created_at is not None
+                    else normalized_ts
+                )
                 error_id = stable_error_id(
                     project_id=project_id,
                     run_id=run_id,
@@ -360,7 +378,7 @@ def append_event_with_artifacts(
                     message=artifact.message,
                     raw_text=artifact.raw_text,
                     recoverable=artifact.recoverable,
-                    created_at=normalized_ts,
+                    created_at=error_created_at,
                 )
                 error_reports.append(
                     {"record": record, "inserted": artifact_inserted}
@@ -383,6 +401,241 @@ def append_event_with_artifacts(
             "event_inserted": inserted,
             "raw_logs": raw_reports,
             "errors": error_reports,
+        }
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def finalize_existing_run_with_artifacts(
+    database: str | Path,
+    *,
+    project_id: str,
+    run_id: str,
+    expected_task_type: str,
+    status: str,
+    ended_at: str,
+    summary: str | None,
+    run_payload: dict[str, Any] | None,
+    event_uuid: str,
+    ts: str,
+    phase: str,
+    level: str,
+    tool: str,
+    source: str,
+    message: str,
+    event_payload: dict[str, Any] | None,
+    artifacts: EventArtifacts = EMPTY_EVENT_ARTIFACTS,
+) -> dict[str, Any]:
+    """Atomically project a terminal event, its evidence, and the run state.
+
+    This entry point intentionally requires an existing run.  It is used by
+    recovery code where filesystem metadata must never be allowed to create a
+    new SQLite run.
+    """
+
+    if not isinstance(artifacts, EventArtifacts):
+        raise TypeError("artifacts must be an EventArtifacts value")
+    normalized_task_type = str(expected_task_type).strip()
+    if not normalized_task_type:
+        raise LogRepositoryError("expected_task_type is required")
+    normalized_status = str(status).strip().lower()
+    if normalized_status not in RUN_STATUSES - {"running"}:
+        raise LogRepositoryError(
+            "finished run status must be succeeded, failed, or cancelled"
+        )
+    canonical_uuid = normalize_event_uuid(event_uuid)
+    normalized_ts = normalize_timestamp(ts)
+    normalized_ended_at = normalize_timestamp(ended_at)
+    normalized_phase = normalize_phase(phase)
+    normalized_level = normalize_level(level)
+    if run_payload is not None and not isinstance(run_payload, dict):
+        raise LogRepositoryError("run payload_json must be a JSON object")
+
+    connection = connect(database)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        run = _get_run_row(connection, project_id, run_id)
+        if run is None:
+            raise RunNotFoundError(
+                f"No run {run_id} exists in project {project_id}"
+            )
+        if run["task_type"] != normalized_task_type:
+            raise RunTaskTypeConflictError(
+                f"run {run_id} has task_type {run['task_type']}, "
+                f"expected {normalized_task_type}"
+            )
+        if run["status"] not in {"running", normalized_status}:
+            raise RunStateConflictError(
+                f"run {run_id} is already {run['status']} and cannot become "
+                f"{normalized_status}"
+            )
+        existing_event = get_event_by_uuid(connection, canonical_uuid)
+        if run["status"] != "running" and existing_event is None:
+            raise RunNotRunningError(
+                f"run {run_id} is {run['status']} and is missing its terminal event"
+            )
+
+        sequence_no = int(run["next_sequence_no"])
+        event, inserted = insert_event(
+            connection,
+            event_uuid=canonical_uuid,
+            project_id=project_id,
+            run_id=run_id,
+            sequence_no=sequence_no,
+            ts=normalized_ts,
+            phase=normalized_phase,
+            level=normalized_level,
+            tool=tool,
+            source=source,
+            message=message,
+            payload=event_payload,
+        )
+        raw_reports: list[dict[str, Any]] = []
+        error_reports: list[dict[str, Any]] = []
+        try:
+            for artifact in artifacts.raw_logs:
+                raw_log_id = stable_raw_log_id(
+                    project_id=project_id,
+                    run_id=run_id,
+                    kind=artifact.kind,
+                    path=artifact.path,
+                )
+                record, artifact_inserted = insert_raw_log(
+                    connection,
+                    project_id=project_id,
+                    raw_log_id=raw_log_id,
+                    run_id=run_id,
+                    kind=artifact.kind,
+                    path=artifact.path,
+                    created_at=normalized_ts,
+                    sha256=artifact.sha256,
+                )
+                raw_reports.append(
+                    {"record": record, "inserted": artifact_inserted}
+                )
+            for artifact in artifacts.errors:
+                error_created_at = (
+                    normalize_timestamp(artifact.created_at)
+                    if artifact.created_at is not None
+                    else normalized_ts
+                )
+                error_id = stable_error_id(
+                    project_id=project_id,
+                    run_id=run_id,
+                    occurrence_key=artifact.occurrence_key,
+                    error_kind=artifact.error_kind,
+                    file=artifact.file,
+                    line=artifact.line,
+                    column=artifact.column,
+                    exception_type=artifact.exception_type,
+                    message=artifact.message,
+                    raw_text=artifact.raw_text,
+                )
+                record, artifact_inserted = insert_error(
+                    connection,
+                    project_id=project_id,
+                    error_id=error_id,
+                    run_id=run_id,
+                    error_kind=artifact.error_kind,
+                    file=artifact.file,
+                    line=artifact.line,
+                    column=artifact.column,
+                    exception_type=artifact.exception_type,
+                    message=artifact.message,
+                    raw_text=artifact.raw_text,
+                    recoverable=artifact.recoverable,
+                    created_at=error_created_at,
+                )
+                error_reports.append(
+                    {"record": record, "inserted": artifact_inserted}
+                )
+        except (RawLogRepositoryError, ErrorRepositoryError, sqlite3.Error) as exc:
+            raise ArtifactProjectionError(
+                f"Could not project completion artifacts: {exc}"
+            ) from exc
+        expected_raw_ids = {
+            report["record"]["raw_log_id"] for report in raw_reports
+        }
+        actual_raw_ids = {
+            record["raw_log_id"]
+            for record in list_raw_logs_for_run(
+                connection,
+                project_id=project_id,
+                run_id=run_id,
+            )
+        }
+        expected_error_ids = {
+            report["record"]["error_id"] for report in error_reports
+        }
+        actual_error_ids = {
+            record["error_id"]
+            for record in list_errors_for_run(
+                connection,
+                project_id=project_id,
+                run_id=run_id,
+            )
+        }
+        if (
+            actual_raw_ids != expected_raw_ids
+            or actual_error_ids != expected_error_ids
+        ):
+            raise ArtifactProjectionError(
+                "Persisted completion artifacts do not match the canonical bundle."
+            )
+
+        merged_payload = payload_from_text(run["payload_json"])
+        if run_payload:
+            merged_payload.update(run_payload)
+        if run["status"] == "running":
+            connection.execute(
+                """
+                UPDATE runs
+                SET status = ?, ended_at = ?, summary = COALESCE(?, summary),
+                    payload_json = ?,
+                    next_sequence_no = next_sequence_no + ?
+                WHERE project_id = ? AND run_id = ? AND status = 'running'
+                """,
+                (
+                    normalized_status,
+                    normalized_ended_at,
+                    summary,
+                    payload_to_text(merged_payload),
+                    1 if inserted else 0,
+                    project_id,
+                    run_id,
+                ),
+            )
+        else:
+            current_payload = payload_from_text(run["payload_json"])
+            payload_matches = all(
+                current_payload.get(key) == value
+                for key, value in (run_payload or {}).items()
+            )
+            if (
+                run["ended_at"] != normalized_ended_at
+                or (summary is not None and run["summary"] != summary)
+                or not payload_matches
+            ):
+                raise RunStateConflictError(
+                    f"run {run_id} terminal metadata conflicts with the "
+                    "deterministic retry"
+                )
+            if inserted:
+                raise RunStateConflictError(
+                    f"run {run_id} accepted a new event after termination"
+                )
+
+        updated = _get_run_row(connection, project_id, run_id)
+        connection.commit()
+        return {
+            "event": event,
+            "event_inserted": inserted,
+            "raw_logs": raw_reports,
+            "errors": error_reports,
+            "run": _run_from_row(updated),
         }
     except Exception:
         connection.rollback()

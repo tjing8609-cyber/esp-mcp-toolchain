@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-28 00:50（Asia/Shanghai）
+更新时间：2026-07-28 13:03（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。Flash、SQLite v3-A 和固定 capture 原始字节前置修复的 main/test 远端矩阵已通过；v3-B2 已在本地完成 completion event/raw/error 原子写入和可信 capture 投影，等待本次双分支提交与远端矩阵。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。Flash、SQLite v3-A 和固定 capture 原始字节前置修复的 main/test 远端矩阵已通过；v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已在本地完成 Monitor 终态 chunk/错误的精确、可重入对账。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、Marketplace 或安装缓存；本次双分支推送后的远端矩阵尚待独立确认。
 
 ## 本轮已完成实现
 
@@ -65,6 +65,18 @@
 - completion UUID 和时区时间戳在构建证据与数据库提交之间共用。证据构建或原子事务失败
   时禁止降级写 completion-only event；业务结果保持原 `ok/error_kind/message`，另用
   `logging_persisted=false` 和 warning 暴露审计缺口，run 仍按业务结果结束。
+- Monitor 终态恢复精确核对 manifest 与磁盘 chunk 集，只在 stale 活动态收养合法孤立
+  `.bin`，终态拒绝额外文件；每个 raw/error/event/run 与确定性 bundle SHA-256 在同一
+  SQLite 终态投影中提交。
+- 新增独立、版本化 `sqlite-artifacts-v1.json`；旧 `sqlite_reconciled` 仅保留生命周期
+  兼容语义。committed 状态会深度核验 canonical marker、SQLite 行、最后事件、JSONL 和
+  latest 镜像，不信任 sidecar 的单一布尔值。
+- chunk 与 JSON 读取使用描述符绑定检查，读前/读后复核普通文件、reparse、身份和长度；
+  run lease 覆盖扫描到 sidecar 的完整恢复流程，Windows 锁禁止删除且释放不 unlink，
+  避免并发提交与 ABA。
+- 旧 stale UUID/`ended_at` 仅在历史 event/run 内容与最后事件完全一致时复用；持久
+  `RUNNING` stop 会先恢复为 FAILED 后对账，运行期首错冻结、可重试 close、镜像冲突和
+  有界 startup recovery 报告均有对应合同。
 
 ## 本地验证
 
@@ -103,6 +115,11 @@
   `342 passed, 1 skipped in 35.69s`。skip 是既有 Windows 目录 symlink 权限限制；
   同一 reparse 拒绝分支另有确定性 monkeypatch 合同。所有新增测试只使用临时 SQLite、
   临时工程和假串口，没有迁移正式项目数据库或访问 COM3。
+- v3-B3 Monitor 终态产物专项 `43 passed, 2 skipped`；main 全量
+  `119 passed in 40.95s`；test 显式加载 main 全量
+  `385 passed, 3 skipped in 192.71s`；`compileall` 通过。2 个新增 skip 是本机缺少
+  普通文件 symlink 创建权限（WinError 1314），目录 junction 与合成 fd/reparse 合同已
+  执行。测试只使用临时工程、临时 SQLite 和模拟对象。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -122,15 +139,14 @@
 
 ## 待完成
 
-1. 提交 v3-B2 的原子 completion/capture/error 接入，并确认 main/test 远端四矩阵。
-2. v3-B3：只接入 Monitor 已最终化 chunk 和运行期错误；使用独立、版本化 artifact
-   对账标记，不改变旧 `sqlite_reconciled` 语义。
-3. v3-B4：为已有 event/manifest/JSONL 增加独立、可重复的历史对账，不复用旧
+1. 确认本次 v3-B3 main/test 推送触发的 GitHub Actions 远端四矩阵；在远端结果出来前，
+   不把本候选记为远端通过。
+2. v3-B4：为已有 event/manifest/JSONL 增加独立、可重复的历史对账，不复用旧
    JSONL marker，也不信任 manifest 中的绝对路径。
-4. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
+3. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
    同时保留有界兼容路径和项目边界。
-5. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+4. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
    48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
    v2 数据库升级。
-6. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
+5. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
    精确动作单独确认。
