@@ -338,7 +338,7 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 当前 SQLite 边界：正式项目数据库和当前安装插件仍保持 schema v2；v3-B4.2 只生成文件证据候选，不判断数据库资格、不调用 B4.1，也不写 sidecar。固定 capture/JSONL adapter 和持 lease 的项目级启动/状态工具仍待 B4.3-B4.4；没有升级正式数据库、访问 COM3 或操作板卡
 跳过边界：Windows 本地 3 项 skip 来自普通文件 symlink 创建权限（WinError 1314）及既有平台权限边界；目录 junction 与合成 fd/reparse 拒绝合同已执行。GitHub Linux 两套环境实际创建 symlink 并验证 fail-closed：恢复预检立即拒绝，不创建 sidecar、不写 SQLite、不改 manifest 或外部目标
 未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
-远端与插件：B4.2 [main run 30345368464](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30345368464) 的 4 个 job 全部成功；[test run 30345364620](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30345364620) 的 Windows/Python 3.10 暴露 lease 零长度竞态，其余 3 个 job 成功。修复后的双分支矩阵尚待推送执行；本步骤未更新 Marketplace 源或安装缓存
+远端与插件：保留 B4.2 首轮 test Windows/Python 3.10 失败作为缺陷证据；修复后的 [main run 30347587842](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347587842) 与 [test run 30347592644](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347592644) 共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功，未执行重跑；本步骤未更新 Marketplace 源或安装缓存
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -929,8 +929,10 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   独立循环 2000 次得到 2004 次成功、1996 次 busy、0 次普通失败；新增合同和原并发测试
   `2 passed`，原并发测试独立 pytest 进程 `100/100`，main compileall 与全量
   `120 passed in 51.01s`，合入固定 main 后 test 分支自身源码
-  `458 passed, 3 skipped in 256.55s`。两轮只读审查均为 P0=0、P1=0；双分支 GitHub
-  门禁仍需在推送后确认。本步骤没有访问 COM3、板卡或正式项目数据库。
+  `458 passed, 3 skipped in 256.55s`。两轮只读审查均为 P0=0、P1=0；修复后的
+  [main run 30347587842](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347587842)
+  与 [test run 30347592644](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347592644)
+  共 8 个 job 全部成功，且没有重跑失败 job。本步骤没有访问 COM3、板卡或正式项目数据库。
 
 ## 协作约定
 

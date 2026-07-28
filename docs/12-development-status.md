@@ -7,7 +7,7 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语与双分支远端四矩阵已完成，v3-B4.2 纯只读历史 Monitor resolver、本地合同和正式样本只读兼容检查也已完成。下一步先固定提交并同步 test，再进入 B4.3。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、写 SQLite、升级 schema、更新 Marketplace 或安装缓存。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语与双分支远端四矩阵已完成，v3-B4.2 纯只读历史 Monitor resolver、正式样本只读兼容检查及 Windows lease 竞态修复也已通过双分支远端矩阵。下一步进入 B4.3。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、写 SQLite、升级 schema、更新 Marketplace 或安装缓存。
 
 ## 本轮已完成实现
 
@@ -175,8 +175,10 @@
 - 删除 pre-lock sentinel 后，受控 zero-length busy/release/reacquire、双线程 lease
   2000 轮、原并发测试独立进程 `100/100` 均通过；main 全量
   `120 passed in 51.01s`，合入固定 main 后 test 自身源码
-  `458 passed, 3 skipped in 256.55s`，两轮审查 P0=0、P1=0。修复后的双分支远端矩阵
-  尚待推送确认。
+  `458 passed, 3 skipped in 256.55s`，两轮审查 P0=0、P1=0。修复后的
+  [main run 30347587842](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347587842)
+  与 [test run 30347592644](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347592644)
+  共 8 个 job 全部成功；没有重跑失败 job。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -196,17 +198,15 @@
 
 ## 待完成
 
-1. 推送 Windows Monitor lease 零长度竞态修复，确认 main/test 各 4 个 GitHub Actions
-   job；全绿后关闭 v3-B4.2。
-2. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation
+1. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation
    版本，不复用 legacy JSONL import marker。
-3. v3-B4.4：持 run lease 二次执行 B4.2，校验 native SQLite profile 和最后一个
+2. v3-B4.4：持 run lease 二次执行 B4.2，校验 native SQLite profile 和最后一个
    `complete` event 资格，再调用 B4.1；提供项目扫描、启动、状态/marker、严格幂等
    报告和有界失败。
-4. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
+3. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
    同时保留有界兼容路径和项目边界。
-5. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+4. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
    48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
    v2 数据库升级。
-6. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
+5. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
    精确动作单独确认。

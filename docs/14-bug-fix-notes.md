@@ -1085,7 +1085,10 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 新增合同和原并发测试 `2 passed`；原并发测试使用独立 pytest 进程重复 `100/100`；
   main compileall 和全量 `120 passed in 51.01s`；合入固定 main 后 test 分支自身源码
   `458 passed, 3 skipped in 256.55s`。
-- 两轮只读审查均为 P0=0、P1=0。修复后的双分支 GitHub 矩阵仍需在推送后确认。
+- 两轮只读审查均为 P0=0、P1=0。修复后的
+  [main run 30347587842](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347587842)
+  与 [test run 30347592644](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347592644)
+  共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功，未执行重跑。
 - 本阶段只使用临时目录、假串口和临时 SQLite；没有访问 COM3、板卡、正式数据库、
   Marketplace 或安装缓存。
 
