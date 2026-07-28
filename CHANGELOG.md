@@ -26,7 +26,7 @@
   bundle SHA-256。
 - 新增 v3-B4.1 `reconcile_existing_event_artifacts()`：只向既有终态 run 的最后一个
   `complete` event 原子补入 raw/error，不创建 run/event、不改变 sequence，并支持严格
-  幂等重试和同 bundle 并发单次提交。
+  幂等重试；同 bundle 并发最终只插入并保留一组记录。
 
 ### Changed
 
