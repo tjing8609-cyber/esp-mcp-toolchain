@@ -1083,8 +1083,9 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 修复后，受控的 zero-length owner、busy contender、release/reacquire 检查通过。
 - 双线程独立循环 2000 次共得到 2004 次正常 acquisition、1996 次 busy、0 次普通失败。
 - 新增合同和原并发测试 `2 passed`；原并发测试使用独立 pytest 进程重复 `100/100`；
-  main compileall 和全量 `120 passed in 51.01s`。test 分支自身全量和修复后的双分支
-  GitHub 矩阵将在后续验证提交更新。
+  main compileall 和全量 `120 passed in 51.01s`；合入固定 main 后 test 分支自身源码
+  `458 passed, 3 skipped in 256.55s`。
+- 两轮只读审查均为 P0=0、P1=0。修复后的双分支 GitHub 矩阵仍需在推送后确认。
 - 本阶段只使用临时目录、假串口和临时 SQLite；没有访问 COM3、板卡、正式数据库、
   Marketplace 或安装缓存。
 
