@@ -846,7 +846,7 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 新增 `reconcile_existing_event_artifacts()`，只向已存在、已结束 run 的最后一个
   `complete` event 补入 raw/error；返回原 event 且 `event_inserted=false`，不写
   run/event、不改变 `next_sequence_no`。同 bundle 精确重试返回 `inserted=false`，
-  两个并发调用只提交一组记录。
+  两个并发调用最终只插入并保留一组记录。
 - 第一轮实现只检查 run 已终态，导致该 run 的 `prepare` event 或后续还有更高序号的旧
   `complete` event 也能补证据；同时先检查 run 状态再验证 event 归属，会在错误 UUID
   尚未通过作用域校验时暴露运行状态。修复后先验证 project/run/event 绑定，再检查 run，

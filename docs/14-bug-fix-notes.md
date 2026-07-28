@@ -879,7 +879,7 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   `EventRepositoryError` 和 `sqlite3.Error` 均包装为 `ArtifactProjectionError`，
   保留 `__cause__`；外层对任何失败完整 rollback。
 - API 仍然 existing-only：没有 run/event INSERT 或 UPDATE，不改变 sequence；完全相同
-  bundle 重试返回 `inserted=false`，同 bundle 两个并发调用只提交一次。
+  bundle 重试返回 `inserted=false`，同 bundle 两个并发调用最终只插入并保留一组记录。
 
 ### 验证
 
