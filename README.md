@@ -328,14 +328,14 @@ SQLite v3-B2 红灯：11 failed, 1 passed
 SQLite v3-B2 原子投影专项：15 passed in 1.61s
 SQLite v3-B3 Monitor 终态产物专项：43 passed, 2 skipped
 SQLite v3-B4.1 红灯复审：4 failed, 7 passed；最终专项：11 passed in 1.78s；SQLite 相关：146 passed, 2 skipped in 50.21s
-当前软件全量：B4.1 main 119 passed in 49.32s；test 显式加载 main 的跨工作树全量 398 passed, 3 skipped in 239.99s；Monitor 清理屏障回归加入后 main 120 passed in 50.72s
+当前软件全量：Monitor 清理屏障回归加入后 main 120 passed in 50.72s；同步后的 test 分支自身源码 399 passed, 3 skipped in 249.96s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
 当前 SQLite 边界：正式项目数据库和当前安装插件仍保持 schema v2；v3-B4.1 只在源码与临时数据库完成，历史 Monitor resolver、固定 capture/JSONL adapter 和项目级启动/状态工具仍待 B4.2-B4.4；没有升级正式数据库、访问 COM3 或操作板卡
 跳过边界：Windows 本地 3 项 skip 来自普通文件 symlink 创建权限（WinError 1314）及既有平台权限边界；目录 junction 与合成 fd/reparse 拒绝合同已执行。GitHub Linux 两套环境实际创建 symlink 并验证 fail-closed：恢复预检立即拒绝，不创建 sidecar、不写 SQLite、不改 manifest 或外部目标
 未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
-远端与插件：v3-B4.1 首轮 [main run 30338443462](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30338443462) 的 Windows/Python 3.12 暴露旧 Monitor 测试竞态，其余 3 个 main job 和 [test run 30338445078](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30338445078) 的 4 个 job 成功；确定性清理屏障修复的双分支远端复验待提交。本步骤未更新 Marketplace 源或安装缓存
+远端与插件：确定性清理屏障修复后的 [main run 30340384047](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340384047) 与 [test run 30340395467](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340395467) 共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功；B4.1 双分支软件门禁完成。本步骤未更新 Marketplace 源或安装缓存
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -878,8 +878,11 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `monitor_cleanup_timeout` 且 worker 仍存活，释放门控后再次 stop 必须完整退出。自动 fixture
   也会断言每项测试前后没有残留 worker，避免线程泄漏污染后续用例。
 - 两项针对性回归为 `2 passed in 1.31s`，独立进程连续重复 `30/30`，Monitor 文件
-  `23 passed in 35.85s`，main 全量 `120 passed in 50.72s`。修复后的双分支远端矩阵仍待
-  本次提交和 test 同步后验证；这些均为假串口与临时项目的软件测试，没有访问 COM3。
+  `23 passed in 35.85s`，main 全量 `120 passed in 50.72s`，同步后的 test 标准全量
+  `399 passed, 3 skipped in 249.96s`。
+- 修复后的 [main run 30340384047](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340384047)
+  与 [test run 30340395467](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340395467)
+  共 8 个 job 全部成功。这些均为假串口与临时项目的软件测试，没有访问 COM3。
 
 ## 协作约定
 

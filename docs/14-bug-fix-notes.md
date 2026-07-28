@@ -952,9 +952,12 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 两项测试使用独立 pytest 进程连续重复：`30/30`。
 - Monitor 测试文件：`23 passed in 35.85s`。
 - main 全量：`120 passed in 50.72s`。
+- 同步后的 test 分支自身源码：`399 passed, 3 skipped in 249.96s`。
 - 两轮独立只读审查均认为不需要修改生产状态机；最终复审 P0=0、P1=0。
-- 修复后的 main/test 远端四矩阵仍待提交验证。本地测试使用假串口、临时项目和临时
-  SQLite，没有访问 COM3、板卡、正式数据库、Marketplace 或安装缓存。
+- 修复后的 [main run 30340384047](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340384047)
+  与 [test run 30340395467](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340395467)
+  共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功。本地与远端测试使用假串口、
+  临时项目和临时 SQLite，没有访问 COM3、板卡、正式数据库、Marketplace 或安装缓存。
 
 ### 经验
 
@@ -967,4 +970,5 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 
 - 新测试只覆盖模拟断连和线程清理合同，不证明真实 USB 断连、瞬时电流导致的掉线或板卡供电
   稳定性。
-- 远端复验完成前，B4.1 仍不能标记为双分支四矩阵全部通过。
+- 本次软件门禁不证明真实 USB 驱动在所有断连时序下都能于 5 秒内完成清理；实板断连仍需
+  单独的受控验收。

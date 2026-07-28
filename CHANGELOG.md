@@ -146,7 +146,11 @@
   [test run 30338445078](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30338445078)
   的 4 个 job 成功。确定性清理屏障修复后，两项针对性测试 `2 passed in 1.31s`、
   独立进程重复 `30/30`、Monitor 文件 `23 passed in 35.85s`、main 全量
-  `120 passed in 50.72s`；双分支远端复验待提交。
+  `120 passed in 50.72s`、同步后的 test 标准全量
+  `399 passed, 3 skipped in 249.96s`。最终
+  [main run 30340384047](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340384047)
+  与 [test run 30340395467](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30340395467)
+  共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功。
 - SQLite v3-B4.1 独立复审补强后先得到预期 `4 failed, 7 passed`；修复后专项
   `11 passed in 1.78s`、SQLite 相关 `146 passed, 2 skipped in 50.21s`、main 全量
   `119 passed in 49.32s`、test 显式加载 main 的跨工作树全量
