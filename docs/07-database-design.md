@@ -57,6 +57,17 @@ SQLite 是 runs/events 的正式状态与查询源。`logs/sessions/*.jsonl` 和
 - 保留已有规范 UUID；旧 event_id 或无 ID 记录使用稳定 UUIDv5。
 - 旧记录缺少 phase 时写入 `unknown`；无 phase 的 `STOPPED` 会话恢复为 `cancelled`，错误级别优先恢复为 `failed`。
 - 复制同一份 JSONL 到另一文件不会产生重复事件。
+
+`legacy_jsonl_imports` 只证明 runs/events importer 已处理某个来源快照，不证明
+`raw_logs/errors` 已核验或投影。历史固定 capture 使用独立版本
+`HISTORICAL_CAPTURE_RECONCILIATION_VERSION=1`：B4.3 只从显式安全 session basename
+读取 JSONL，并把旧绝对 `raw_path` 降为词法身份；实际 evidence 必须从当前项目
+`logs/raw/<basename>` 以安全 fd 重新计算长度和 SHA-256。legacy single-event 仍保持
+`phase=unknown`，不绕过 B4.1 的最后 `complete` 限制。native mirror 只接受唯一 UUID
+的两条 `prepare → complete` 记录，并要求 task/source/selected-port 与 completion
+身份一致；成功 completion 必须有匹配 port，失败 completion 可省略 port 且 mirror
+端口允许一致为 `null`。项目扫描、raw 跨 run 唯一归属、持 lease 的二次文件摘要与数据库
+profile 比对、B4.1 调用和独立 marker 发布属于 B4.4。
 - 已有原生 run 只允许既有 UUID 的严格身份去重；同 run_id 的新 UUID 返回 `native_run_import_conflict`，不得追加事件、回填端口或写入 marker。
 - 导入器只结束由导入器创建或标记的历史 run：无 phase 文件按静态历史结束；有显式 phase 的 run 看到 `complete` 后才结束。已有原生 `running` run 只做 UUID 去重，不改变生命周期。
 - JSONL 审计镜像写入 `task_type` 和 `selected_port`；迁移允许同一 run 的后续事件把端口从 NULL 回填为具体值，非空冲突拒绝覆盖。

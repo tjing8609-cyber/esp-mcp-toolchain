@@ -13,19 +13,21 @@
 9. 任务书 12 项能力：6 项基础和 6 项提高均已有正式工具或闭环实现；公开提示词重组为 12 套，工具面为 48 tools / 12 resources / 12 prompts。独立 Conda 启动器已绑定 `esp-mcp-toolchain` 环境，其中 `mpremote 1.28.0` 已验证。已安装插件 `0.1.0+codex.20260726165544` 和 48/12/12 工具面已在用户重启后核对。实板验收已确认 runtime、串口 Monitor 和文件上传/读取/列表；相对下载误写插件缓存后暂停。主机路径边界已在本地通过 main `119 passed` 与 test 跨工作树 `243 passed`，但新提交、远端 CI、Marketplace 重载和后续板端能力仍待完成。
 10. 项目数据迁移体系：工程路径重绑定、项目合并、导出、导入和完整性校验。与数据库 schema 迁移是两类任务，继续排在本轮任务书能力发布之后。
 
-v3-B4.1 已完成双分支远端门禁。v3-B4.2 已完成本地候选：历史 Monitor resolver 只从
-当前项目读取 manifest/chunk，以同一安全 fd 生成摘要并复核目录链、终态和精确 chunk
-集合；v1 旧绝对路径不参与 I/O，B3 ownership 会 fail-closed。专项 `58 passed`，
-main 全量 `120 passed`，同步后的 test 自身源码 `457 passed, 3 skipped`；正式项目
-22 个 v1 manifest 的只读检查为 14 个 `resolved`、8 个 `no_artifacts`、0 个错误，
-文件与数据库元数据不变。B4.2 不获取 lease、不访问 SQLite，也不判断数据库资格；
-正式数据库、硬件、Marketplace 和安装缓存均未触碰。
+v3-B4.1 与 B4.2 已完成双分支远端门禁。v3-B4.3 已完成本地候选：历史固定 capture
+adapter 从显式安全 session basename 解析 legacy single-event/native final-complete
+JSONL，旧绝对 `raw_path` 不参与 I/O，当前 `logs/raw` 文件用安全 fd 核对长度/SHA-256。
+旧 writer 证据只登记 `serial_capture_legacy_text`；精确 raw 同时要求 native source
+与 UUID 排他文件名；native 必须严格为唯一 UUID 的两条 `prepare → complete`，并保持
+task/source/port 身份一致，合法失败可省略 payload port。legacy `phase=unknown`
+显式不具备 B4.1 资格。专项
+`50 passed, 1 skipped`，main 全量 `120 passed`；正式项目 4 个 capture
+只读检查为 1 个 `resolved`、3 个 `ineligible`，禁止 SQLite connect 后 189 个项目文件
+元数据/摘要不变。B4.3 不获取 lease、不访问 SQLite，也不发布 marker。
 
 当前优先顺序：
 
-1. 固定 v3-B4.2 提交，合入 test 后执行双分支自身源码全量与远端四矩阵。
-2. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation 版本，不复用 legacy JSONL import marker。
-3. v3-B4.4：在 run lease 内重新解析 B4.2、严格校验 native SQLite profile，再调用 B4.1；接入项目扫描、启动、状态/marker、严格幂等报告和有界失败。
-4. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，同时保留有界兼容路径。
-5. v3-B/v3-C 软件门禁通过后，只同步个人 Marketplace 源并执行 validator、发布测试和 48/12/12 枚举；用户重启确认后才允许正式 v2→v3 升级。
-6. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。
+1. 固定 v3-B4.3 提交，合入 test 后执行双分支自身源码全量与远端四矩阵。
+2. v3-B4.4：使用项目级 claim/lease 重新解析 B4.2/B4.3，拒绝跨 run 的同一 capture raw 歧义，严格校验 native SQLite profile 和最后一个 `complete` event，再调用 B4.1；接入项目扫描、启动、状态/独立 marker、严格幂等报告和有界失败。
+3. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，同时保留有界兼容路径。
+4. v3-B/v3-C 软件门禁通过后，只同步个人 Marketplace 源并执行 validator、发布测试和 48/12/12 枚举；用户重启确认后才允许正式 v2→v3 升级。
+5. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。

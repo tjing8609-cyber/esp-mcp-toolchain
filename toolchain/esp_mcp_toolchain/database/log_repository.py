@@ -1068,7 +1068,7 @@ def _legacy_timestamp(record: dict[str, Any]) -> str:
         return "1970-01-01T00:00:00+00:00"
 
 
-def _legacy_uuid(
+def legacy_jsonl_event_uuid(
     project_id: str,
     run_id: str,
     line_number: int,
@@ -1138,7 +1138,12 @@ def import_jsonl_sessions(
             if not isinstance(selected_port, str) or not selected_port.strip():
                 payload_port = payload.get("port")
                 selected_port = payload_port if isinstance(payload_port, str) and payload_port.strip() else None
-            legacy_event_uuid = _legacy_uuid(project_id, run_id, line_number, record)
+            legacy_event_uuid = legacy_jsonl_event_uuid(
+                project_id,
+                run_id,
+                line_number,
+                record,
+            )
             run = get_run(database, project_id=project_id, run_id=run_id)
             native_run = run is not None and "legacy_jsonl_source" not in run["payload_json"]
             if native_run:
