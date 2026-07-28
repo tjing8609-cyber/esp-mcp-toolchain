@@ -435,28 +435,30 @@ def _safe_binary_reader(
     except (OSError, SerialLogStoreError) as exc:
         raise SerialLogStoreError(f"{label} could not be safely opened: {exc}") from exc
     try:
-        with os.fdopen(descriptor, "rb", closefd=True) as handle:
-            before = os.fstat(handle.fileno())
-            if not stat.S_ISREG(before.st_mode):
-                raise SerialLogStoreError(f"{label} is not a regular file.")
-            if bool(
-                getattr(before, "st_file_attributes", 0)
-                & _WINDOWS_REPARSE_POINT
-            ):
-                raise SerialLogStoreError(
-                    f"{label} is a reparse point and is refused."
-                )
-            yield handle, before
-            after = os.fstat(handle.fileno())
-            if _stat_identity(after) != _stat_identity(before):
-                raise SerialLogStoreError(
-                    f"{label} changed while it was being verified."
-                )
-    finally:
+        handle = os.fdopen(descriptor, "rb", closefd=True)
+    except BaseException:
         try:
             os.close(descriptor)
         except OSError:
             pass
+        raise
+    with handle:
+        before = os.fstat(handle.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise SerialLogStoreError(f"{label} is not a regular file.")
+        if bool(
+            getattr(before, "st_file_attributes", 0)
+            & _WINDOWS_REPARSE_POINT
+        ):
+            raise SerialLogStoreError(
+                f"{label} is a reparse point and is refused."
+            )
+        yield handle, before
+        after = os.fstat(handle.fileno())
+        if _stat_identity(after) != _stat_identity(before):
+            raise SerialLogStoreError(
+                f"{label} changed while it was being verified."
+            )
     _require_safe_directory(parent, label=f"{label} parent")
     parent_after = parent.lstat()
     if _stat_identity(parent_after) != _stat_identity(parent_before):
