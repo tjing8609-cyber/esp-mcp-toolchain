@@ -21,6 +21,9 @@
   occurrence-aware error identity、严格幂等、显式冲突和 project/run 边界校验的底层仓储 API。
 - 新增不可变 `EventArtifacts` 和原子 `append_event_with_artifacts()`；completion event、
   raw、error 与 run sequence 在同一 SQLite 事务中提交，旧 `append_event` 二元组接口保持兼容。
+- 新增 Monitor 终态 artifact 对账协议：`sqlite-artifacts-v1.json` 与旧
+  `sqlite_reconciled` 生命周期标记分离，并记录规范 event/run/raw/error 集及确定性
+  bundle SHA-256。
 
 ### Changed
 
@@ -46,6 +49,9 @@
   自动升级。
 - 同步工具统一使用 start/prepare/complete/finish run 生命周期；后台 Monitor 在启动时固定完整 `LogScope`，并由 worker 写入原项目终态。
 - 跨工作树门禁由 `index-test` 明确加载 `index` 源码，并校验实际导入来源，避免测试工作树误测自身旧实现。
+- Monitor 终态恢复改为持有 OS run lease 的单写者流程；lease 覆盖扫描、受限修复、冻结、
+  描述符复核、SQLite 原子投影、JSONL/latest 镜像和 sidecar 发布。终态 run 即使已有
+  committed sidecar 也会执行可重入深度核验。
 
 ### Fixed
 
@@ -98,9 +104,25 @@
   原业务成功或失败语义保持不变，run 仍按业务结果结束。
 - 固定 capture 的正式 raw 登记前会校验项目 `logs/raw` 边界、普通文件、symlink/junction/
   reparse、实际字节数和 SHA-256；`recovery_path` 只用于人工恢复，永不登记为正式 raw。
+- Monitor 崩溃在 chunk rename 与 manifest 更新之间时，只对 stale 活动态收养合法孤立
+  `.bin`；终态拒绝额外文件，并要求 manifest、磁盘、SQLite 的 chunk 集、大小和摘要完全一致。
+- chunk/manifest/sidecar 读取改为打开后基于 fd 校验普通文件、reparse、身份、长度及读后
+  稳定性，关闭校验到使用之间的 TOCTOU 窗口；旧绝对路径采用不跟随链接的保守兼容读取。
+- 修复恢复锁作用域过窄和锁文件删除造成的 ABA：Windows 锁文件允许共享读写但禁止删除，
+  释放时不 unlink；同一 run 的两个进程不能同时进入 SQLite/镜像/sidecar 提交区。
+- 修复旧 stale completion 算法兼容问题：历史 UUID、`ended_at`、event/run 内容和最后事件
+  完全一致时原样复用；不一致时拒绝追加第二条 completion。
+- 修复仅凭 sidecar 布尔值判断 committed、同 UUID JSONL 内容冲突仍成功、latest 取错事件、
+  持久 `RUNNING` stop 虚报已终态，以及 malformed startup recovery 返回空失败摘要的问题。
 
 ### Validation
 
+- SQLite v3-B3 Monitor 终态产物专项为 `43 passed, 2 skipped`；main 全量
+  `119 passed in 40.95s`；test 显式加载 main 的全量门禁
+  `385 passed, 3 skipped in 192.71s`；`compileall` 通过。2 个新增 skip 来自本机普通文件
+  symlink 创建权限（WinError 1314），目录 junction 和合成 fd/reparse 合同已执行。
+  全部使用临时项目/SQLite 和模拟对象，未升级正式数据库、访问 COM3、更新 Marketplace
+  或安装缓存；本次推送后的远端矩阵仍待独立确认。
 - SQLite v3-B2 合同在旧实现上先得到预期 `11 failed, 1 passed`；最终原子投影专项
   `15 passed in 1.61s`，main 全量 `119 passed in 14.54s`，test 显式加载 main 全量
   `342 passed, 1 skipped in 35.69s`。两轮独立终审均为 P0=0、P1=0；测试只使用
