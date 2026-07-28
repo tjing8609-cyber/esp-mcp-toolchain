@@ -2476,13 +2476,23 @@ def test_reconciliation_refuses_a_reparse_chunk(tmp_path):
         encoding="utf-8",
     )
 
-    _reconcile(scope, recover_serial_runs(scope.log_root))
+    original_manifest = manifest_path.read_bytes()
+    recovered = recover_serial_runs(scope.log_root)
+    assert len(recovered) == 1
+    assert "reparse" in recovered[0][
+        "_sqlite_artifact_recovery_error"
+    ].lower()
+
+    reports = _reconcile(scope, recovered)
 
     stored = _manifest(manifest_path)
     assert stored["sqlite_artifacts_reconciliation_version"] == 0
-    artifact_marker = _artifact_marker(manifest_path)
-    assert artifact_marker["projection"]["state"] == "failed"
-    assert "reparse" in artifact_marker["projection"]["error"].lower()
+    assert manifest_path.read_bytes() == original_manifest
+    assert len(reports) == 1
+    assert reports[0]["ok"] is False
+    assert reports[0]["artifact_marker"] is None
+    assert "reparse" in reports[0]["message"].lower()
+    assert not manifest_path.with_name("sqlite-artifacts-v1.json").exists()
     assert log_repository.get_run_raw_logs(
         scope.database_file,
         project_id=scope.project_id,
