@@ -30,6 +30,13 @@
 - 新增 v3-B4.2 `resolve_historical_monitor_artifacts()`：从当前项目内的 v1/v2 终态
   Monitor manifest/chunk 生成只读 `EventArtifacts` 候选，显式区分 `resolved` 与
   `no_artifacts`；不获取 lease、不访问 SQLite，也不发布 sidecar。
+- 新增 v3-B4.3 `resolve_historical_serial_capture_artifacts()`：从显式 session
+  basename 读取 legacy/native capture JSONL，以 importer 同源 UUIDv5 或原生 UUID
+  绑定既有 event，并从当前项目安全重派生固定 capture 文件。adapter 使用独立
+  reconciliation version，只返回不可变候选，不复用 `legacy_jsonl_imports` marker；
+  native source 必须严格为唯一 UUID 的两条 `prepare → complete` 记录，且
+  task/source/selected-port 一致；成功 completion 必须有匹配 port，合法失败允许
+  payload 省略 port，mirror 端口可一致为 `null`。
 
 ### Changed
 
@@ -149,9 +156,25 @@
   `logs/serial/<run_id>`。manifest 摘要与 JSON 来自同一安全 fd，project/log/serial/run
   目录链和 finalized chunk 精确集合在返回前后复核；B3 sidecar/旧 ownership 字段会
   fail-closed，陈旧 `process_owner` 和释放后保留的 lease 文件不被误当作当前所有权。
+- 历史固定 capture 不再把旧 JSONL 中的绝对 `raw_path` 直接作为 I/O 目标，也不把旧
+  replacement-decoded UTF-8 文本冒充精确串口 bytes。实际文件只从当前 `logs/raw`
+  派生；旧 writer 证据使用 `serial_capture_legacy_text`，只有 native source 与现代
+  UUID 排他命名同时成立才使用 `serial_capture_raw`。native mirror 的重复 UUID、
+  非规范 phase、额外记录及 task/source/port 冲突全部 fail-closed；legacy
+  `phase=unknown` 会明确报告 B4.1 不合格，而不是伪造 completion event。
+- native 端口身份校验不再误拒绝合法失败事件：两条 mirror 仍必须显式携带且保持相同
+  `selected_port`，但允许失败时同为 `null` 或 payload 不含 port；成功事件继续要求
+  非空且一致的 completion port。
 
 ### Validation
 
+- SQLite v3-B4.3 合同在 adapter 缺失时为预期 `40 failed, 1 skipped`；独立复审补入
+  精确 raw 来源绑定和 native 全记录身份合同后曾得到
+  `6 failed, 40 passed, 1 skipped`；第二轮合法失败端口合同曾得到
+  `2 failed, 48 passed, 1 skipped`。全部修复后专项
+  `50 passed, 1 skipped in 1.31s`，main 全量 `120 passed in 49.93s`。正式项目 4 个
+  capture 的纯只读检查得到 1 个 native `resolved`、3 个 legacy `ineligible`；SQLite
+  connect 被探针禁止，项目 189 个文件的路径、长度、mtime 与 SHA-256 前后无差异。
 - SQLite v3-B4.2 初始 42 条合同在入口缺失时全部按预期失败；独立审查补齐陈旧 owner、
   caller 路径逃逸、祖先 reparse、目录身份变化、持久 lease、合法 POSIX v1 历史和
   Windows 根相对路径拒绝后，专项 `58 passed in 1.66s`，既有 Monitor 回归

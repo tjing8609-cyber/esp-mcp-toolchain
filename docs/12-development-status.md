@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-28 17:07（Asia/Shanghai）
+更新时间：2026-07-28（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语与双分支远端四矩阵已完成，v3-B4.2 纯只读历史 Monitor resolver、正式样本只读兼容检查及 Windows lease 竞态修复也已通过双分支远端矩阵。下一步进入 B4.3。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、写 SQLite、升级 schema、更新 Marketplace 或安装缓存。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语与 B4.2 历史 Monitor resolver 已通过双分支远端矩阵，v3-B4.3 历史固定 capture/JSONL 纯只读 adapter 已完成本地实现、正式样本只读检查和首轮独立复审。下一步是完成 B4.3 双分支门禁后停止；后续 B4.4 尚未启动。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、连接/写入正式 SQLite、升级 schema、更新 Marketplace 或安装缓存。
 
 ## 本轮已完成实现
 
@@ -98,6 +98,25 @@
 - resolver 只返回 `resolved`/`no_artifacts` 文件证据候选及深拷贝错误快照；不获取 lease、
   不访问 SQLite、不调用 B4.1，也不写 sidecar、manifest、JSONL 或 latest。数据库
   native profile、持 lease 二次解析和实际补投影属于 B4.4。
+- 新增 v3-B4.3 `resolve_historical_serial_capture_artifacts()`：caller 必须显式提供
+  当前 `sessions` 的安全 basename、run 与规范 event UUID；source 路径只作 provenance，
+  不进入 event/artifact identity。legacy event UUID 复用 importer 的公开 UUIDv5 纯函数，
+  native completion 保留原 UUID，并返回不可变 event/run profile 与独立 reconciliation
+  version，供 B4.4 在 lease 内与 SQLite 精确比较。
+- adapter 严格解析 UTF-8 JSONL；native 必须恰为唯一 UUID 的两条
+  `prepare → complete`，并校验连续 sequence、镜像 payload、project/run/tool/event、
+  task/source/selected-port 归属及当前目录链；成功 completion 必须有一致 port，失败
+  completion 可省略 port 且 mirror 端口允许一致为 `null`。旧
+  Windows/POSIX `raw_path` 只作
+  本地绝对路径与 `logs/raw/<basename>` 后缀校验，实际文件由当前项目重派生并在安全 fd
+  上核对大小/SHA-256。source alias 不改变 event profile 或 artifact bundle identity。
+- 旧 capture writer 曾 replacement decode 后 `write_text`，因此 legacy source 或旧式文件名
+  只登记 `serial_capture_legacy_text`，不会冒充精确原始字节；`serial_capture_raw` 同时
+  要求 native completion 来源和 UUID 排他文件名。legacy `phase=unknown` 候选返回
+  `ineligible/legacy_event_phase_unknown`，不创建或改写 completion event。
+- B4.3 不 glob 项目、不获取 lease、不连接 SQLite、不调用 B4.1，也不写 marker/JSONL/
+  latest。跨 run 同一 raw basename 的歧义检测、项目级唯一 claim、lease 内二次解析、
+  native DB profile 资格和独立 marker 发布均保留给 B4.4。
 
 ## 本地验证
 
@@ -179,6 +198,16 @@
   [main run 30347587842](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347587842)
   与 [test run 30347592644](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347592644)
   共 8 个 job 全部成功；没有重跑失败 job。
+- B4.3 adapter 缺失时合同为预期 `40 failed, 1 skipped`；实现后独立复审发现 legacy
+  source 可用 modern-looking 文件名误标精确 raw，以及 native 全记录身份校验不足的
+  P1。补入 source-format 双条件与严格两记录身份合同后专项
+  第一轮修复后，第二轮复审又发现合法失败可没有 payload port；对应合同先得到
+  `2 failed, 48 passed, 1 skipped`。全部修复后专项
+  `50 passed, 1 skipped in 1.31s`，main 全量 `120 passed in 49.93s`。
+- 正式项目 4 个 capture 的只读解析为 1 个 native `resolved`、3 个 legacy
+  `ineligible`；四项均为旧 writer 的 `serial_capture_legacy_text`。探针将
+  `sqlite3.connect` 替换为失败函数仍全部完成，前后 189 个正式项目文件的路径、长度、
+  mtime 与 SHA-256 差异为 0。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -198,9 +227,9 @@
 
 ## 待完成
 
-1. v3-B4.3：为历史固定 capture/JSONL 建立显式 adapter；使用独立 reconciliation
-   版本，不复用 legacy JSONL import marker。
-2. v3-B4.4：持 run lease 二次执行 B4.2，校验 native SQLite profile 和最后一个
+1. 完成 v3-B4.3 的独立复审、双分支本地全量与远端四矩阵，然后按用户要求停止。
+2. v3-B4.4：使用项目级 claim/lease 二次执行 B4.2/B4.3，拒绝跨 run 同一 capture
+   raw 的歧义，校验 native SQLite profile 和最后一个
    `complete` event 资格，再调用 B4.1；提供项目扫描、启动、状态/marker、严格幂等
    报告和有界失败。
 3. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，

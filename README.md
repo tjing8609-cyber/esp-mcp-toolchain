@@ -270,7 +270,7 @@ MicroPython 方向：
 - memory_items / memory_audit 表。
 - 日志导出和检索增强。
 
-当前状态：SQLite 已在本地主线成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v3-A 已补齐 raw/error 约束、仓储和显式 v2→v3 迁移；v3-B2 已把固定串口 capture 的可信 raw、结构化异常和程序停止失败与 completion event 放入同一事务；v3-B3 已在源码和临时数据库完成 Monitor 终态 chunk/运行期错误的精确、可重入对账，并使用独立版本化 sidecar 记录 artifact 状态；v3-B4.1 已提供既有终态 event 的原子证据补投影，v3-B4.2 已提供纯只读历史 Monitor manifest/chunk resolver。正式项目数据库和当前安装插件仍保持 v2，尚未执行升级；历史 capture/JSONL adapter、项目级对账入口和 raw/error 查询接入继续后置。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
+当前状态：SQLite 已在本地主线成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v3-A 已补齐 raw/error 约束、仓储和显式 v2→v3 迁移；v3-B2 已把固定串口 capture 的可信 raw、结构化异常和程序停止失败与 completion event 放入同一事务；v3-B3 已在源码和临时数据库完成 Monitor 终态 chunk/运行期错误的精确、可重入对账，并使用独立版本化 sidecar 记录 artifact 状态；v3-B4.1 已提供既有终态 event 的原子证据补投影，v3-B4.2 已提供纯只读历史 Monitor manifest/chunk resolver，v3-B4.3 已提供历史固定 capture/JSONL 的纯只读 adapter。正式项目数据库和当前安装插件仍保持 v2，尚未执行升级；项目级持 lease 对账入口和 raw/error 查询接入继续后置。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
 
 ## 当前进度
 
@@ -296,6 +296,7 @@ MicroPython 方向：
 - SQLite v3-B3 Monitor 终态产物对账：精确核对 manifest 与磁盘 chunk 集、原子登记 raw/error/run/event、计算确定性 bundle SHA-256，并以独立 `sqlite-artifacts-v1.json` sidecar、进程级 run lease 和描述符复核抵御重复恢复、并发恢复、ABA 与路径替换。
 - SQLite v3-B4.1 历史证据补投影原语：只允许向既有终态 run 的最后一个 `complete` event 原子补入 raw/error；不创建 run/event、不改变 event 或 sequence，并对项目/run/event 归属、重试、并发和失败回滚执行严格合同。
 - SQLite v3-B4.2 历史 Monitor resolver：只从当前项目 `logs/serial/<run_id>` 读取 manifest 和 finalized chunks；v1 旧绝对路径仅作跨平台词法校验，实际文件位置始终由当前 run 目录派生。resolver 使用单一安全 fd 计算 manifest 摘要，复核目录链、chunk 精确集合/连续编号/长度/SHA-256 和 B3 ownership，返回不可变的待投影证据，不获取 lease、不连接或写入 SQLite。
+- SQLite v3-B4.3 历史固定 capture adapter：显式绑定安全的 session basename、run 和 event UUID，严格解析 legacy single-event，以及恰好由唯一 UUID 的 `prepare → complete` 构成且 task/source/port 元数据一致的 native JSONL；合法失败事件允许一致的 `selected_port` 为端口名或 `null` 且 completion payload 省略 port，成功事件仍必须提供一致端口。旧绝对 `raw_path` 只作 Windows/POSIX 词法校验，实际文件只由当前项目 `logs/raw/<basename>` 派生并在同一安全 fd 上计算长度/SHA-256。legacy source 或旧式文件名登记为 `serial_capture_legacy_text`，只有 native source 与 UUID 排他文件名同时成立才可声明 `serial_capture_raw`；legacy `phase=unknown` 候选明确标记为不具备 B4.1 投影资格。
 - Codex skill 文件和示例工作流。
 - Codex 插件 manifest 补齐 `name`、`version`、`description`、`author`、`homepage`、`repository`、`license`、`keywords`、`skills`、`apps`、`mcpServers` 和 `interface`。`hooks.json` 已创建；`hooks` 未写入 `plugin.json`，因为当前插件验证器会拒绝该字段，优先保证插件可见和可验证。
 - `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
@@ -331,12 +332,13 @@ SQLite v3-B3 Monitor 终态产物专项：43 passed, 2 skipped
 SQLite v3-B4.1 红灯复审：4 failed, 7 passed；最终专项：11 passed in 1.78s；SQLite 相关：146 passed, 2 skipped in 50.21s
 SQLite v3-B4.2 resolver：初始红灯 42 failed（仅缺入口）；独立复审补强后 58 passed in 1.66s；既有 Monitor 回归 28 passed in 41.00s
 SQLite v3-B4.3 historical capture adapter 合同：对 main `b3a4989` 的初始预期红灯为 40 failed, 1 skipped；独立复审再固定 legacy 现代文件名不得冒充精确 raw，以及 native 必须严格为唯一 UUID 的 `prepare → complete` 两条记录、固定 task/source、前后一致的端口元数据。第二轮复审补入合法失败事件可保持 `selected_port=COM3/None` 且省略 completion payload port、成功事件仍必须有一致端口的合同；当前加载 main 工作树实现为 50 passed, 1 skipped。skip 仅表示当前 Windows 账户不能创建 symlink 测试夹具；合同同时冻结当前项目安全重派生、B4.1 资格和零 SQLite/lease/marker 副作用。
+SQLite v3-B4.3 capture adapter：初始红灯 40 failed, 1 skipped；独立复审补入精确 raw 来源绑定和 native 全记录身份合同后曾得到 6 failed, 40 passed, 1 skipped；第二轮复审的合法失败端口合同曾得到 2 failed, 48 passed, 1 skipped。全部修复后专项 50 passed, 1 skipped in 1.31s；main 全量 120 passed in 49.93s
 当前软件全量：B4.2 最终源码 main 120 passed in 51.67s；Windows lease 零长度竞态修复后 main 120 passed in 51.01s，test 分支自身源码 458 passed, 3 skipped in 256.55s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
-历史样本只读验证：正式项目 22 个 v1 Monitor manifest 全部完成 resolver 校验，14 个 `resolved`、8 个 `no_artifacts`、0 个错误；Monitor 文件和正式 SQLite 文件元数据前后不变
-当前 SQLite 边界：正式项目数据库和当前安装插件仍保持 schema v2；v3-B4.2 只生成文件证据候选，不判断数据库资格、不调用 B4.1，也不写 sidecar。固定 capture/JSONL adapter 和持 lease 的项目级启动/状态工具仍待 B4.3-B4.4；没有升级正式数据库、访问 COM3 或操作板卡
+历史样本只读验证：正式项目 22 个 v1 Monitor manifest 为 14 个 `resolved`、8 个 `no_artifacts`、0 个错误；4 个固定 capture 为 1 个 native `resolved`、3 个 legacy `ineligible`，全部是旧 writer 的 `serial_capture_legacy_text`。两次检查均未连接正式 SQLite，项目 189 个文件的路径、长度、mtime 和 SHA-256 前后无差异
+当前 SQLite 边界：正式项目数据库和当前安装插件仍保持 schema v2；v3-B4.2/B4.3 只生成文件证据候选，不判断正式数据库资格、不调用 B4.1，也不写 sidecar/marker。持 lease 的项目级扫描、raw 唯一归属、native profile 复核和实际补投影仍属于 B4.4；没有升级正式数据库、访问 COM3 或操作板卡
 跳过边界：Windows 本地 3 项 skip 来自普通文件 symlink 创建权限（WinError 1314）及既有平台权限边界；目录 junction 与合成 fd/reparse 拒绝合同已执行。GitHub Linux 两套环境实际创建 symlink 并验证 fail-closed：恢复预检立即拒绝，不创建 sidecar、不写 SQLite、不改 manifest 或外部目标
 未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
 远端与插件：保留 B4.2 首轮 test Windows/Python 3.10 失败作为缺陷证据；修复后的 [main run 30347587842](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347587842) 与 [test run 30347592644](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347592644) 共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功，未执行重跑；本步骤未更新 Marketplace 源或安装缓存

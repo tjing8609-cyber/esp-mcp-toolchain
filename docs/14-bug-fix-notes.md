@@ -1099,3 +1099,87 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 并发测试允许两种合法调度：一次成功加一次 busy，或 owner 释放后两次幂等成功。测试必须
   拒绝第三种普通失败，但不能强迫调度一定产生 busy。
 - CI 单点并发失败应先保留失败 run、打印实际 report 并构造可控时序，不应靠重跑判断修复。
+
+## 2026-07-28：历史固定 capture 缺少独立证据 adapter，旧文本还可能被误称原始字节
+
+### 症状
+
+- 正式项目有 4 份固定 capture JSONL/raw 配对，但 v3-B2 只处理新调用的 completion
+  事务；已存在的文件没有纯只读入口生成 B4.1 所需 `EventArtifacts`。
+- 3 份早期 JSONL 是无 `event_uuid/phase/bytes_read` 的单行 legacy 记录，1 份是
+  `prepare + complete` 的 native mirror。旧 importer marker 已存在，但 raw/error
+  仓储仍没有这些证据。
+- 旧 capture writer 先 `decode(errors="replace")` 再 `write_text`。正式 720 B 文件的
+  message 是 `707 characters`，说明字符数不能当作原始字节数，文件内容也不能诚实声明为
+  exact serial bytes。
+
+### 根因
+
+- `legacy_jsonl_imports` 只以 project、绝对 source path 和 source SHA-256 记录“事件导入
+  处理过”；它不校验当前 raw 文件、artifact bundle、最后 completion 资格或 adapter
+  版本，因此不能复用为历史证据 reconciliation marker。
+- legacy event 按 importer 会成为 `phase=unknown`。B4.1 只接受终态 run 的最后一个
+  `complete` event；若 adapter 暗中改 phase、创建 completion 或直接调用 B4.1，会破坏
+  已冻结的历史身份合同。
+- 首轮实现还只凭现代 UUID 文件名判断 `raw_bytes_exact`。独立复审指出 legacy source
+  可以指向或被重命名为 modern-looking basename，从而把 replacement text 误标
+  `serial_capture_raw`。
+- 首轮 native 校验只寻找唯一末尾 completion，并逐条校验基础字段，没有冻结整个 mirror
+  的结构身份。因此重复 event UUID、非 `prepare` 首记录、额外 execute 记录和前后
+  task/source/selected-port 冲突仍可能被接受，后续 B4.4 会收到不可信的数据库 profile。
+- 第一轮收紧又把 `selected_port` 和 completion payload port 一律要求为非空字符串，
+  忽略了 `esp_serial_capture` 的合法失败返回可能没有 payload port，未选择串口时两条
+  mirror 的 `selected_port` 也会同为 `null`，从而误拒绝可恢复的 result error。
+
+### 修复
+
+- 新增版本化纯只读 `resolve_historical_serial_capture_artifacts()`。输入显式绑定当前
+  session basename、run 和规范 event UUID；source filename 只作 provenance，不进入
+  event/artifact identity。legacy UUID 复用 importer 的同一个公开 UUIDv5 纯函数，
+  native UUID 原样规范化。
+- JSONL 采用安全 fd 严格读取，限制总大小、单行大小和记录数；拒绝尾部坏行、非 UTF-8、
+  非对象、混合格式、非连续 sequence、非末尾/重复 completion、project/run/tool/event
+  冲突和 payload mirror 冲突。native 进一步固定为唯一 UUID 的两条
+  `prepare → complete`，要求 task/source/selected-port 前后一致，并拒绝 completion
+  payload port 与 run 端口冲突。两条 mirror 必须显式包含同值 `selected_port`，值可为
+  非空字符串或 `null`；payload port 存在时必须匹配，只有 error/critical 可以省略，
+  成功 completion 仍必须提供非空端口。
+- 旧 Windows/POSIX `raw_path` 只验证本地绝对路径与 `logs/raw/<basename>` 精确后缀，
+  不对旧路径执行文件系统调用。实际文件只由当前项目 `logs/raw` 重派生，并在同一安全 fd
+  上复核普通文件、reparse、长度、mtime 与 SHA-256；resolver 前后复核目录链身份。
+- legacy source 一律登记 `serial_capture_legacy_text`。`serial_capture_raw` 现在必须
+  同时满足 `source_format=native_complete_v1` 和 UUID 排他 basename；修复了独立复审
+  发现的 P1。legacy 候选返回 `ineligible/legacy_event_phase_unknown`，不放宽 B4.1。
+- 候选冻结 source/record 摘要、完整规范 event profile、run profile、artifact bundle
+  SHA-256、字节保真结论和独立 reconciliation version。B4.3 不连接 SQLite、不获取
+  lease、不调用 B4.1，也不写 marker、JSONL 或 latest。
+
+### 验证
+
+- adapter 缺失的旧 main 基线为预期 `40 failed, 1 skipped`。独立对抗测试补强合同后先
+  得到 `6 failed, 40 passed, 1 skipped`；第二轮合法失败端口合同先得到
+  `2 failed, 48 passed, 1 skipped`。全部修复后专项
+  `50 passed, 1 skipped in 1.31s`。skip 仅是当前 Windows 账户不能创建普通文件 symlink。
+- main 全量 `120 passed in 49.93s`。正式项目 4 份样本只读解析得到 1 个 native
+  `resolved`、3 个 legacy `ineligible`；四项都正确标为旧 writer 的
+  `serial_capture_legacy_text`。
+- 正式探针把 `sqlite3.connect` 替换为失败函数，4 项仍全部完成。解析前后核对 189 个项目
+  文件的路径、长度、mtime 和 SHA-256，差异为 0；没有访问 COM3、板卡、Marketplace 或
+  安装缓存。
+
+### 经验与剩余边界
+
+- “文件存在”不等于“原始字节可信”。内容 kind 必须绑定产生它的 source/writer 格式，
+  不能只看一个可重命名的 basename。
+- event UUID 相等仍不足以授权补投影。B4.4 必须在 lease 内把 candidate 的完整 event/run
+  profile 与 SQLite 逐字段或规范摘要比较，再调用 B4.1。
+- B4.3 返回的是读取时快照；同一账户仍可能在安全 fd 读取完成后、函数返回前同长度改写
+  source/raw。B4.4 必须在项目 lease 内重新解析或重新核对两类摘要，不能直接使用更早的
+  candidate 授权写入。
+- 旧秒级文件名曾允许不同 run 覆盖同一路径。B4.4 项目扫描必须先建立规范 raw identity
+  的全局引用集合；同一路径被不同 event UUID 引用时要报告 ambiguous，不能给两个 run
+  各自登记。固定 capture 因共享 `logs/raw`，仅使用 Monitor 的 per-run lease 不够，
+  需要项目级 claim/lease 或等价的原子唯一所有权。
+- 当前 safe-fd 与前后目录检查面向普通本地故障和路径替换，不声称抵御同一账户恶意完成
+  可恢复原样的 ABA。正式项目数据库仍为 v2；B4.4、v3-C、Marketplace 重启确认完成前
+  不执行正式升级。
