@@ -7,7 +7,7 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；B4.1 仓储原语、B4.2/B4.3 纯只读 resolver 和 B4.4 项目级历史协调器已完成源码与临时数据库软件门禁。v3-C1 已把 latest/get/query 切换为无迁移、无在线 JSONL 导入的 SQLite 只读事务。正式项目数据库和当前安装插件仍保持 v2；本轮没有访问板卡、写入/升级正式 SQLite、更新 Marketplace 或安装缓存。下一开发项为 v3-C2 日志详情。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；B4.1 仓储原语、B4.2/B4.3 纯只读 resolver 和 B4.4 项目级历史协调器已完成源码与临时数据库软件门禁。v3-C1 已把 latest/get/query 切换为无迁移、无在线 JSONL 导入的 SQLite 只读事务；v3-C2 已让 get 在同一快照返回有界、重新校验的正式 raw/error 详情。正式项目数据库和当前安装插件仍保持 v2；本轮没有访问板卡、写入/升级正式 SQLite、更新 Marketplace 或安装缓存。下一开发项为 v3-C3 DB-first 错误解析。
 
 ## 本轮已完成实现
 
@@ -140,6 +140,12 @@
   `_prepare_scope()`：缺库零创建，v2 只读 runs/events 且不升级，v3 缺结构或损坏数据
   显式失败。latest/get 的多项读取使用同一 `BEGIN` 快照，JSONL 只保留审计/显式迁移
   角色。WAL 自身可能创建协调 sidecar，主数据库、schema 和应用文件保持不变。
+- v3-C2 扩展 `read_run_snapshot()`：v3 在同一 `BEGIN` 中读取 run/events/raw/errors；
+  v2 跳过 artifact SQL 并明确能力缺失。raw/error 分别使用 1000/200 的最新窗口和
+  `LIMIT + 1` 截断探针，输出恢复稳定时间正序。
+- 新增 connection-level bounded raw/error reader，不改 B3/B4 使用的既有无界对账 API。
+  error 四类大文本在 SQL 侧裁剪并逐字段标记；raw 身份和 error 类型/时间/行列/recoverable
+  在返回前重新规范校验，避免把损坏 SQLite 内容当可信文件证据。
 
 ## 本地验证
 
@@ -154,6 +160,9 @@
   三入口损坏库、坏 JSON、不完整 schema、locked/unavailable 分类和非普通路径拒绝，
   最终专项 `10 passed in 0.43s`。既有日志与
   项目上下文回归 `6 passed in 0.81s`，main 全量 `120 passed in 49.27s`。
+- v3-C2 初始四合同在 C1 实现上为预期 `4 failed in 0.89s`；实现后补入并发单快照和
+  非规范 error 值，C2 专项 `6 passed`，C1+C2 `16 passed in 0.99s`，main 全量
+  `120 passed in 48.06s`。
 - 当前完整本地门禁：main `120 passed in 49.70s`；test 显式加载 main
   `531 passed, 4 skipped in 243.41s`。两轮独立复审 P0=0、P1=0。
 - 提示词/提高工具/架构专项：`25 passed`。
@@ -269,12 +278,10 @@
 
 ## 待完成
 
-1. v3-C2：让 `esp_logs_get` 返回正式 raw/error 详情、来源和截断元数据；v2 明确报告
-   不具备正式 artifact 能力，不做隐式升级。
-2. v3-C3：让 `esp_error_parse_log` 优先查询正式 errors/raw_logs，并保留显式、有界且
+1. v3-C3：让 `esp_error_parse_log` 优先查询正式 errors/raw_logs，并保留显式、有界且
    项目内的旧 Monitor/event 兼容路径。
-3. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+2. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
    48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
    v2 数据库升级。
-4. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
+3. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
    精确动作单独确认。

@@ -27,6 +27,12 @@ from ..utils.time_utils import now_compact, now_iso
 
 
 F = TypeVar("F", bound=Callable[..., dict[str, Any]])
+RAW_LOG_DETAIL_LIMIT = 1_000
+ERROR_DETAIL_LIMIT = 200
+ERROR_FILE_CHAR_LIMIT = 4_096
+ERROR_EXCEPTION_TYPE_CHAR_LIMIT = 256
+ERROR_MESSAGE_CHAR_LIMIT = 2_048
+ERROR_RAW_TEXT_CHAR_LIMIT = 8_192
 _PREPARED_DATABASES: set[tuple[str, str]] = set()
 _PREPARE_LOCK = RLock()
 _MIRROR_LOCK = RLock()
@@ -733,6 +739,12 @@ def esp_logs_get(run_id: str, tail: int = 80) -> dict[str, Any]:
             project_id=scope.project_id,
             run_id=run_id,
             tail=tail,
+            raw_log_limit=RAW_LOG_DETAIL_LIMIT,
+            error_limit=ERROR_DETAIL_LIMIT,
+            error_file_char_limit=ERROR_FILE_CHAR_LIMIT,
+            error_exception_type_char_limit=ERROR_EXCEPTION_TYPE_CHAR_LIMIT,
+            error_message_char_limit=ERROR_MESSAGE_CHAR_LIMIT,
+            error_raw_text_char_limit=ERROR_RAW_TEXT_CHAR_LIMIT,
         )
     except FileNotFoundError:
         snapshot = {"run": None, "events": []}
@@ -751,7 +763,48 @@ def esp_logs_get(run_id: str, tail: int = 80) -> dict[str, Any]:
             "message": f"No log for run_id {run_id} in the active project",
         }
     events = snapshot["events"]
-    return {"ok": True, "project_id": scope.project_id, "run_id": run_id, "run": run, "events": events}
+    artifact_available = snapshot["schema_version"] == log_repository.CURRENT_SCHEMA_VERSION
+    raw_logs = snapshot["raw_logs"]
+    errors = snapshot["errors"]
+    return {
+        "ok": True,
+        "project_id": scope.project_id,
+        "run_id": run_id,
+        "run": run,
+        "events": events,
+        "query_source": {
+            "kind": "sqlite",
+            "schema_version": snapshot["schema_version"],
+            "authoritative": True,
+        },
+        "raw_logs": raw_logs,
+        "errors": errors,
+        "artifact_capability": {
+            "available": artifact_available,
+            "raw_logs": artifact_available,
+            "errors": artifact_available,
+            "reason": None if artifact_available else "schema_v2",
+        },
+        "artifact_truncation": {
+            "raw_logs": {
+                "limit": RAW_LOG_DETAIL_LIMIT,
+                "returned": len(raw_logs),
+                "truncated": snapshot["raw_logs_truncated"],
+            },
+            "errors": {
+                "limit": ERROR_DETAIL_LIMIT,
+                "returned": len(errors),
+                "truncated": snapshot["errors_truncated"],
+                "fields_truncated": snapshot["error_fields_truncated"],
+                "field_limits": {
+                    "file": ERROR_FILE_CHAR_LIMIT,
+                    "exception_type": ERROR_EXCEPTION_TYPE_CHAR_LIMIT,
+                    "message": ERROR_MESSAGE_CHAR_LIMIT,
+                    "raw_text": ERROR_RAW_TEXT_CHAR_LIMIT,
+                },
+            },
+        },
+    }
 
 
 def esp_logs_query(

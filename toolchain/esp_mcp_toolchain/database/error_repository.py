@@ -9,6 +9,8 @@ from .event_repository import EventRepositoryError, normalize_timestamp
 
 
 ERROR_NAMESPACE = UUID("ff8a1e42-9d03-41e6-b895-4d9a3d823297")
+READ_ERROR_KIND_CHAR_LIMIT = 256
+READ_TIMESTAMP_CHAR_LIMIT = 128
 
 
 class ErrorRepositoryError(ValueError):
@@ -279,3 +281,151 @@ def list_errors_for_run(
         (project_id, run_id),
     ).fetchall()
     return [error_from_row(row) for row in rows]
+
+
+def list_recent_errors_for_run(
+    connection: sqlite3.Connection,
+    *,
+    project_id: str,
+    run_id: str,
+    limit: int,
+    file_char_limit: int,
+    exception_type_char_limit: int,
+    message_char_limit: int,
+    raw_text_char_limit: int,
+) -> tuple[list[dict[str, Any]], bool, bool]:
+    limits = {
+        "limit": limit,
+        "file_char_limit": file_char_limit,
+        "exception_type_char_limit": exception_type_char_limit,
+        "message_char_limit": message_char_limit,
+        "raw_text_char_limit": raw_text_char_limit,
+    }
+    for field, value in limits.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise InvalidErrorRecordError(f"{field} must be a positive integer")
+    rows = connection.execute(
+        """
+        SELECT
+          project_id,
+          substr(error_id, 1, 37) AS error_id,
+          run_id,
+          substr(error_kind, 1, :error_kind_probe_limit) AS error_kind,
+          CASE
+            WHEN file IS NULL THEN NULL
+            ELSE substr(file, 1, :file_char_limit)
+          END AS file,
+          line,
+          column,
+          CASE
+            WHEN exception_type IS NULL THEN NULL
+            ELSE substr(exception_type, 1, :exception_type_char_limit)
+          END AS exception_type,
+          CASE
+            WHEN message IS NULL THEN NULL
+            ELSE substr(message, 1, :message_char_limit)
+          END AS message,
+          CASE
+            WHEN raw_text IS NULL THEN NULL
+            ELSE substr(raw_text, 1, :raw_text_char_limit)
+          END AS raw_text,
+          recoverable,
+          substr(created_at, 1, :timestamp_probe_limit) AS created_at,
+          length(error_id) > 36 AS error_id_too_long,
+          length(error_kind) > :error_kind_limit AS error_kind_too_long,
+          length(created_at) > :timestamp_limit AS timestamp_too_long,
+          file IS NOT NULL
+            AND length(file) > :file_char_limit AS file_truncated,
+          exception_type IS NOT NULL
+            AND length(exception_type) > :exception_type_char_limit
+            AS exception_type_truncated,
+          message IS NOT NULL
+            AND length(message) > :message_char_limit AS message_truncated,
+          raw_text IS NOT NULL
+            AND length(raw_text) > :raw_text_char_limit AS raw_text_truncated
+        FROM errors
+        WHERE project_id = :project_id AND run_id = :run_id
+        ORDER BY created_at DESC, error_id DESC
+        LIMIT :row_limit
+        """,
+        {
+            "project_id": project_id,
+            "run_id": run_id,
+            "row_limit": limit + 1,
+            "error_kind_limit": READ_ERROR_KIND_CHAR_LIMIT,
+            "error_kind_probe_limit": READ_ERROR_KIND_CHAR_LIMIT + 1,
+            "timestamp_limit": READ_TIMESTAMP_CHAR_LIMIT,
+            "timestamp_probe_limit": READ_TIMESTAMP_CHAR_LIMIT + 1,
+            "file_char_limit": file_char_limit,
+            "exception_type_char_limit": exception_type_char_limit,
+            "message_char_limit": message_char_limit,
+            "raw_text_char_limit": raw_text_char_limit,
+        },
+    ).fetchall()
+    records: list[dict[str, Any]] = []
+    fields_truncated = False
+    for row in rows[:limit]:
+        if (
+            row["error_id_too_long"]
+            or row["error_kind_too_long"]
+            or row["timestamp_too_long"]
+        ):
+            raise InvalidErrorRecordError(
+                "stored error contains an overlong identity field"
+            )
+        stored_recoverable = row["recoverable"]
+        if (
+            stored_recoverable is not None
+            and (
+                not isinstance(stored_recoverable, int)
+                or stored_recoverable not in {0, 1}
+            )
+        ):
+            raise InvalidErrorRecordError(
+                "stored error recoverable value is not canonical"
+            )
+        stored = error_from_row(row)
+        normalized = _normalize_record(
+            project_id=stored["project_id"],
+            error_id=stored["error_id"],
+            run_id=stored["run_id"],
+            error_kind=stored["error_kind"],
+            file=stored["file"],
+            line=stored["line"],
+            column=stored["column"],
+            exception_type=stored["exception_type"],
+            message=stored["message"],
+            raw_text=stored["raw_text"],
+            recoverable=stored["recoverable"],
+            created_at=stored["created_at"],
+        )
+        field_truncation = {
+            "file": bool(row["file_truncated"]),
+            "exception_type": bool(row["exception_type_truncated"]),
+            "message": bool(row["message_truncated"]),
+            "raw_text": bool(row["raw_text_truncated"]),
+        }
+        core_fields = {
+            "project_id",
+            "error_id",
+            "run_id",
+            "error_kind",
+            "line",
+            "column",
+            "recoverable",
+            "created_at",
+        }
+        if any(stored[field] != normalized[field] for field in core_fields):
+            raise InvalidErrorRecordError(
+                "stored error is not in canonical repository form"
+            )
+        for field in ("file", "exception_type", "message", "raw_text"):
+            if not field_truncation[field] and stored[field] != normalized[field]:
+                raise InvalidErrorRecordError(
+                    "stored error is not in canonical repository form"
+                )
+        stored["field_truncation"] = field_truncation
+        fields_truncated = fields_truncated or any(field_truncation.values())
+        records.append(stored)
+    records.reverse()
+    return records, len(rows) > limit, fields_truncated

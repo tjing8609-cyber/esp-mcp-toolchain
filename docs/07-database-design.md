@@ -96,6 +96,22 @@ WAL 模式即使以 `mode=ro` 打开，也可能在目录可写且协调文件�
 这些是 SQLite 的并发协调文件，不是应用迁移或日志导入。日志数据库可能仍有并发写入，
 所以查询层不使用只适合确定不再变化数据库的 `immutable=1`。
 
+`esp_logs_get` 在 schema v3 中还会从同一只读事务返回 `raw_logs` 和 `errors`。它不调用
+现有分连接 getter：两类记录都先按 `project_id + run_id` 过滤，再按时间/ID 倒序取
+`limit + 1` 个最新候选，截去探针行后恢复时间正序。默认 raw 1000 条、error 200 条，
+两个截断标志互相独立。schema v2 即使物理上存在旧 raw/error 表，也只报告
+`artifact_capability.reason="schema_v2"` 并返回空数组，不推断、不迁移。
+
+error 的 `file`、`exception_type`、`message`、`raw_text` 分别在 SQL 侧限制为
+4096/256/2048/8192 个字符；逐记录 `field_truncation` 与汇总
+`fields_truncated` 说明是否裁剪。raw 的 UUID、kind、相对 POSIX path、时间和 SHA-256，
+以及 error 的 UUID、kind、行列号、recoverable 和时间，在返回前重新按仓储规则校验。
+身份字段不静默截断；不规范或过长时整个查询 fail-closed。
+
+这些上界约束新增 artifact 字段，不改变既有 events 的 `tail` 合同；因此不能把 C2 描述为
+整个 `esp_logs_get` 响应的总字节上界。C3 读取真实 artifact 文件时还必须使用自己的
+`max_bytes`，不能把详情行数上限当成文件读取授权。
+
 ## 验证状态
 
 2026-07-20 最终本地门禁：SQLite 定向 `33 passed`，跨工作树完整测试 `134 passed`。当前项目 19 份旧 JSONL 已在临时数据库完成只读迁移演练：32 events，状态分布为 12 cancelled、2 failed、5 succeeded，外键检查为空。
