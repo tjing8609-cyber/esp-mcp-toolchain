@@ -263,3 +263,21 @@ def test_locked_database_is_unavailable_not_corrupt(monkeypatch):
     assert all(result["ok"] is False for result in results)
     assert all(result["error_kind"] == "log_database_unavailable" for result in results)
     assert all(result["recoverable"] is True for result in results)
+
+
+def test_database_path_directory_is_invalid_not_missing():
+    scope = log_tools.LogScope.active()
+    scope.database_file.mkdir(parents=True)
+    before = _project_snapshot(scope.project_dir)
+
+    results = [
+        log_tools.esp_logs_latest(),
+        log_tools.esp_logs_get("directory-run"),
+        log_tools.esp_logs_query("directory"),
+    ]
+
+    assert all(result["ok"] is False for result in results)
+    assert all(result["error_kind"] == "log_database_invalid" for result in results)
+    assert all(result["recoverable"] is False for result in results)
+    assert _project_snapshot(scope.project_dir) == before
+    assert not scope.log_root.exists()

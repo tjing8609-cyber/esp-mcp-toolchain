@@ -977,7 +977,8 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   仍严格校验 schema 版本、主库字节/时间和日志目录不变。
 - 复审补入“锁定/忙碌不是损坏库”合同：三个入口必须返回可恢复的
   `log_database_unavailable`，不能误报不可恢复的 `log_database_invalid`。扩展后的 C1
-  专项为 `9 passed in 0.74s`。
+  又补入“数据库路径被目录占位不是缺库”合同，存在的非普通文件必须明确报损坏状态；
+  最终专项为 `10 passed in 0.43s`。
 
 ## 协作约定
 
