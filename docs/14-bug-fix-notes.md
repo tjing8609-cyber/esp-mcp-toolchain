@@ -1389,3 +1389,64 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   `tail` 合同，不能宣称整个响应有总字节上界。C3 文件读取仍必须独立执行 `max_bytes`。
 - 本轮只使用临时 SQLite，不打开任何 raw artifact，不访问正式项目数据库、COM3、
   板卡、Marketplace 或安装缓存，也不提交用户 plugin manifest 差异。
+
+## 2026-07-29：错误解析忽略正式 artifact 并重复捕获项目
+
+### 症状
+
+- schema v3 已经登记正式 errors/raw_logs，但 `esp_error_parse_log` 仍只解析 event
+  message、event payload 的绝对 raw_path 和旧 Monitor 目录。旧 event 可能压过更新、
+  约束更强的正式 error/raw。
+- 入口先调用 `esp_logs_get()`；该函数内部读取一次活动项目。返回后解析器又调用
+  `LogScope.active()`，如果这两次之间切换项目，SQLite 记录和文件根可能来自两个项目。
+- `max_bytes` 只在 `esp_logs_get` 已把最多 10000 条完整 event message/payload 拉入
+  Python 后才生效，不能约束查询前内存；登记 raw 的 SHA-256 也没有参与读取验证。
+
+### 根因
+
+- 早期错误解析实现形成于 schema v3 正式 artifact 之前，event/Monitor 是当时唯一来源；
+  C1/C2 改造查询层后没有同步更新解析来源权威顺序。
+- 公开 `esp_logs_get` 面向详情展示，不是 C3 的有界输入投影。复用它既拿到不需要的完整
+  event，也没有办法把第一次捕获的 LogScope 传给后续文件读取。
+- 旧测试直接 monkeypatch `error_tools.esp_logs_get` 注入事件；这种桩把实现细节当合同，
+  反而阻止移除第二次作用域捕获。
+
+### 修复
+
+- 新增 `read_error_parse_snapshot()`：在一次 `mode=ro + query_only + BEGIN` 中读取 run、
+  C2 有界 raw/error 和 C3 专用兼容 event 投影。工具先捕获一个 LogScope，并把同一
+  project/database/log_root 使用到调用结束。
+- 来源顺序固定为正式 errors → 正式 raw_logs → 兼容 event/Monitor。存在正式 error 时
+  直接返回最新结构化记录，不打开 raw；存在支持的正式 raw 时不再混合旧 event 文本。
+  schema v2 跳过物理 raw/error 表，只走 runs/events 兼容。
+- 兼容 event 只取最新 64 条。SQL 只返回至多 8192 字符 message 和 16384 字符 payload；
+  payload 一旦截断就不执行 JSON 解码，message 还要经过总 `max_bytes` 字节上限。
+- 正式 capture/Monitor path 必须匹配 kind/run 形状。日志根、祖先目录和文件拒绝
+  symlink/reparse，安全 fd 读前后核对身份；单文件最多完整读取 64 MiB，计算全文件
+  SHA-256 并与 SQLite 登记值比较，解析器只接收 `max_bytes` 范围内字节。
+- 旧 Monitor 兼容先核对 manifest、chunk 精确集合、长度和摘要。旧 event raw_path
+  没有登记摘要，只能在项目 logs 内安全读取并报告计算摘要，不能冒充正式 SHA 验证。
+- 三项依赖 monkeypatch 的旧测试改为写入真实临时 SQLite event；Monitor 测试改断言正式
+  error 优先。测试继续验证结构化兼容、项目外路径拒绝和扫描上界，但不要求生产代码回退。
+
+### 验证
+
+- 首轮五项合同在旧实现上为预期 `5 failed in 0.87s`：正式 error/raw 未被选择、重复
+  捕获项目、尾部篡改未检出、v2 来源元数据缺失。
+- 查询前 payload 与最新 64 条窗口两项补强在旧实现上为预期 `2 failed`。
+- 修复后 C3 专项 `7 passed in 1.09s`；C1/C2/错误解析相关回归
+  `49 passed in 5.63s`。
+- main 全量 `120 passed in 48.77s`；test 工作树显式加载 main
+  `557 passed, 4 skipped in 250.00s`。
+- 以上只使用临时 SQLite/raw/Monitor 文件。没有读取或升级正式数据库、访问 COM3、
+  更新 Marketplace/安装缓存，也没有纳入用户 plugin manifest 差异。
+
+### 剩余风险
+
+- errors/raw_logs 的详情窗口仍分别为最新 200/1000 条；结果通过
+  `source_truncation` 明示窗口或字段截断。`max_bytes` 限制解析内容，64 MiB 另行限制
+  单文件完整摘要 I/O，两者不是同一个概念。
+- 旧 event raw_path 没有权威登记摘要，所以只保留兼容级证据；正式结论应依赖 schema v3
+  errors/raw_logs。
+- C2/C3 尚未推送并通过 GitHub Actions，也未进入 Marketplace 或安装缓存。正式项目
+  SQLite 仍为 v2；本地临时数据库全绿不能替代远端矩阵、正式升级或实板验收。

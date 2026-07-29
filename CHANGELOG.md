@@ -39,6 +39,9 @@
   payload 省略 port，mirror 端口可一致为 `null`。
 - `esp_logs_get` 新增 SQLite raw/error 正式详情、schema/source/capability 元数据和
   raw/error 独立截断报告；schema v2 明确只具备 runs/events 能力。
+- `esp_error_parse_log` 新增 DB-first 来源选择与 `query_source/source_truncation`
+  元数据：正式 errors 优先，其次读取已登记且完整校验的 raw，最后才进入有界的旧
+  event/Monitor 兼容路径。
 
 ### Changed
 
@@ -62,6 +65,9 @@
 - schema v3 的日志详情在与 run/events 相同的只读事务中读取。raw/error 采用
   project/run 双过滤的最新有界窗口；error 大文本在 SQL 侧截断并逐字段标记，raw 身份
   与 error 结构在返回前重新校验。
+- 错误解析一次固定活动项目，并使用专用 query-only SQLite 快照。兼容 event 只投影
+  最新 64 条、每条最多 8192 字符 message 和 16384 字符 payload；截断 payload 不解码。
+  正式 raw 在安全 fd 上完整比对登记 SHA-256，解析缓冲继续受 `max_bytes` 限制。
 - SQLite v2→v3 改为单事务重建 `raw_logs` / `errors`：严格复制并核对行数和外键后才写
   v3 marker；失败时保持原 v2 表、数据、版本和 marker。正式项目数据库不会由本阶段
   自动升级。
@@ -79,6 +85,9 @@
   `mode=ro`、`query_only` 和单事务快照；损坏 schema 或持久化 JSON 返回结构化错误，
   锁定/忙碌/权限等可用性问题与数据库损坏分开报告，目录等非普通数据库目标不再被
   当成缺库。
+- `esp_error_parse_log` 不再先调用 `esp_logs_get` 后重新捕获活动项目，避免一次调用混合
+  两个 LogScope；也不再让旧 event/raw_path 压过已经写入 SQLite 的正式 error/raw。
+  正式 raw 的缺失摘要、路径/类型冲突、超限文件或全文件 SHA-256 不匹配现在 fail-closed。
 - Windows Monitor artifact lease 不再为了空锁文件在申请 byte-range lock 前写入占位字节。
   竞争者现在先尝试非阻塞锁，成功后才重写锁元数据，避免 owner 的零长度 truncate 窗口把
   正常竞争误报为不可恢复的 `PermissionError [Errno 13]`。
@@ -178,6 +187,11 @@
 
 ### Validation
 
+- v3-C3 五项首轮合同在旧实现上为预期 `5 failed in 0.87s`；查询前 payload/最新事件窗口
+  两项复审合同另为预期 `2 failed`。完成后 C3 专项 `7 passed in 1.09s`、相关 C1/C2/
+  错误解析回归 `49 passed in 5.63s`、main 全量 `120 passed in 48.77s`、test 显式加载
+  main 全量 `557 passed, 4 skipped in 250.00s`。全部使用临时 SQLite/文件；未访问或
+  升级正式数据库、访问 COM3、更新 Marketplace/安装缓存。远端推送与 CI 尚未完成。
 - SQLite v3-B4.3 合同在 adapter 缺失时为预期 `40 failed, 1 skipped`；独立复审补入
   精确 raw 来源绑定和 native 全记录身份合同后曾得到
   `6 failed, 40 passed, 1 skipped`；第二轮合法失败端口合同曾得到

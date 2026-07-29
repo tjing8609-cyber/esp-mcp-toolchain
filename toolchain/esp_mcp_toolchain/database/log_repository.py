@@ -1797,6 +1797,173 @@ def read_run_snapshot(
         connection.close()
 
 
+def _list_bounded_error_parse_events(
+    connection: sqlite3.Connection,
+    *,
+    project_id: str,
+    run_id: str,
+    limit: int,
+    message_char_limit: int,
+    payload_char_limit: int,
+) -> tuple[list[dict[str, Any]], bool]:
+    limits = {
+        "limit": limit,
+        "message_char_limit": message_char_limit,
+        "payload_char_limit": payload_char_limit,
+    }
+    for field, value in limits.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise EventRepositoryError(f"{field} must be a positive integer")
+    rows = connection.execute(
+        """
+        SELECT
+          sequence_no,
+          substr(message, 1, :message_probe_limit) AS message_probe,
+          substr(payload_json, 1, :payload_probe_limit) AS payload_probe,
+          length(message) > :message_char_limit AS message_truncated,
+          length(payload_json) > :payload_char_limit AS payload_truncated
+        FROM events
+        WHERE project_id = :project_id AND run_id = :run_id
+        ORDER BY sequence_no DESC
+        LIMIT :row_limit
+        """,
+        {
+            "project_id": project_id,
+            "run_id": run_id,
+            "row_limit": limit + 1,
+            "message_char_limit": message_char_limit,
+            "message_probe_limit": message_char_limit,
+            "payload_char_limit": payload_char_limit,
+            "payload_probe_limit": payload_char_limit,
+        },
+    ).fetchall()
+    records: list[dict[str, Any]] = []
+    for row in rows[:limit]:
+        message = row["message_probe"]
+        payload_text = row["payload_probe"]
+        if not isinstance(message, str) or not isinstance(payload_text, str):
+            raise EventRepositoryError(
+                "stored event message and payload_json must be text"
+            )
+        payload_truncated = bool(row["payload_truncated"])
+        payload: dict[str, Any] | None = None
+        if not payload_truncated:
+            decoded = json.loads(payload_text)
+            if not isinstance(decoded, dict):
+                raise EventRepositoryError(
+                    "stored event payload_json must decode to an object"
+                )
+            payload = decoded
+        records.append(
+            {
+                "sequence_no": int(row["sequence_no"]),
+                "message": message,
+                "payload_json": payload,
+                "field_truncation": {
+                    "message": bool(row["message_truncated"]),
+                    "payload_json": payload_truncated,
+                },
+            }
+        )
+    records.reverse()
+    return records, len(rows) > limit
+
+
+def read_error_parse_snapshot(
+    database: str | Path,
+    *,
+    project_id: str,
+    run_id: str,
+    raw_log_limit: int,
+    error_limit: int,
+    error_file_char_limit: int,
+    error_exception_type_char_limit: int,
+    error_message_char_limit: int,
+    error_raw_text_char_limit: int,
+    legacy_event_limit: int,
+    legacy_message_char_limit: int,
+    legacy_payload_char_limit: int,
+) -> dict[str, Any]:
+    """Read all C3 source selectors from one query-only SQLite snapshot.
+
+    Compatibility events are projected through SQL-side character limits and
+    a fixed row window. A truncated payload is never decoded or treated as a
+    file path/error report.
+    """
+
+    connection, schema_version = _open_readonly_snapshot(database)
+    try:
+        row = _get_run_row(connection, project_id, run_id)
+        run = _run_from_row(row) if row is not None else None
+        raw_logs: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+        raw_logs_truncated = False
+        errors_truncated = False
+        error_fields_truncated = False
+        legacy_events: list[dict[str, Any]] = []
+        legacy_events_truncated = False
+        if run is not None:
+            if schema_version == CURRENT_SCHEMA_VERSION:
+                raw_logs, raw_logs_truncated = list_recent_raw_logs_for_run(
+                    connection,
+                    project_id=project_id,
+                    run_id=run_id,
+                    limit=raw_log_limit,
+                )
+                (
+                    errors,
+                    errors_truncated,
+                    error_fields_truncated,
+                ) = list_recent_errors_for_run(
+                    connection,
+                    project_id=project_id,
+                    run_id=run_id,
+                    limit=error_limit,
+                    file_char_limit=error_file_char_limit,
+                    exception_type_char_limit=error_exception_type_char_limit,
+                    message_char_limit=error_message_char_limit,
+                    raw_text_char_limit=error_raw_text_char_limit,
+                )
+            legacy_events, legacy_events_truncated = (
+                _list_bounded_error_parse_events(
+                    connection,
+                    project_id=project_id,
+                    run_id=run_id,
+                    limit=legacy_event_limit,
+                    message_char_limit=legacy_message_char_limit,
+                    payload_char_limit=legacy_payload_char_limit,
+                )
+            )
+        return {
+            "schema_version": schema_version,
+            "run": run,
+            "raw_logs": raw_logs,
+            "errors": errors,
+            "raw_logs_truncated": raw_logs_truncated,
+            "errors_truncated": errors_truncated,
+            "error_fields_truncated": error_fields_truncated,
+            "legacy_events": legacy_events,
+            "legacy_events_truncated": legacy_events_truncated,
+        }
+    except sqlite3.DatabaseError as exc:
+        raise _classify_sqlite_query_error(exc) from exc
+    except (
+        ErrorRepositoryError,
+        EventRepositoryError,
+        RawLogRepositoryError,
+        json.JSONDecodeError,
+        KeyError,
+        RecursionError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise LogDatabaseInvalidError(
+            "SQLite log database contains invalid stored error-parse data."
+        ) from exc
+    finally:
+        connection.close()
+
+
 def query_events(
     database: str | Path,
     *,

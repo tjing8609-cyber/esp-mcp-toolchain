@@ -7,7 +7,7 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；B4.1 仓储原语、B4.2/B4.3 纯只读 resolver 和 B4.4 项目级历史协调器已完成源码与临时数据库软件门禁。v3-C1 已把 latest/get/query 切换为无迁移、无在线 JSONL 导入的 SQLite 只读事务；v3-C2 已让 get 在同一快照返回有界、重新校验的正式 raw/error 详情。正式项目数据库和当前安装插件仍保持 v2；本轮没有访问板卡、写入/升级正式 SQLite、更新 Marketplace 或安装缓存。下一开发项为 v3-C3 DB-first 错误解析。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；B4.1 仓储原语、B4.2/B4.3 纯只读 resolver 和 B4.4 项目级历史协调器已完成源码与临时数据库软件门禁。v3-C1 已把 latest/get/query 切换为无迁移、无在线 JSONL 导入的 SQLite 只读事务；v3-C2 已让 get 在同一快照返回有界、重新校验的正式 raw/error 详情；v3-C3 已在本地实现一次固定项目、正式 error/raw 优先、全文件 SHA-256 核验和有界旧 event/Monitor 兼容。正式项目数据库和当前安装插件仍保持 v2；本轮没有访问板卡、写入/升级正式 SQLite、更新 Marketplace 或安装缓存。C2/C3 尚未完成远端推送与 CI。
 
 ## 本轮已完成实现
 
@@ -17,7 +17,11 @@
   - raw REPL stdout/stderr 自动解析；
   - 固定串口 capture 支持跨 chunk Traceback；
   - 后台 Monitor 暴露 `detected_error` 并只写一次结构化 SQLite 错误事件；
-  - `esp_error_parse_log` 读取结构化报告和有界原始日志，路径强制限制在当前项目 logs 根目录。
+  - `esp_error_parse_log` 一次固定 LogScope，按正式 errors → 正式 raw_logs → 兼容
+    event/Monitor 选择；正式 raw 的路径/目录链/普通文件身份和完整 SHA-256 均验证后，
+    才把不超过 `max_bytes` 的内容交给解析器；
+  - 兼容 event 只取最新 64 条，message/payload 在 SQL 侧有界，截断 payload 不解码；
+    schema v2 只读 runs/events，不迁移、不导入 JSONL。
 - 新增四个提高工具：
   - `esp_gpio_status`：raw REPL 查询前要求 `allow_program_interrupt=true`；
   - `esp_hardware_info`：passive 只接受已枚举串口并合并 reviewed mapping，runtime 探测要求 `allow_program_interrupt=true`；
@@ -259,6 +263,10 @@
   `ineligible`；四项均为旧 writer 的 `serial_capture_legacy_text`。探针将
   `sqlite3.connect` 替换为失败函数仍全部完成，前后 189 个正式项目文件的路径、长度、
   mtime 与 SHA-256 差异为 0。
+- C3 首轮五项合同在旧实现上为预期 `5 failed in 0.87s`；查询前 payload/最新事件窗口
+  两项复审另为预期 `2 failed`。完成后专项 `7 passed in 1.09s`、相关回归
+  `49 passed in 5.63s`、main 全量 `120 passed in 48.77s`、test 显式加载 main 全量
+  `557 passed, 4 skipped in 250.00s`。仅使用临时 SQLite/raw/Monitor 文件。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
@@ -274,13 +282,13 @@
 
 - 当前仓库的既有本地插件 manifest 差异不属于本次提交；个人 Marketplace 源和当前会话加载的安装缓存均为 `0.1.0+codex.20260727064819`。
 - Marketplace 源通过 plugin validator、main 发布测试 `104 passed in 14.19s` 和 `48 tools / 12 resources / 12 prompts` 直接枚举。
-- 用户重启后已核对 48/12/12。当前 B4.4 工作树改动尚未同步 Marketplace 或安装缓存；本轮也不会修改仓库内用户自有的 plugin manifest 差异。
+- 用户重启后已核对 48/12/12。当前 B4.4/C1-C3 工作树改动尚未同步 Marketplace 或安装缓存；本轮也不会修改仓库内用户自有的 plugin manifest 差异。
 
 ## 待完成
 
-1. v3-C3：让 `esp_error_parse_log` 优先查询正式 errors/raw_logs，并保留显式、有界且
-   项目内的旧 Monitor/event 兼容路径。
-2. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+1. 网络恢复后按 main → test 推送 C2/C3，并核对两分支 Windows/Linux、Python 3.10/3.12
+   GitHub Actions；当前本地结果不能代替远端门禁。
+2. v3-B/v3-C 双分支远端门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
    48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
    v2 数据库升级。
 3. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
