@@ -333,7 +333,7 @@ SQLite v3-B4.1 红灯复审：4 failed, 7 passed；最终专项：11 passed in 1
 SQLite v3-B4.2 resolver：初始红灯 42 failed（仅缺入口）；独立复审补强后 58 passed in 1.66s；既有 Monitor 回归 28 passed in 41.00s
 SQLite v3-B4.3 historical capture adapter 合同：对 main `b3a4989` 的初始预期红灯为 40 failed, 1 skipped；独立复审再固定 legacy 现代文件名不得冒充精确 raw，以及 native 必须严格为唯一 UUID 的 `prepare → complete` 两条记录、固定 task/source、前后一致的端口元数据。第二轮复审补入合法失败事件可保持 `selected_port=COM3/None` 且省略 completion payload port、成功事件仍必须有一致端口的合同；当前加载 main 工作树实现为 50 passed, 1 skipped。skip 仅表示当前 Windows 账户不能创建 symlink 测试夹具；合同同时冻结当前项目安全重派生、B4.1 资格和零 SQLite/lease/marker 副作用。
 SQLite v3-B4.3 capture adapter：初始红灯 40 failed, 1 skipped；独立复审补入精确 raw 来源绑定和 native 全记录身份合同后曾得到 6 failed, 40 passed, 1 skipped；第二轮复审的合法失败端口合同曾得到 2 failed, 48 passed, 1 skipped。全部修复后专项 50 passed, 1 skipped in 1.31s；main 全量 120 passed in 49.93s
-B4.4 仓储基础合同（test 分支红灯）：新增事务内 event/run profile、精确 sequence、持久 raw claim、跨 run 冲突与回滚合同；显式加载当前 main 源码得到 5 failed, 11 passed in 1.94s，失败原因是 claim 表、`HistoricalRawClaim` 和严格 profile API 尚未实现。本记录不代表 B4.4 已开发或正式数据库已升级
+B4.4 仓储基础合同：初始红灯为 5 failed, 11 passed in 1.94s；后续补强精确 event/run profile 形状、复合 event 所有权外键、B4.3 candidate→repository 直连和 Monitor 事件时间戳的有界容差。当前显式加载 main 工作树源码的 repository/Monitor/capture 三文件合同为 133 passed, 1 skipped in 5.56s；正式项目数据库仍为 schema v2，本记录不代表已执行正式迁移
 当前软件全量：B4.3 最终源码 main 120 passed in 49.93s；合入 main 与 50 条 B4.3 合同后，test 分支自身源码 508 passed, 4 skipped in 254.09s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同

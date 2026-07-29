@@ -727,12 +727,10 @@ def _strict_profiles(
             "run_id",
             "task_type",
             "status",
-            "ended_at",
             "selected_port",
-            "summary",
-            "payload_json",
         )
     }
+    run_profile["terminal_event_uuid"] = event_uuid
     return (
         event_profile,
         run_profile,
@@ -743,6 +741,9 @@ def _strict_profiles(
 
 def _historical_claim(
     artifact: log_repository.RawLogArtifact,
+    *,
+    expected_event_profile: dict,
+    artifacts: log_repository.EventArtifacts,
 ) -> log_repository.HistoricalRawClaim:
     assert artifact.sha256 is not None
     return log_repository.HistoricalRawClaim(
@@ -751,8 +752,12 @@ def _historical_claim(
         sha256=artifact.sha256,
         adapter_id="history_contract_v1",
         reconciliation_version=1,
-        event_profile_sha256=hashlib.sha256(b"event profile").hexdigest(),
-        artifact_bundle_sha256=hashlib.sha256(b"artifact bundle").hexdigest(),
+        event_profile_sha256=log_repository.canonical_profile_sha256(
+            expected_event_profile
+        ),
+        artifact_bundle_sha256=(
+            log_repository.event_artifact_bundle_sha256(artifacts)
+        ),
     )
 
 
@@ -778,7 +783,11 @@ def _strict_reconcile(
         expected_sequence_no=expected_sequence_no,
         expected_next_sequence_no=expected_next_sequence_no,
         raw_claims=tuple(
-            _historical_claim(artifact)
+            _historical_claim(
+                artifact,
+                expected_event_profile=event_profile,
+                artifacts=artifacts,
+            )
             for artifact in artifacts.raw_logs
         ),
     )
@@ -820,6 +829,20 @@ def test_schema_v3_reopen_adds_persistent_historical_raw_claim_contract():
             )
             if row[5]
         )
+        event_identity_index = next(
+            row
+            for row in connection.execute("PRAGMA index_list(events)")
+            if row[1] == "idx_events_project_run_uuid"
+        )
+        event_identity_columns = tuple(
+            row[2]
+            for row in connection.execute(
+                "PRAGMA index_info(idx_events_project_run_uuid)"
+            )
+        )
+        claim_foreign_keys = connection.execute(
+            "PRAGMA foreign_key_list(historical_raw_claims)"
+        ).fetchall()
     finally:
         connection.close()
 
@@ -838,15 +861,89 @@ def test_schema_v3_reopen_adds_persistent_historical_raw_claim_contract():
         "claimed_at",
     } <= columns
     assert primary_key == ("project_id", "path")
+    assert event_identity_index[2] == 1
+    assert event_identity_columns == ("project_id", "run_id", "event_uuid")
+    event_fk_rows = [
+        row for row in claim_foreign_keys if row[2] == "events"
+    ]
+    assert len(event_fk_rows) == 3
+    assert len({row[0] for row in event_fk_rows}) == 1
+    assert {
+        (row[3], row[4], row[6])
+        for row in event_fk_rows
+    } == {
+        ("project_id", "project_id", "CASCADE"),
+        ("run_id", "run_id", "CASCADE"),
+        ("event_uuid", "event_uuid", "CASCADE"),
+    }
 
 
-def test_strict_profiles_and_sequence_are_checked_before_any_artifact_write():
-    run_id = "history-strict-profile"
+def test_historical_raw_claim_foreign_key_rejects_event_from_another_run():
+    first_run = "history-claim-fk-first"
+    scope, first_event_uuid, _event = _prepare_event(first_run)
+    second_run = "history-claim-fk-second"
+    _scope, second_event_uuid, _event = _prepare_event(second_run)
+    assert first_event_uuid != second_event_uuid
+
+    connection = sqlite3.connect(scope.database_file)
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """
+                INSERT INTO historical_raw_claims (
+                  project_id, path, run_id, event_uuid, kind, sha256,
+                  adapter_id, reconciliation_version,
+                  event_profile_sha256, artifact_bundle_sha256, claimed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    scope.project_id,
+                    "serial/history/cross-run.bin",
+                    first_run,
+                    second_event_uuid,
+                    "serial_monitor_chunk",
+                    "0" * 64,
+                    "history_contract_v1",
+                    1,
+                    "1" * 64,
+                    "2" * 64,
+                    TIMESTAMP,
+                ),
+            )
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize(
+    ("profile_name", "mutation"),
+    (
+        ("event", "empty"),
+        ("event", "missing"),
+        ("event", "extra"),
+        ("run", "empty"),
+        ("run", "missing"),
+        ("run", "extra"),
+    ),
+)
+def test_strict_reconcile_requires_exact_profile_shapes(
+    profile_name,
+    mutation,
+):
+    run_id = f"history-profile-shape-{profile_name}-{mutation}"
     scope, event_uuid, _event = _prepare_event(run_id)
     event_profile, run_profile, sequence_no, next_sequence_no = (
         _strict_profiles(scope, run_id, event_uuid)
     )
-    event_profile["message"] = "stale precheck value"
+    selected_profile = (
+        event_profile if profile_name == "event" else run_profile
+    )
+    if mutation == "empty":
+        selected_profile.clear()
+    elif mutation == "missing":
+        selected_profile.pop(next(iter(selected_profile)))
+    else:
+        selected_profile["unexpected_field"] = "bypass"
     before = _snapshot(scope, run_id)
 
     with pytest.raises(
@@ -891,6 +988,113 @@ def test_strict_profiles_and_sequence_are_checked_before_any_artifact_write():
             expected_next_sequence_no=next_sequence_no,
         )
     assert _snapshot(scope, run_id) == before
+    assert log_repository.get_run_historical_raw_claims(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run_id,
+    ) == []
+
+
+def test_strict_profiles_and_sequence_are_checked_before_any_artifact_write():
+    run_id = "history-strict-profile"
+    scope, event_uuid, _event = _prepare_event(run_id)
+    event_profile, run_profile, sequence_no, next_sequence_no = (
+        _strict_profiles(scope, run_id, event_uuid)
+    )
+    event_profile["message"] = "stale precheck value"
+    before = _snapshot(scope, run_id)
+
+    with pytest.raises(
+        log_repository.HistoricalArtifactProfileConflictError
+    ) as exc_info:
+        _strict_reconcile(
+            scope,
+            run_id,
+            event_uuid,
+            artifacts=_artifacts(event_uuid),
+            event_profile=event_profile,
+            run_profile=run_profile,
+            expected_sequence_no=sequence_no,
+            expected_next_sequence_no=next_sequence_no,
+        )
+
+    assert (
+        exc_info.value.error_kind
+        == "historical_artifact_database_profile_conflict"
+    )
+    assert _snapshot(scope, run_id) == before
+
+
+def test_event_timestamp_tolerance_is_bounded_and_checked_in_transaction():
+    run_id = "history-timestamp-tolerance"
+    scope, event_uuid, _event = _prepare_event(run_id)
+    event_profile, run_profile, sequence_no, next_sequence_no = (
+        _strict_profiles(scope, run_id, event_uuid)
+    )
+    event_profile["ts"] = "2026-07-28T08:00:00.900000+00:00"
+    artifacts = _artifacts(event_uuid)
+
+    with pytest.raises(
+        log_repository.HistoricalArtifactProfileConflictError
+    ):
+        log_repository.reconcile_existing_event_artifacts(
+            scope.database_file,
+            project_id=scope.project_id,
+            run_id=run_id,
+            event_uuid=event_uuid,
+            artifacts=artifacts,
+            expected_event_profile=event_profile,
+            expected_run_profile=run_profile,
+            expected_sequence_no=sequence_no,
+            expected_next_sequence_no=next_sequence_no,
+            expected_event_ts_tolerance_seconds=0,
+            raw_claims=tuple(
+                _historical_claim(
+                    artifact,
+                    expected_event_profile=event_profile,
+                    artifacts=artifacts,
+                )
+                for artifact in artifacts.raw_logs
+            ),
+        )
+
+    report = log_repository.reconcile_existing_event_artifacts(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run_id,
+        event_uuid=event_uuid,
+        artifacts=artifacts,
+        expected_event_profile=event_profile,
+        expected_run_profile=run_profile,
+        expected_sequence_no=sequence_no,
+        expected_next_sequence_no=next_sequence_no,
+        expected_event_ts_tolerance_seconds=1,
+        raw_claims=tuple(
+            _historical_claim(
+                artifact,
+                expected_event_profile=event_profile,
+                artifacts=artifacts,
+            )
+            for artifact in artifacts.raw_logs
+        ),
+    )
+    assert [entry["inserted"] for entry in report["raw_claims"]] == [True]
+
+    for invalid in (-0.001, 1.001, float("inf"), float("nan"), True):
+        with pytest.raises(log_repository.LogRepositoryError):
+            log_repository.reconcile_existing_event_artifacts(
+                scope.database_file,
+                project_id=scope.project_id,
+                run_id=run_id,
+                event_uuid=event_uuid,
+                artifacts=log_repository.EMPTY_EVENT_ARTIFACTS,
+                expected_event_ts_tolerance_seconds=invalid,
+            )
+    assert len(log_repository.get_run_historical_raw_claims(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run_id,
+    )) == 1
 
 
 def test_strict_reconcile_commits_claim_and_artifacts_once_on_exact_retry():

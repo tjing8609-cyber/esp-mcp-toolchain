@@ -11,6 +11,7 @@ import pytest
 
 from esp_mcp_toolchain.backends import serial_monitor_store
 from esp_mcp_toolchain.database import log_repository
+from esp_mcp_toolchain.database.migrations import init_database
 from esp_mcp_toolchain.tools.log_tools import LogScope
 
 
@@ -311,6 +312,97 @@ def test_native_complete_with_modern_filename_is_projection_eligible_exact_raw()
     assert candidate.artifact_content_kind == "exact_serial_bytes"
     assert candidate.artifacts.raw_logs[0].kind == "serial_capture_raw"
     assert candidate.artifacts.raw_logs[0].sha256 == hashlib.sha256(raw_bytes).hexdigest()
+
+
+def test_native_candidate_profiles_connect_directly_to_strict_repository_gate():
+    scope = _scope()
+    run_id = "serial_capture_strict_profile"
+    source_name = f"{run_id}.jsonl"
+    raw_name = "strict-native_20260728_120000_012345abcdef.log"
+    raw_bytes = b"strict historical bytes"
+    event_uuid = str(uuid4())
+    records = _native_records(
+        project_id=scope.project_id,
+        run_id=run_id,
+        raw_name=raw_name,
+        event_uuid=event_uuid,
+        raw_size=len(raw_bytes),
+    )
+    _write_source(
+        scope,
+        source_name=source_name,
+        records=records,
+        raw_name=raw_name,
+        raw_bytes=raw_bytes,
+    )
+    candidate = _resolve(
+        scope,
+        source_name=source_name,
+        run_id=run_id,
+        event_uuid=event_uuid,
+    )
+    init_database(scope.database_file, project_id=scope.project_id)
+    log_repository.create_run(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run_id,
+        task_type="serial_capture",
+        started_at=records[0]["ts"],
+        selected_port="COM3",
+    )
+    for record in records:
+        _event, inserted = log_repository.append_event(
+            scope.database_file,
+            project_id=scope.project_id,
+            run_id=run_id,
+            event_uuid=record["event_uuid"],
+            ts=record["ts"],
+            phase=record["phase"],
+            level=record["level"],
+            tool=record["tool"],
+            source=record["source"],
+            message=record["message"],
+            payload=record["payload_json"],
+        )
+        assert inserted is True
+    log_repository.finish_run(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run_id,
+        status="succeeded",
+        ended_at=NATIVE_AT,
+        summary=records[-1]["message"],
+    )
+    claims = tuple(
+        log_repository.HistoricalRawClaim(
+            path=artifact.path,
+            kind=artifact.kind,
+            sha256=str(artifact.sha256),
+            adapter_id=candidate.adapter_id,
+            reconciliation_version=candidate.reconciliation_version,
+            event_profile_sha256=(
+                candidate.expected_event_profile_sha256
+            ),
+            artifact_bundle_sha256=candidate.artifact_bundle_sha256,
+        )
+        for artifact in candidate.artifacts.raw_logs
+    )
+
+    report = log_repository.reconcile_existing_event_artifacts(
+        scope.database_file,
+        project_id=scope.project_id,
+        run_id=run_id,
+        event_uuid=event_uuid,
+        artifacts=candidate.artifacts,
+        expected_event_profile=candidate.expected_event_profile,
+        expected_run_profile=candidate.expected_run_profile,
+        expected_sequence_no=2,
+        expected_next_sequence_no=3,
+        raw_claims=claims,
+    )
+
+    assert [item["inserted"] for item in report["raw_claims"]] == [True]
+    assert [item["inserted"] for item in report["raw_logs"]] == [True]
 
 
 def test_native_complete_old_filename_remains_legacy_text_even_when_empty():

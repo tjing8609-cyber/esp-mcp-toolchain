@@ -265,6 +265,8 @@ def test_resolves_moved_v1_path_without_using_old_location(monkeypatch):
 
     assert candidate.status == "resolved"
     assert candidate.adapter_id == ADAPTER_ID
+    assert candidate.reconciliation_version == 1
+    assert candidate.event_ts_tolerance_seconds == 1.0
     assert candidate.project_id == scope.project_id
     assert candidate.run_id == run_id
     assert candidate.requested_event_uuid == event_uuid
@@ -276,6 +278,31 @@ def test_resolves_moved_v1_path_without_using_old_location(monkeypatch):
     assert candidate.terminal_at == normalize_timestamp(TERMINAL_AT)
     assert candidate.expected_run_status == "cancelled"
     assert candidate.expected_last_error is None
+    assert candidate.expected_event_profile == {
+        "event_uuid": event_uuid,
+        "project_id": scope.project_id,
+        "run_id": run_id,
+        "ts": normalize_timestamp(TERMINAL_AT),
+        "phase": "complete",
+        "level": "info",
+        "tool": "esp_serial_monitor",
+        "source": "esp32",
+        "message": "Serial monitor stopped.",
+        "payload_json": {"state": "STOPPED", "last_error": None},
+    }
+    assert candidate.expected_run_profile == {
+        "project_id": scope.project_id,
+        "run_id": run_id,
+        "task_type": "serial_monitor",
+        "status": "cancelled",
+        "selected_port": "COM_HISTORY",
+        "terminal_event_uuid": event_uuid,
+    }
+    assert candidate.expected_event_profile_sha256 == (
+        log_repository.canonical_profile_sha256(
+            candidate.expected_event_profile
+        )
+    )
     assert len(candidate.artifacts.raw_logs) == 1
     assert candidate.artifacts.raw_logs[0].path == (
         f"serial/{run_id}/chunk-000001.bin"
@@ -420,6 +447,17 @@ def test_resolves_terminal_errors_and_does_not_share_mutable_manifest(
     assert candidate.status == "resolved"
     assert candidate.expected_run_status == "failed"
     assert candidate.expected_last_error == last_error
+    exposed_event = candidate.expected_event_profile
+    exposed_run = candidate.expected_run_profile
+    exposed_event["payload_json"]["last_error"]["message"] = "tampered"
+    exposed_run["status"] = "cancelled"
+    assert (
+        candidate.expected_event_profile["payload_json"]["last_error"][
+            "message"
+        ]
+        == "device disconnected"
+    )
+    assert candidate.expected_run_profile["status"] == "failed"
     exposed = candidate.expected_last_error
     try:
         exposed["message"] = "tampered"
