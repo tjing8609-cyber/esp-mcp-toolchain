@@ -1192,8 +1192,8 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   各自登记。固定 capture 因共享 `logs/raw`，仅使用 Monitor 的 per-run lease 不够，
   需要项目级 claim/lease 或等价的原子唯一所有权。
 - 当前 safe-fd 与前后目录检查面向普通本地故障和路径替换，不声称抵御同一账户恶意完成
-  可恢复原样的 ABA。正式项目数据库仍为 v2；B4.4、v3-C、Marketplace 重启确认完成前
-  不执行正式升级。
+  可恢复原样的 ABA。截至该修复阶段，正式项目数据库仍为 v2；B4.4、v3-C、Marketplace
+  重启确认完成前不执行正式升级。
 - CI 的单次固定 ready 超时不自动等于产品回归。本轮先检查失败日志，再做同一用例独立
   重复，最后只重跑失败 job；没有用整轮盲目重跑掩盖可复现缺陷，也没有把既有测试调度
   波动冒充 B4.3 修复。
@@ -1501,3 +1501,45 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   的 Windows/Linux、Python 3.10/3.12 四个 job 均成功。
 - 本次测试使用假串口、临时项目和临时 SQLite，不访问 COM3、正式数据库或实板；没有
   更新 Marketplace/安装缓存，也没有纳入用户 plugin manifest 差异。
+
+## 2026-07-29：正式 SQLite 升级封口脚本误把持久锁文件当作活动租约
+
+### 症状
+
+- Marketplace 新版插件重启后，正式 schema-v2 数据库先通过只读检查和临时副本演练，
+  再成功升级到 v3、完成首次历史补投影和第二次幂等回放。
+- 最后的聚合校验仍报告失败；数据库版本、行数、完整性、外键、marker 和文件摘要均未
+  报错，失败条件只来自 `.sqlite-historical-artifacts.lock` 仍然存在。
+
+### 根因
+
+- `HistoricalProjectReconciliationLease.release()` 的合同是释放 OS 文件锁并关闭句柄，
+  不删除持久锁文件。锁文件保留项目、进程和 lock identity 元数据，供后续竞争者和
+  status/probe 判断。
+- 验收脚本把 `Path.exists()` 当成租约状态，混淆了“控制文件存在”和“文件锁仍被持有”。
+  因此它把符合设计的持久控制文件误报为协调器未清理。
+
+### 修复
+
+- 封口条件改为同时检查：`read_historical_project_reconciliation_status()` 返回
+  `active=false`、`metadata_error=null`、`effective_state=completed`，且锁文件能以
+  `FileShare.None` 重新取得独占只读句柄。
+- 正式写入前先要求 DB/WAL/SHM 连续 5 秒内容与时间稳定、WAL 为 0 字节、三个文件均可
+  独占只读打开；随后复制并核对 v2 备份，再调用事务化 `init_database()`。
+
+### 验证和边界
+
+- v2 备份为
+  `artifacts/database-backups/esp_mcp-v2-preupgrade-20260729T123747Z-5D5F75E12C54.sqlite`，
+  462,848 字节，SHA-256 为
+  `5D5F75E12C54EF6137CFD2BA991A949FF2574304E96BC67A97B961649AA8711D`。
+- 升级前后 runs/events 保持 111/224；最终 schema v3 为 5 raw、1 error、5 claim，
+  `integrity_check=ok` 且外键零违规。5 个 raw 文件重新读取后的 SHA-256 全部与 SQLite
+  登记值一致。
+- 首次协调扫描 26 项：5 reconciled、17 ineligible、4 `no_artifacts`、0 failed；
+  第二次回放为 5 `already_reconciled`、0 reconciled、`database_persisted=false`。第二次
+  marker 的 false 表示该次无需数据库写入，不表示首次提交失败。
+- 运行中的安装插件通过 `esp_logs_get` 返回 schema-v3 authoritative raw/error；
+  `esp_error_parse_log` 对历史断连 run 只使用正式 `sqlite_errors`，未回退到兼容来源。
+- 本步骤没有访问 COM3、运行板端程序、删除文件、擦除或烧录；正式数据库写入只包含
+  已演练的 schema 升级、历史证据补投影及 marker。

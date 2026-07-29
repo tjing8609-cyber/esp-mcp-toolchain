@@ -7,7 +7,7 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；B4.1 仓储原语、B4.2/B4.3 纯只读 resolver 和 B4.4 项目级历史协调器已完成源码与临时数据库软件门禁。v3-C1 已把 latest/get/query 切换为无迁移、无在线 JSONL 导入的 SQLite 只读事务；v3-C2 已让 get 在同一快照返回有界、重新校验的正式 raw/error 详情；v3-C3 已实现一次固定项目、正式 error/raw 优先、全文件 SHA-256 核验和有界旧 event/Monitor 兼容。C2/C3 已推送，main/test 的 Windows/Linux、Python 3.10/3.12 共 8 个远端 job 全部成功。正式项目数据库和当前安装插件仍保持 v2；本轮没有访问板卡、写入/升级正式 SQLite、更新 Marketplace 或安装缓存。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3、B4.1-B4.4 与 v3-C1-C3 已完成源码、本地/远端软件门禁和 Marketplace 发布。当前安装插件为 `0.1.0+codex.20260729114414`；正式项目数据库已在 v2 备份和临时副本演练后显式升级到 v3，并完成首次历史补投影与第二次幂等回放。本次正式 SQLite 验收没有访问板卡。
 
 ## 本轮已完成实现
 
@@ -124,7 +124,8 @@
 - B4.4 仓储基础在 schema v3 中新增 `historical_raw_claims`：主键为
   `(project_id, path)`，同时绑定 run、最后 completion event、artifact kind/SHA-256、
   adapter/version、event profile 和 bundle 摘要。已存在的 v3 临时库重开时会 additive
-  补表，v2→v3 迁移也在同一迁移事务中建表；正式 v2 项目库未调用迁移。
+  补表，v2→v3 迁移也在同一迁移事务中建表；正式项目库已于 2026-07-29 在备份和
+  临时副本演练后显式迁移。
 - `reconcile_existing_event_artifacts()` 现在可选接收完整 event/run profile、精确 event
   sequence、run `next_sequence_no` 和逐 raw claim。全部条件在原有
   `BEGIN IMMEDIATE` 内、任何 claim/raw/error 写入前核对；claim 与 artifact 必须一一
@@ -167,8 +168,17 @@
 - v3-C2 初始四合同在 C1 实现上为预期 `4 failed in 0.89s`；实现后补入并发单快照和
   非规范 error 值，C2 专项 `6 passed`，C1+C2 `16 passed in 0.99s`，main 全量
   `120 passed in 48.06s`。
-- 当前完整本地门禁：main `120 passed in 49.70s`；test 显式加载 main
-  `531 passed, 4 skipped in 243.41s`。两轮独立复审 P0=0、P1=0。
+- 当前完整本地门禁：main `120 passed in 56.80s`；test 显式加载 main
+  `557 passed, 4 skipped in 271.45s`。4 项 skip 为 Windows 普通文件 symlink
+  权限边界，不涉及本次 SQLite 正式数据验收。
+- 正式库迁移前为 schema v2、111 runs、224 events、110 个旧导入标记，主文件
+  SHA-256 为 `5D5F75E12C54EF6137CFD2BA991A949FF2574304E96BC67A97B961649AA8711D`；
+  `integrity_check=ok` 且外键零违规。临时副本先完成 v3 升级、首次补投影和第二次
+  幂等回放，正式源文件与 172 个日志文件前后不变。
+- 正式升级保留同 SHA-256 的 v2 备份。首次协调扫描 26 项，5 项补投影、17 项
+  ineligible、4 项 `no_artifacts`、0 失败；第二次回放 5 项均为
+  `already_reconciled` 且数据库零新增。最终为 schema v3、111 runs、224 events、
+  5 raw、1 error、5 claim、110 个旧导入标记，完整性和外键继续通过。
 - 提示词/提高工具/架构专项：`25 passed`。
 - 串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：`62 passed`。
 - 显式加载 `main` 源码的完整候选门禁：`226 passed in 29.35s`。
@@ -289,14 +299,18 @@
 
 ## 插件发布状态
 
-- 当前仓库的既有本地插件 manifest 差异不属于本次提交；个人 Marketplace 源和当前会话加载的安装缓存均为 `0.1.0+codex.20260727064819`。
-- Marketplace 源通过 plugin validator、main 发布测试 `104 passed in 14.19s` 和 `48 tools / 12 resources / 12 prompts` 直接枚举。
-- 用户重启后已核对旧版本 48/12/12。B4.4/C1-C3 已通过本地与双分支远端门禁，但尚未同步 Marketplace 或安装缓存；本轮也不会修改仓库内用户自有的 plugin manifest 差异。
+- 当前仓库的既有本地 plugin manifest 差异不属于本次提交；个人 Marketplace 源和
+  当前会话加载的安装缓存均为 `0.1.0+codex.20260729114414`。
+- Marketplace 源通过 plugin validator、发布测试 `120 passed` 和
+  `48 tools / 12 resources / 12 prompts` 直接枚举；用户重启后已再次核对缓存版本、
+  48 个活动工具、12 resources、12 prompts 和正确项目上下文。
+- B4.4/C1-C3 的正式数据库验收已使用该安装插件完成；本轮仍不会修改仓库内用户自有的
+  plugin manifest 差异。
 
 ## 待完成
 
-1. v3-B/v3-C 双分支远端门禁已完成；只同步 Marketplace 源，运行 validator、发布测试和
-   48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
-   v2 数据库升级。
-2. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
-   精确动作单独确认。
+1. 继续相对下载验收：使用 workspace 内的显式本地目标，核对返回路径、实际文件、
+   字节数和 SHA-256，确认不会写入版本化安装缓存。
+2. 继续程序停止、GPIO34 只读、板上回归、性能、软复位和日志闭环；每项单独记录成功
+   证据与不证明的边界。
+3. 临时板端文件删除、擦除和新的烧录/恢复仍按精确动作单独确认。

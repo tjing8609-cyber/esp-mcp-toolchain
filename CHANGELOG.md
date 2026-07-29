@@ -37,6 +37,9 @@
   native source 必须严格为唯一 UUID 的两条 `prepare → complete` 记录，且
   task/source/selected-port 一致；成功 completion 必须有匹配 port，合法失败允许
   payload 省略 port，mirror 端口可一致为 `null`。
+- 新增 v3-B4.4 项目级历史证据协调器：schema-v3 持久 claim、项目 lease、Monitor
+  run lease、候选二次解析、跨 run raw 所有权预检和独立原子 marker 共同保证正式
+  补投影可失败观测、可中断续跑和严格幂等。
 - `esp_logs_get` 新增 SQLite raw/error 正式详情、schema/source/capability 元数据和
   raw/error 独立截断报告；schema v2 明确只具备 runs/events 能力。
 - `esp_error_parse_log` 新增 DB-first 来源选择与 `query_source/source_truncation`
@@ -69,8 +72,10 @@
   最新 64 条、每条最多 8192 字符 message 和 16384 字符 payload；截断 payload 不解码。
   正式 raw 在安全 fd 上完整比对登记 SHA-256，解析缓冲继续受 `max_bytes` 限制。
 - SQLite v2→v3 改为单事务重建 `raw_logs` / `errors`：严格复制并核对行数和外键后才写
-  v3 marker；失败时保持原 v2 表、数据、版本和 marker。正式项目数据库不会由本阶段
-  自动升级。
+  v3 marker；失败时保持原 v2 表、数据、版本和 marker。只读查询不会自动升级。
+- 2026-07-29 在 Marketplace 新插件重启确认、临时副本演练和 v2 备份完成后，正式项目
+  数据库已显式升级到 schema v3；历史协调器首次补入 5 条 raw、1 条 error 和 5 条
+  claim，第二次回放 5 项全部为 `already_reconciled`。
 - 同步工具统一使用 start/prepare/complete/finish run 生命周期；后台 Monitor 在启动时固定完整 `LogScope`，并由 worker 写入原项目终态。
 - 跨工作树门禁由 `index-test` 明确加载 `index` 源码，并校验实际导入来源，避免测试工作树误测自身旧实现。
 - GitHub Actions 只检出被推送的单个分支；test 推送前必须合入固定、已验证的 main，不能把本地 `ESP_MCP_SOURCE_ROOT` 跨工作树覆盖当作远端分支同步。
@@ -80,6 +85,9 @@
 
 ### Fixed
 
+- 修复正式数据库封口脚本把“持久锁文件存在”误判为“项目租约仍活动”的验收错误。
+  B4.4 锁文件按设计在 release 后保留；正确判据是只读 status/probe 返回
+  `active=false`、锁元数据有效且 OS 文件锁可重新取得。
 - 修复 `test_monitor_stop_registers_each_finalized_chunk_once` 在慢速 Windows CI 上依赖固定
   3 秒 status 轮询的竞态。测试现在逐段写入 `abc` / `def`，通过带游标的
   `esp_serial_monitor_read(wait_ms=30000)` 条件通知确认每段已由 worker 写入 store 并

@@ -270,7 +270,7 @@ MicroPython 方向：
 - memory_items / memory_audit 表。
 - 日志导出和检索增强。
 
-当前状态：SQLite 已在本地主线成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v3-A 已补齐 raw/error 约束、仓储和显式 v2→v3 迁移；v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；v3-B4.1 已提供既有终态 event 的原子证据补投影，B4.2/B4.3 已提供纯只读历史 Monitor 与固定 capture resolver。v3-B4.4 已在源码和临时 schema-v3 数据库完成：持久 `historical_raw_claims`、事务内 profile/sequence 门禁、项目级 lease、两次解析、跨 run raw 所有权预检、Monitor run lease、独立 marker、幂等续跑和中断状态读取均已接通。正式项目数据库和当前安装插件仍保持 v2，尚未执行升级或正式历史补投影；v3-C raw/error 查询接入尚未开始。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
+当前状态：SQLite 已在本地主线成为 runs/events/raw/errors 的正式状态与查询源，JSONL 保留为审计镜像。schema v3-A、v3-B2/B3、v3-B4.1-B4.4 与 v3-C1-C3 均已完成源码、软件门禁和发布；Marketplace 与安装缓存为 `0.1.0+codex.20260729114414`。2026-07-29 已先备份并在临时副本演练，再将正式项目数据库显式升级到 v3：111 runs、224 events 不变，历史协调器新增 5 raw、1 error、5 claim，第二次回放 5 项全部幂等。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
 
 ## 当前进度
 
@@ -303,7 +303,7 @@ MicroPython 方向：
 - `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。当前会话加载的安装插件为 `0.1.0+codex.20260727064819`，工具面仍为 `48 tools / 12 resources / 12 prompts`；本工作树的新 B4.4 源码尚未同步到 Marketplace 或安装缓存。
+- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。当前 Marketplace 与安装缓存已更新为 `0.1.0+codex.20260729114414`；validator、源目录 `120 passed`、重启后活动工具注册和缓存本体枚举均确认 `48 tools / 12 resources / 12 prompts`。
 - 初始测试集。
 - 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；本地门禁可从 `index-test` 显式加载 `index` 的主线源码。GitHub Actions 只检出被推送的单个分支，因此推送 test 前必须把固定、已验证的 main 合入 test，不能用本地跨工作树绿灯代替 test 分支自身的远端合同。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
@@ -344,10 +344,10 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
 历史样本只读验证：正式项目 22 个 v1 Monitor manifest 为 14 个 `resolved`、8 个 `no_artifacts`、0 个错误；4 个固定 capture 为 1 个 native `resolved`、3 个 legacy `ineligible`，全部是旧 writer 的 `serial_capture_legacy_text`。两次检查均未连接正式 SQLite，项目 189 个文件的路径、长度、mtime 和 SHA-256 前后无差异
-当前 SQLite 边界：B4.4 与 C1-C3 已完成源码、临时 schema-v3 数据库、本地软件合同和双分支远端矩阵；B4.2/B4.3 resolver 仍是纯只读候选生成器，只有 B4.4 能在项目/run lease 与严格仓储门禁内执行补投影。正式项目数据库仍保持 schema v2，未启动协调器、迁移或正式历史补投影。当前 Marketplace/安装缓存尚未包含这些提交；没有访问 COM3 或操作板卡
+当前 SQLite 边界：B4.4 与 C1-C3 已完成源码、临时数据库、本地/远端软件门禁、Marketplace 发布及正式项目验收。B4.2/B4.3 resolver 仍只生成纯只读候选，只有 B4.4 能在项目/run lease 与严格仓储门禁内执行补投影。正式库为 schema v3；升级前 v2 备份 SHA-256 为 `5D5F75E12C54EF6137CFD2BA991A949FF2574304E96BC67A97B961649AA8711D`。首次补投影得到 5 raw、1 error、5 claim，第二次回放零新增；运行插件已返回 authoritative schema-v3 raw/error。此步骤没有访问 COM3 或操作板卡
 跳过边界：Windows 本地 4 项 skip 来自普通文件 symlink 创建权限（Flash 1、capture 1、Monitor 2）；目录 junction 与合成 fd/reparse 拒绝合同已执行。本轮新远端矩阵的 8 个 job 全部成功；本地 Windows skip 不能被写成远端平台也跳过
 未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
-远端与插件：B4.3 [main run 30356471000](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356471000) 首次仅 Windows/Python 3.10 的既有 Monitor 跨进程用例在固定 8 秒 ready 窗口超时，另外 119 项及 3 个 job 成功；该用例本地独立进程重复 10/10 通过后，只重跑失败 job，run attempt 2 整体成功。[test run 30356899571](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356899571) 的 4 个 job 首次全部成功。C2/C3 的 [main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226) 与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633) 又完成 8 个 Windows/Linux、Python 3.10/3.12 job，全部成功；Marketplace 源和安装缓存仍待后续步骤
+远端与插件：C2/C3 的 [main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226) 与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633) 共 8 个 job 成功；Monitor 测试同步修复后的 [test run 30446579852](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30446579852)、[main run 30447473492](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30447473492) 和最终 [test run 30448083294](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30448083294) 均成功。Marketplace/安装缓存新版本和正式 schema-v3 数据库均已验收
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -1096,6 +1096,30 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   的 Windows/Linux、Python 3.10/3.12 四个 job 均成功。
 - 本次只修改测试及记录，使用临时项目和临时 SQLite；没有修改 Monitor 产品实现、正式
   数据库、COM3、Marketplace、安装缓存或用户自有 plugin manifest 差异。
+
+### 2026-07-29 20:40 - 完成正式 SQLite v3 升级与历史补投影
+
+- 新版插件 `0.1.0+codex.20260729114414` 重启确认后，先对正式 v2 库执行 immutable
+  只读检查，再克隆 172 个日志文件和数据库进行临时副本演练。演练完成升级、首次
+  补投影、第二次幂等回放和旧 JSONL event 去重，正式源文件前后不变。
+- 正式写入前确认 DB/WAL/SHM 连续 5 秒稳定、WAL 为 0 字节且三个文件均可独占只读
+  打开；随后生成 462,848 字节的 v2 备份
+  `esp_mcp-v2-preupgrade-20260729T123747Z-5D5F75E12C54.sqlite`，其 SHA-256 与升级前
+  主库同为 `5D5F75E12C54EF6137CFD2BA991A949FF2574304E96BC67A97B961649AA8711D`。
+- 正式迁移后 schema 为 v3，111 runs、224 events、110 个旧导入标记保持不变；
+  `integrity_check=ok` 且外键零违规。首次协调扫描 26 项，5 项补投影、17 项
+  ineligible、4 项无 artifact、0 失败；最终数据库新增 5 raw、1 error 和 5 claim。
+- 第二次协调将 5 项全部报告为 `already_reconciled`，数据库零新增。5 个登记文件均重新
+  计算完整 SHA-256 并与 SQLite 一致；marker 为 completed，status 为 active=false。
+- 封口脚本曾把持久锁文件存在误判为活动租约。代码合同实际是 release 后保留控制文件、
+  释放 OS 锁；修正为检查 status/probe 和独占句柄后通过。这是验收脚本判断错误，不是
+  B4.4 清理失败。
+- 运行插件的 `esp_logs_get` 已返回 schema-v3 authoritative 双 chunk 与正式 error；
+  `esp_error_parse_log` 对历史断连 run 只扫描 `sqlite_errors`。本步骤未访问 COM3，也未
+  执行板端程序、删除、擦除或烧录。
+- 提交前重新执行完整本地门禁：main 为 `120 passed in 56.80s`；`index-test` 显式加载
+  main 源码为 `557 passed, 4 skipped in 271.45s`。4 项 skip 仍是 Windows 普通文件
+  symlink 权限边界，不涉及本次 SQLite 正式数据验收。
 
 ## 协作约定
 
