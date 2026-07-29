@@ -62,6 +62,8 @@ _SERIAL_READ_MAX_BYTES = 1024
 _SERIAL_IDLE_SLEEP_SECONDS = 0.005
 _TERMINAL_MARKER_VERSION = 1
 _HISTORICAL_MONITOR_ADAPTER_ID = "historical_monitor_manifest_v1"
+_HISTORICAL_MONITOR_RECONCILIATION_VERSION = 1
+_HISTORICAL_MONITOR_EVENT_TS_TOLERANCE_SECONDS = 1.0
 
 
 class MonitorConflictError(RuntimeError):
@@ -130,6 +132,8 @@ class SerialRecord:
 class HistoricalMonitorArtifactCandidate:
     status: str
     adapter_id: str
+    reconciliation_version: int
+    event_ts_tolerance_seconds: float
     project_id: str
     run_id: str
     requested_event_uuid: str
@@ -139,8 +143,11 @@ class HistoricalMonitorArtifactCandidate:
     terminal_at: str
     expected_run_status: str
     artifacts: log_repository.EventArtifacts
+    expected_event_profile_sha256: str
     artifact_bundle_sha256: str
     _expected_last_error_json: str | None
+    _expected_event_profile_json: str
+    _expected_run_profile_json: str
 
     @property
     def expected_last_error(self) -> dict | None:
@@ -149,6 +156,24 @@ class HistoricalMonitorArtifactCandidate:
         value = json.loads(self._expected_last_error_json)
         if not isinstance(value, dict):
             raise RuntimeError("Historical last_error snapshot is invalid.")
+        return value
+
+    @property
+    def expected_event_profile(self) -> dict[str, Any]:
+        value = json.loads(self._expected_event_profile_json)
+        if not isinstance(value, dict):
+            raise RuntimeError(
+                "Historical monitor event profile snapshot is invalid."
+            )
+        return value
+
+    @property
+    def expected_run_profile(self) -> dict[str, Any]:
+        value = json.loads(self._expected_run_profile_json)
+        if not isinstance(value, dict):
+            raise RuntimeError(
+                "Historical monitor run profile snapshot is invalid."
+            )
         return value
 
 
@@ -706,6 +731,47 @@ def _validate_historical_v1_chunk_path(
         )
 
 
+def _historical_monitor_terminal_message(
+    manifest: dict,
+    *,
+    state: str,
+    last_error: dict | None,
+) -> str:
+    terminal_message = manifest.get("terminal_message")
+    if isinstance(terminal_message, str) and terminal_message.strip():
+        return terminal_message
+    if state == MonitorState.STOPPED.value:
+        return "Serial monitor stopped."
+    error_kind = (
+        str(last_error.get("error_kind") or "")
+        if isinstance(last_error, dict)
+        else ""
+    )
+    fixed_messages = {
+        "serial_port_locked": (
+            "Serial monitor failed because the port is reserved."
+        ),
+        "serial_log_quota_exceeded": (
+            "Serial monitor stopped because its log quota was exceeded."
+        ),
+        "serial_log_disk_full": (
+            "Serial monitor stopped because its log could not be written."
+        ),
+        "serial_log_write_failed": (
+            "Serial monitor stopped because its log could not be written."
+        ),
+        "serial_port_open_failed": (
+            "Serial monitor could not open the requested port."
+        ),
+        "serial_disconnected": "Serial monitor disconnected.",
+    }
+    if error_kind in fixed_messages:
+        return fixed_messages[error_kind]
+    if state == MonitorState.DISCONNECTED.value:
+        return "Serial monitor disconnected."
+    return "Serial monitor failed."
+
+
 def _canonical_historical_manifest(
     manifest: dict,
     *,
@@ -716,6 +782,11 @@ def _canonical_historical_manifest(
     if manifest.get("project_id") != project_id or manifest.get("run_id") != run_id:
         raise SerialLogStoreError(
             "Historical monitor manifest identity conflicts with its scope."
+        )
+    selected_port = manifest.get("port")
+    if not isinstance(selected_port, str) or not selected_port.strip():
+        raise SerialLogStoreError(
+            "Historical monitor manifest has no selected port."
         )
     state = manifest.get("state")
     if not isinstance(state, str) or state not in TERMINAL_STATES:
@@ -874,6 +945,51 @@ def resolve_historical_monitor_artifacts(
             raw_logs=raw_logs,
             errors=errors,
         )
+        expected_run_status = (
+            "cancelled" if state == MonitorState.STOPPED.value else "failed"
+        )
+        terminal_message = _historical_monitor_terminal_message(
+            canonical_manifest,
+            state=state,
+            last_error=last_error,
+        )
+        event_profile = {
+            "event_uuid": requested_event_uuid,
+            "project_id": project_id,
+            "run_id": run_id,
+            "ts": terminal_at,
+            "phase": "complete",
+            "level": (
+                "info" if state == MonitorState.STOPPED.value else "error"
+            ),
+            "tool": "esp_serial_monitor",
+            "source": "esp32",
+            "message": terminal_message,
+            "payload_json": {
+                "state": state,
+                "last_error": last_error,
+            },
+        }
+        run_profile = {
+            "project_id": project_id,
+            "run_id": run_id,
+            "task_type": "serial_monitor",
+            "status": expected_run_status,
+            "selected_port": canonical_manifest["port"],
+            "terminal_event_uuid": requested_event_uuid,
+        }
+        event_profile_json = json.dumps(
+            event_profile,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        run_profile_json = json.dumps(
+            run_profile,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         expected_last_error_json = (
             json.dumps(
                 last_error,
@@ -891,6 +1007,12 @@ def resolve_historical_monitor_artifacts(
                 else "no_artifacts"
             ),
             adapter_id=_HISTORICAL_MONITOR_ADAPTER_ID,
+            reconciliation_version=(
+                _HISTORICAL_MONITOR_RECONCILIATION_VERSION
+            ),
+            event_ts_tolerance_seconds=(
+                _HISTORICAL_MONITOR_EVENT_TS_TOLERANCE_SECONDS
+            ),
             project_id=project_id,
             run_id=run_id,
             requested_event_uuid=requested_event_uuid,
@@ -898,12 +1020,15 @@ def resolve_historical_monitor_artifacts(
             manifest_sha256=manifest_sha256,
             state=state,
             terminal_at=terminal_at,
-            expected_run_status=(
-                "cancelled" if state == MonitorState.STOPPED.value else "failed"
-            ),
+            expected_run_status=expected_run_status,
             artifacts=artifacts,
+            expected_event_profile_sha256=(
+                log_repository.canonical_profile_sha256(event_profile)
+            ),
             artifact_bundle_sha256=artifact_bundle_sha256,
             _expected_last_error_json=expected_last_error_json,
+            _expected_event_profile_json=event_profile_json,
+            _expected_run_profile_json=run_profile_json,
         )
     except HistoricalMonitorResolutionError:
         raise

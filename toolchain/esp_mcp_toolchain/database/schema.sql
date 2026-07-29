@@ -92,6 +92,54 @@ CREATE TABLE IF NOT EXISTS raw_logs (
     ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS historical_raw_claims (
+  project_id TEXT NOT NULL CHECK(length(trim(project_id)) > 0),
+  path TEXT NOT NULL CHECK(
+    length(trim(path)) > 0
+    AND substr(path, 1, 1) <> '/'
+    AND instr(path, char(92)) = 0
+    AND instr(path, ':') = 0
+    AND path NOT IN ('.', '..')
+    AND path NOT LIKE './%'
+    AND path NOT LIKE '../%'
+    AND path NOT LIKE '%/./%'
+    AND path NOT LIKE '%/../%'
+    AND path NOT LIKE '%/.'
+    AND path NOT LIKE '%/..'
+  ),
+  run_id TEXT NOT NULL CHECK(length(trim(run_id)) > 0),
+  event_uuid TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(length(trim(kind)) > 0),
+  sha256 TEXT NOT NULL CHECK(
+    length(sha256) = 64
+    AND sha256 = lower(sha256)
+    AND sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  adapter_id TEXT NOT NULL CHECK(length(trim(adapter_id)) > 0),
+  reconciliation_version INTEGER NOT NULL CHECK(
+    typeof(reconciliation_version) = 'integer'
+    AND reconciliation_version >= 1
+  ),
+  event_profile_sha256 TEXT NOT NULL CHECK(
+    length(event_profile_sha256) = 64
+    AND event_profile_sha256 = lower(event_profile_sha256)
+    AND event_profile_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  artifact_bundle_sha256 TEXT NOT NULL CHECK(
+    length(artifact_bundle_sha256) = 64
+    AND artifact_bundle_sha256 = lower(artifact_bundle_sha256)
+    AND artifact_bundle_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  claimed_at TEXT NOT NULL CHECK(length(trim(claimed_at)) > 0),
+  PRIMARY KEY(project_id, path),
+  FOREIGN KEY(project_id, run_id)
+    REFERENCES runs(project_id, run_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY(project_id, run_id, event_uuid)
+    REFERENCES events(project_id, run_id, event_uuid)
+    ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS errors (
   project_id TEXT NOT NULL CHECK(length(trim(project_id)) > 0),
   error_id TEXT NOT NULL CHECK(length(trim(error_id)) > 0),
@@ -182,10 +230,14 @@ CREATE INDEX IF NOT EXISTS idx_events_project_tool_ts
   ON events(project_id, tool, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_project_source_ts
   ON events(project_id, source, ts DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_project_run_uuid
+  ON events(project_id, run_id, event_uuid);
 CREATE INDEX IF NOT EXISTS idx_raw_logs_project_run_created
   ON raw_logs(project_id, run_id, created_at, raw_log_id);
 CREATE INDEX IF NOT EXISTS idx_raw_logs_project_kind_created
   ON raw_logs(project_id, kind, created_at, raw_log_id);
+CREATE INDEX IF NOT EXISTS idx_historical_raw_claims_project_run_event
+  ON historical_raw_claims(project_id, run_id, event_uuid, path);
 CREATE INDEX IF NOT EXISTS idx_errors_project_run_created
   ON errors(project_id, run_id, created_at, error_id);
 CREATE INDEX IF NOT EXISTS idx_errors_project_kind_created

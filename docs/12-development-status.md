@@ -7,7 +7,7 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语、B4.2 历史 Monitor resolver 与 B4.3 历史固定 capture/JSONL 纯只读 adapter 均已通过双分支本地和远端矩阵。当前按用户要求停在 B4.3 完成存档点；B4.4 尚未启动。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、连接/写入正式 SQLite、升级 schema、更新 Marketplace 或安装缓存。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语、B4.2 历史 Monitor resolver 与 B4.3 历史固定 capture/JSONL 纯只读 adapter 均已通过双分支本地和远端矩阵。B4.4 已恢复并完成仓储基础：持久 raw claim 与 profile/sequence/artifact 原子事务已通过本地门禁；项目级 lease、二次解析、全局扫描和 marker 协调器仍在下一切片。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、连接/写入正式 SQLite、升级正式 schema、更新 Marketplace 或安装缓存。
 
 ## 本轮已完成实现
 
@@ -117,10 +117,22 @@
 - B4.3 不 glob 项目、不获取 lease、不连接 SQLite、不调用 B4.1，也不写 marker/JSONL/
   latest。跨 run 同一 raw basename 的歧义检测、项目级唯一 claim、lease 内二次解析、
   native DB profile 资格和独立 marker 发布均保留给 B4.4。
+- B4.4 仓储基础在 schema v3 中新增 `historical_raw_claims`：主键为
+  `(project_id, path)`，同时绑定 run、最后 completion event、artifact kind/SHA-256、
+  adapter/version、event profile 和 bundle 摘要。已存在的 v3 临时库重开时会 additive
+  补表，v2→v3 迁移也在同一迁移事务中建表；正式 v2 项目库未调用迁移。
+- `reconcile_existing_event_artifacts()` 现在可选接收完整 event/run profile、精确 event
+  sequence、run `next_sequence_no` 和逐 raw claim。全部条件在原有
+  `BEGIN IMMEDIATE` 内、任何 claim/raw/error 写入前核对；claim 与 artifact 必须一一
+  匹配且摘要绑定输入 profile/bundle。跨 run 重用相同项目相对 path 显式冲突，精确重试
+  返回 `inserted=false`，晚阶段 error/SQLite 失败会连同 claim 和 raw 一起回滚。
 
 ## 本地验证
 
 - 测试工作树通过 `ESP_MCP_SOURCE_ROOT` 显式加载实现工作树源码。
+- B4.4 仓储基础红灯 `5 failed, 11 passed in 1.94s`；实现后专项
+  `16 passed in 1.93s`，迁移/raw/error/历史对账合并
+  `84 passed in 7.84s`，main 全量 `120 passed in 47.30s`。
 - 提示词/提高工具/架构专项：`25 passed`。
 - 串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：`62 passed`。
 - 显式加载 `main` 源码的完整候选门禁：`226 passed in 29.35s`。
@@ -228,16 +240,16 @@
 
 ## 插件发布状态
 
-- 当前仓库的既有本地插件 manifest 差异不属于本次提交；个人 marketplace 源已更新为 `0.1.0+codex.20260726165544`。
+- 当前仓库的既有本地插件 manifest 差异不属于本次提交；个人 Marketplace 源和当前会话加载的安装缓存均为 `0.1.0+codex.20260727064819`。
 - Marketplace 源通过 plugin validator、main 发布测试 `104 passed in 14.19s` 和 `48 tools / 12 resources / 12 prompts` 直接枚举。
-- 用户重启后已确认安装缓存为 `0.1.0+codex.20260726165544` 并直接核对 48/12/12。按用户约定，本次修复只会更新 Marketplace 源，不直接改安装缓存；当前运行插件仍未包含路径修复。
+- 用户重启后已核对 48/12/12。当前 B4.4 工作树改动尚未同步 Marketplace 或安装缓存；本轮也不会修改仓库内用户自有的 plugin manifest 差异。
 
 ## 待完成
 
-1. v3-B4.4：使用项目级 claim/lease 二次执行 B4.2/B4.3，拒绝跨 run 同一 capture
-   raw 的歧义，校验 native SQLite profile 和最后一个
-   `complete` event 资格，再调用 B4.1；提供项目扫描、启动、状态/marker、严格幂等
-   报告和有界失败。
+1. 完成 v3-B4.4 协调器：使用项目级 lease 二次执行 B4.2/B4.3，在任何事务前拒绝跨
+   run 同一 capture raw 的歧义，把 native SQLite profile 和最后一个 `complete`
+   资格交给已完成的 B4.1 事务门禁；提供项目扫描、启动、状态/marker、严格幂等报告和
+   有界失败。
 2. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
    同时保留有界兼容路径和项目边界。
 3. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和

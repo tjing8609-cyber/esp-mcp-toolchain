@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterable
@@ -35,12 +36,38 @@ from .raw_log_repository import (
     get_raw_log as select_raw_log,
     insert_raw_log,
     list_raw_logs_for_run,
+    normalize_raw_log_path,
+    normalize_sha256,
     stable_raw_log_id,
 )
 
 
 RUN_STATUSES = {"running", "succeeded", "failed", "cancelled"}
 LEGACY_JSONL_NAMESPACE = UUID("28446ce5-4840-4d6d-a354-187721231ff8")
+_HISTORICAL_EVENT_PROFILE_FIELDS = frozenset(
+    {
+        "event_uuid",
+        "project_id",
+        "run_id",
+        "ts",
+        "phase",
+        "level",
+        "tool",
+        "source",
+        "message",
+        "payload_json",
+    }
+)
+_HISTORICAL_RUN_PROFILE_FIELDS = frozenset(
+    {
+        "project_id",
+        "run_id",
+        "task_type",
+        "status",
+        "selected_port",
+        "terminal_event_uuid",
+    }
+)
 
 
 class LogRepositoryError(RuntimeError):
@@ -87,6 +114,14 @@ class RunTaskTypeConflictError(RunConflictError):
     error_kind = "run_task_type_conflict"
 
 
+class HistoricalArtifactProfileConflictError(LogRepositoryError):
+    error_kind = "historical_artifact_database_profile_conflict"
+
+
+class HistoricalRawClaimConflictError(LogRepositoryError):
+    error_kind = "historical_artifact_raw_claim_conflict"
+
+
 @dataclass(frozen=True)
 class RawLogArtifact:
     kind: str
@@ -128,6 +163,17 @@ class EventArtifacts:
             )
 
 
+@dataclass(frozen=True)
+class HistoricalRawClaim:
+    path: str
+    kind: str
+    sha256: str
+    adapter_id: str
+    reconciliation_version: int
+    event_profile_sha256: str
+    artifact_bundle_sha256: str
+
+
 EMPTY_EVENT_ARTIFACTS = EventArtifacts()
 
 
@@ -148,6 +194,278 @@ def _run_from_row(row: sqlite3.Row) -> dict[str, Any]:
         "summary": row["summary"],
         "payload_json": payload_from_text(row["payload_json"]),
     }
+
+
+def canonical_profile_sha256(profile: dict[str, Any]) -> str:
+    if not isinstance(profile, dict):
+        raise TypeError("profile must be a dictionary")
+    try:
+        encoded = json.dumps(
+            profile,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise LogRepositoryError(
+            "historical artifact profile must be JSON serializable"
+        ) from exc
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def event_artifact_bundle_sha256(artifacts: EventArtifacts) -> str:
+    if not isinstance(artifacts, EventArtifacts):
+        raise TypeError("artifacts must be an EventArtifacts value")
+    bundle = {
+        "raw_logs": [
+            {
+                "kind": artifact.kind,
+                "path": artifact.path,
+                "sha256": artifact.sha256,
+            }
+            for artifact in artifacts.raw_logs
+        ],
+        "errors": [
+            {
+                "occurrence_key": artifact.occurrence_key,
+                "error_kind": artifact.error_kind,
+                "file": artifact.file,
+                "line": artifact.line,
+                "column": artifact.column,
+                "exception_type": artifact.exception_type,
+                "message": artifact.message,
+                "raw_text": artifact.raw_text,
+                "recoverable": artifact.recoverable,
+                "created_at": artifact.created_at,
+            }
+            for artifact in artifacts.errors
+        ],
+    }
+    return canonical_profile_sha256(bundle)
+
+
+def _normalized_historical_claim(
+    claim: HistoricalRawClaim,
+) -> dict[str, Any]:
+    if not isinstance(claim, HistoricalRawClaim):
+        raise TypeError(
+            "raw_claims must contain only HistoricalRawClaim values"
+        )
+    kind = str(claim.kind or "").strip()
+    adapter_id = str(claim.adapter_id or "").strip()
+    if not kind:
+        raise LogRepositoryError("historical raw claim kind is required")
+    if not adapter_id:
+        raise LogRepositoryError("historical raw claim adapter_id is required")
+    if (
+        isinstance(claim.reconciliation_version, bool)
+        or not isinstance(claim.reconciliation_version, int)
+        or claim.reconciliation_version < 1
+    ):
+        raise LogRepositoryError(
+            "historical raw claim reconciliation_version must be positive"
+        )
+    sha256 = normalize_sha256(claim.sha256)
+    event_profile_sha256 = normalize_sha256(
+        claim.event_profile_sha256
+    )
+    artifact_bundle_sha256 = normalize_sha256(
+        claim.artifact_bundle_sha256
+    )
+    if (
+        sha256 is None
+        or event_profile_sha256 is None
+        or artifact_bundle_sha256 is None
+    ):
+        raise LogRepositoryError(
+            "historical raw claim digests are required"
+        )
+    return {
+        "path": normalize_raw_log_path(claim.path),
+        "kind": kind,
+        "sha256": sha256,
+        "adapter_id": adapter_id,
+        "reconciliation_version": claim.reconciliation_version,
+        "event_profile_sha256": event_profile_sha256,
+        "artifact_bundle_sha256": artifact_bundle_sha256,
+    }
+
+
+def _historical_claim_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "project_id": row["project_id"],
+        "path": row["path"],
+        "run_id": row["run_id"],
+        "event_uuid": row["event_uuid"],
+        "kind": row["kind"],
+        "sha256": row["sha256"],
+        "adapter_id": row["adapter_id"],
+        "reconciliation_version": row["reconciliation_version"],
+        "event_profile_sha256": row["event_profile_sha256"],
+        "artifact_bundle_sha256": row["artifact_bundle_sha256"],
+        "claimed_at": row["claimed_at"],
+    }
+
+
+def _insert_historical_raw_claim(
+    connection: sqlite3.Connection,
+    *,
+    project_id: str,
+    run_id: str,
+    event_uuid: str,
+    claimed_at: str,
+    claim: dict[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    expected = {
+        "project_id": project_id,
+        "path": claim["path"],
+        "run_id": run_id,
+        "event_uuid": event_uuid,
+        "kind": claim["kind"],
+        "sha256": claim["sha256"],
+        "adapter_id": claim["adapter_id"],
+        "reconciliation_version": claim["reconciliation_version"],
+        "event_profile_sha256": claim["event_profile_sha256"],
+        "artifact_bundle_sha256": claim["artifact_bundle_sha256"],
+        "claimed_at": normalize_timestamp(claimed_at),
+    }
+    existing_row = connection.execute(
+        """
+        SELECT * FROM historical_raw_claims
+        WHERE project_id = ? AND path = ?
+        """,
+        (project_id, claim["path"]),
+    ).fetchone()
+    if existing_row is not None:
+        existing = _historical_claim_from_row(existing_row)
+        if existing != expected:
+            raise HistoricalRawClaimConflictError(
+                "historical raw path is already owned by another "
+                "run, event, profile, or artifact bundle"
+            )
+        return existing, False
+    try:
+        connection.execute(
+            """
+            INSERT INTO historical_raw_claims (
+              project_id, path, run_id, event_uuid, kind, sha256,
+              adapter_id, reconciliation_version, event_profile_sha256,
+              artifact_bundle_sha256, claimed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            tuple(
+                expected[column]
+                for column in (
+                    "project_id",
+                    "path",
+                    "run_id",
+                    "event_uuid",
+                    "kind",
+                    "sha256",
+                    "adapter_id",
+                    "reconciliation_version",
+                    "event_profile_sha256",
+                    "artifact_bundle_sha256",
+                    "claimed_at",
+                )
+            ),
+        )
+    except sqlite3.IntegrityError:
+        conflicting_row = connection.execute(
+            """
+            SELECT * FROM historical_raw_claims
+            WHERE project_id = ? AND path = ?
+            """,
+            (project_id, claim["path"]),
+        ).fetchone()
+        if conflicting_row is not None:
+            raise HistoricalRawClaimConflictError(
+                "historical raw path acquired a conflicting owner"
+            )
+        raise
+    stored_row = connection.execute(
+        """
+        SELECT * FROM historical_raw_claims
+        WHERE project_id = ? AND path = ?
+        """,
+        (project_id, claim["path"]),
+    ).fetchone()
+    if stored_row is None:
+        raise LogRepositoryError(
+            "historical raw claim insert completed without a readable row"
+        )
+    return _historical_claim_from_row(stored_row), True
+
+
+def _require_profile_shape(
+    expected: dict[str, Any] | None,
+    *,
+    label: str,
+    required_fields: frozenset[str],
+) -> None:
+    if expected is None:
+        return
+    if not isinstance(expected, dict):
+        raise TypeError(f"expected_{label}_profile must be a dictionary")
+    canonical_profile_sha256(expected)
+    supplied_fields = frozenset(expected)
+    if supplied_fields != required_fields:
+        missing = sorted(required_fields - supplied_fields)
+        unexpected = sorted(supplied_fields - required_fields)
+        details = []
+        if missing:
+            details.append(f"missing={','.join(missing)}")
+        if unexpected:
+            details.append(f"unexpected={','.join(unexpected)}")
+        raise HistoricalArtifactProfileConflictError(
+            f"historical {label} profile has an invalid field set: "
+            f"{'; '.join(details)}"
+        )
+
+
+def _require_profile_match(
+    actual: dict[str, Any],
+    expected: dict[str, Any] | None,
+    *,
+    label: str,
+    required_fields: frozenset[str],
+    event_ts_tolerance_seconds: float = 0.0,
+) -> None:
+    _require_profile_shape(
+        expected,
+        label=label,
+        required_fields=required_fields,
+    )
+    if expected is None:
+        return
+    mismatched: list[str] = []
+    for key, value in expected.items():
+        if key not in actual:
+            mismatched.append(key)
+            continue
+        if label == "event" and key == "ts":
+            try:
+                actual_ts = datetime.fromisoformat(
+                    normalize_timestamp(str(actual[key]))
+                )
+                expected_ts = datetime.fromisoformat(
+                    normalize_timestamp(str(value))
+                )
+                difference = abs((actual_ts - expected_ts).total_seconds())
+            except (EventRepositoryError, TypeError, ValueError):
+                mismatched.append(key)
+                continue
+            if difference > event_ts_tolerance_seconds:
+                mismatched.append(key)
+            continue
+        if actual[key] != value:
+            mismatched.append(key)
+    mismatched.sort()
+    if mismatched:
+        raise HistoricalArtifactProfileConflictError(
+            f"historical {label} profile conflicts in fields: "
+            f"{', '.join(mismatched)}"
+        )
 
 
 def _get_run_row(connection: sqlite3.Connection, project_id: str, run_id: str) -> sqlite3.Row | None:
@@ -428,6 +746,12 @@ def reconcile_existing_event_artifacts(
     run_id: str,
     event_uuid: str,
     artifacts: EventArtifacts = EMPTY_EVENT_ARTIFACTS,
+    expected_event_profile: dict[str, Any] | None = None,
+    expected_run_profile: dict[str, Any] | None = None,
+    expected_sequence_no: int | None = None,
+    expected_next_sequence_no: int | None = None,
+    expected_event_ts_tolerance_seconds: float = 0,
+    raw_claims: tuple[HistoricalRawClaim, ...] = (),
 ) -> dict[str, Any]:
     """Atomically add evidence to an existing event on a terminal run.
 
@@ -444,6 +768,90 @@ def reconcile_existing_event_artifacts(
     if not isinstance(event_uuid, str) or not event_uuid.strip():
         raise LogRepositoryError("event_uuid is required")
     canonical_uuid = normalize_event_uuid(event_uuid)
+    if (
+        isinstance(expected_event_ts_tolerance_seconds, bool)
+        or not isinstance(expected_event_ts_tolerance_seconds, (int, float))
+        or not math.isfinite(float(expected_event_ts_tolerance_seconds))
+        or not 0 <= float(expected_event_ts_tolerance_seconds) <= 1
+    ):
+        raise LogRepositoryError(
+            "expected_event_ts_tolerance_seconds must be a finite number "
+            "between 0 and 1"
+        )
+    event_ts_tolerance_seconds = float(
+        expected_event_ts_tolerance_seconds
+    )
+    if not isinstance(raw_claims, tuple):
+        raise TypeError("raw_claims must be a tuple")
+    normalized_claims = tuple(
+        _normalized_historical_claim(claim) for claim in raw_claims
+    )
+    for label, value in (
+        ("expected_sequence_no", expected_sequence_no),
+        ("expected_next_sequence_no", expected_next_sequence_no),
+    ):
+        if (
+            value is not None
+            and (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+            )
+        ):
+            raise LogRepositoryError(f"{label} must be a positive integer")
+    _require_profile_shape(
+        expected_event_profile,
+        label="event",
+        required_fields=_HISTORICAL_EVENT_PROFILE_FIELDS,
+    )
+    _require_profile_shape(
+        expected_run_profile,
+        label="run",
+        required_fields=_HISTORICAL_RUN_PROFILE_FIELDS,
+    )
+    if normalized_claims:
+        if (
+            expected_event_profile is None
+            or expected_run_profile is None
+            or expected_sequence_no is None
+            or expected_next_sequence_no is None
+        ):
+            raise LogRepositoryError(
+                "historical raw claims require complete profile and sequence gates"
+            )
+        artifact_identities = [
+            (
+                normalize_raw_log_path(artifact.path),
+                str(artifact.kind or "").strip(),
+                normalize_sha256(artifact.sha256),
+            )
+            for artifact in artifacts.raw_logs
+        ]
+        claim_identities = [
+            (claim["path"], claim["kind"], claim["sha256"])
+            for claim in normalized_claims
+        ]
+        if (
+            any(identity[2] is None for identity in artifact_identities)
+            or len(set(identity[0] for identity in artifact_identities))
+            != len(artifact_identities)
+            or sorted(artifact_identities) != sorted(claim_identities)
+        ):
+            raise LogRepositoryError(
+                "historical raw claims must exactly match the raw artifact bundle"
+            )
+        expected_profile_sha256 = canonical_profile_sha256(
+            expected_event_profile
+        )
+        expected_bundle_sha256 = event_artifact_bundle_sha256(artifacts)
+        if any(
+            claim["event_profile_sha256"] != expected_profile_sha256
+            or claim["artifact_bundle_sha256"] != expected_bundle_sha256
+            for claim in normalized_claims
+        ):
+            raise LogRepositoryError(
+                "historical raw claim digests do not bind the supplied profiles"
+            )
 
     connection = connect(database)
     try:
@@ -463,6 +871,37 @@ def reconcile_existing_event_artifacts(
                 f"No event {canonical_uuid} exists for run {run_id} "
                 f"in project {project_id}"
             )
+        run_record = {
+            **_run_from_row(run),
+            "terminal_event_uuid": canonical_uuid,
+        }
+        _require_profile_match(
+            event,
+            expected_event_profile,
+            label="event",
+            required_fields=_HISTORICAL_EVENT_PROFILE_FIELDS,
+            event_ts_tolerance_seconds=event_ts_tolerance_seconds,
+        )
+        _require_profile_match(
+            run_record,
+            expected_run_profile,
+            label="run",
+            required_fields=_HISTORICAL_RUN_PROFILE_FIELDS,
+        )
+        if (
+            expected_sequence_no is not None
+            and int(event["sequence_no"]) != expected_sequence_no
+        ):
+            raise HistoricalArtifactProfileConflictError(
+                "historical event sequence conflicts with its source profile"
+            )
+        if (
+            expected_next_sequence_no is not None
+            and int(run["next_sequence_no"]) != expected_next_sequence_no
+        ):
+            raise HistoricalArtifactProfileConflictError(
+                "historical run next_sequence_no conflicts with its source profile"
+            )
         if run["status"] == "running":
             raise RunNotTerminalError(
                 f"run {run_id} is running and cannot reconcile historical artifacts"
@@ -477,8 +916,21 @@ def reconcile_existing_event_artifacts(
             )
         try:
             event_ts = normalize_timestamp(str(event["ts"]))
+            claim_reports: list[dict[str, Any]] = []
             raw_reports: list[dict[str, Any]] = []
             error_reports: list[dict[str, Any]] = []
+            for claim in normalized_claims:
+                record, inserted = _insert_historical_raw_claim(
+                    connection,
+                    project_id=project_id,
+                    run_id=run_id,
+                    event_uuid=canonical_uuid,
+                    claimed_at=event_ts,
+                    claim=claim,
+                )
+                claim_reports.append(
+                    {"record": record, "inserted": inserted}
+                )
             for artifact in artifacts.raw_logs:
                 raw_log_id = stable_raw_log_id(
                     project_id=project_id,
@@ -532,6 +984,8 @@ def reconcile_existing_event_artifacts(
                 )
                 error_reports.append({"record": record, "inserted": inserted})
             connection.commit()
+        except HistoricalRawClaimConflictError:
+            raise
         except (
             RawLogRepositoryError,
             ErrorRepositoryError,
@@ -544,6 +998,7 @@ def reconcile_existing_event_artifacts(
         return {
             "event": event,
             "event_inserted": False,
+            "raw_claims": claim_reports,
             "raw_logs": raw_reports,
             "errors": error_reports,
         }
@@ -896,6 +1351,52 @@ def get_run_raw_logs(
             project_id=project_id,
             run_id=run_id,
         )
+    finally:
+        connection.close()
+
+
+def get_historical_raw_claim(
+    database: str | Path,
+    *,
+    project_id: str,
+    path: str,
+) -> dict[str, Any] | None:
+    normalized_path = normalize_raw_log_path(path)
+    connection = connect(database)
+    try:
+        row = connection.execute(
+            """
+            SELECT * FROM historical_raw_claims
+            WHERE project_id = ? AND path = ?
+            """,
+            (project_id, normalized_path),
+        ).fetchone()
+        return (
+            _historical_claim_from_row(row)
+            if row is not None
+            else None
+        )
+    finally:
+        connection.close()
+
+
+def get_run_historical_raw_claims(
+    database: str | Path,
+    *,
+    project_id: str,
+    run_id: str,
+) -> list[dict[str, Any]]:
+    connection = connect(database)
+    try:
+        rows = connection.execute(
+            """
+            SELECT * FROM historical_raw_claims
+            WHERE project_id = ? AND run_id = ?
+            ORDER BY path
+            """,
+            (project_id, run_id),
+        ).fetchall()
+        return [_historical_claim_from_row(row) for row in rows]
     finally:
         connection.close()
 

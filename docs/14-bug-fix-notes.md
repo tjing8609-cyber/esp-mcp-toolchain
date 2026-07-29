@@ -1197,3 +1197,43 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - CI 的单次固定 ready 超时不自动等于产品回归。本轮先检查失败日志，再做同一用例独立
   重复，最后只重跑失败 job；没有用整轮盲目重跑掩盖可复现缺陷，也没有把既有测试调度
   波动冒充 B4.3 修复。
+
+## 2026-07-28：租约外 profile 检查和 run-scoped raw ID 不能形成原子唯一归属
+
+### 症状
+
+- B4.3 已返回完整 event/run profile 和 raw 摘要，但如果 B4.4 先用独立连接读取 SQLite
+  做比较，再调用 B4.1，两个动作之间的数据库内容仍可能改变；早期 candidate 或一次
+  backend 预检查不能授权后续写入。
+- `stable_raw_log_id()` 把 `run_id` 放入 UUID 身份。同一个 `raw/<basename>` 因此可以在
+  两个 run 下生成两个不同 raw ID；只有项目 lease 或 JSON marker 时，进程退出或租约
+  释放后没有数据库内的持久唯一归属。
+
+### 原因
+
+- B4.1 原合同只在 `BEGIN IMMEDIATE` 中确认 run 已结束、event 是最后一个
+  `complete`，没有接收 B4.2/B4.3 的完整 profile、精确 sequence 或文件 claim。
+- 文件锁解决“谁正在执行”，不能代替崩溃后仍存在的数据库所有权；独立 marker 又在
+  SQLite commit 之后发布，不能作为事务内唯一约束。
+
+### 修复
+
+- schema v3 additive 增加 `historical_raw_claims`，以 `(project_id, path)` 为主键，并
+  绑定 run、event、kind/SHA-256、adapter/version、event profile 摘要和 artifact bundle
+  摘要；外键删除与 run/event 生命周期一致。
+- 扩展 `reconcile_existing_event_artifacts()` 的可选严格入口：在同一
+  `BEGIN IMMEDIATE` 内比较 event/run profile、event sequence 和 run
+  `next_sequence_no`，随后依次提交持久 claim、raw 和 error。
+- claim 必须与 raw artifact 一一对应，profile/bundle 摘要必须由实际输入规范计算。
+  精确重试复用同一 claim；同 path 的其他 run/event/profile/bundle 显式
+  `historical_artifact_raw_claim_conflict`。
+- profile、sequence 或 claim 冲突发生在写 artifact 前；晚阶段 error、SQLite 或 commit
+  失败时，claim、raw 和 error 与原事务一起回滚。
+
+### 验证和边界
+
+- test 分支初始合同为预期 `5 failed, 11 passed in 1.94s`；实现后专项
+  `16 passed in 1.93s`，迁移/raw/error/历史补投影合并
+  `84 passed in 7.84s`，main 全量 `120 passed in 47.30s`。
+- 本切片只修改源码和临时测试数据库。正式项目数据库仍为 schema v2，没有调用迁移；
+  项目级 lease、两次解析、全局歧义预检查和独立 marker 属于下一 B4.4 协调器切片。
