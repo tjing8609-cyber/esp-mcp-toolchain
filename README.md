@@ -1020,6 +1020,18 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 固定 `main@deb8702` 合入 test 后，C2 专项 `6 passed in 0.62s`，test 分支自身源码
   全量 `550 passed, 4 skipped in 247.72s`。
 
+### 2026-07-29 15:55 - 固化 v3-C3 DB-first 错误解析合同
+
+- 缺陷根因：`esp_error_parse_log` 先调用公开 `esp_logs_get`，随后再次读取活动项目，
+  项目切换时可能混合两个作用域；解析器只消费 event/raw_path/Monitor，忽略 schema v3
+  已登记的正式 errors/raw_logs，也没有用登记 SHA-256 核验完整 raw 文件。
+- test 分支新增五项合同：正式 error 必须压过缺失 raw 和旧 event；一次调用只捕获一次
+  LogScope；无正式 error 时登记 raw 必须压过 event；`max_bytes` 之外的尾部篡改仍须由
+  全文件 SHA-256 检出；schema v2 只走有界结构化 event 兼容且不得迁移。
+- 旧实现定向基线为 `5 failed in 0.87s`，五项逐一命中上述能力缺口。本提交只建立测试
+  门禁，使用 pytest 临时 SQLite 和临时 raw 文件；没有读取或修改正式数据库、访问 COM3、
+  更新 Marketplace/安装缓存或纳入用户 plugin manifest 差异。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。
