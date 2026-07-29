@@ -1289,3 +1289,57 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 项目级协调器按 candidate 原子、允许失败后续跑，不承诺所有 candidate 共用一个 SQLite
   事务。正式项目数据库仍为 schema v2；本轮未迁移或写正式库，未访问 COM3、板卡，
   未更新 Marketplace/安装缓存，也未提交用户的 plugin manifest 差异。v3-C 尚未开始。
+
+## 2026-07-29：只读日志查询会创建、迁移并导入数据库
+
+### 症状
+
+- 在没有 `esp_mcp.sqlite` 的项目执行 latest/get/query，查询本身会创建数据库和日志目录。
+- 读取正式 schema v2 会调用当前 `init_database()`，把它升级到 v3；因此“查询”实际改变
+  了被观察对象。
+- 若项目只有 JSONL 审计镜像，查询会触发 importer，导致镜像内容在没有显式迁移动作时
+  成为在线查询结果。
+- 损坏 SQLite 或非法持久化 `payload_json` 会把 `sqlite3.DatabaseError` /
+  `JSONDecodeError` 直接抛给 MCP 调用者。
+- 早期修复把所有 `sqlite3.DatabaseError` 都视为损坏；这样正常的 busy/locked 竞争也会
+  被误报为不可恢复的数据库损坏。
+- 只读连接最初把“路径存在但被目录占位”也抛成 `FileNotFoundError`，三个工具因此把
+  异常存储状态误报成空数据或 run 不存在。
+
+### 根因
+
+- `_prepare_scope()` 同时承担建日志目录、初始化/迁移 SQLite 和导入旧 JSONL 三个写入
+  职责，三个查询入口误用了这个写入准备函数。
+- 即使只删掉 `_prepare_scope()`，原仓储 getter 仍调用普通 `connect()`；它会建父目录、
+  设置 WAL，并且 get/latest 的 run 与 events 分两次连接读取，不能证明来自同一快照。
+- 查询路径缺少独立的 schema 能力探测和数据损坏错误边界。
+
+### 修复
+
+- 新增 `connect_readonly()`：只接受已经存在的数据库，以绝对 URI `mode=ro` 打开，设置
+  `query_only=ON` 和 busy timeout，不创建目录、不设置 journal mode、不运行迁移。
+- 新增 latest/run/query 三个只读仓储入口。每次先在同一连接内 `BEGIN`，探测版本和必需
+  表/列，再读取关联数据；v2 只认可 runs/events，v3 必须满足当前结构。
+- 工具先完成 tail/limit/sequence/时间参数校验，再打开数据库。缺库保持原兼容返回；
+  不再扫描或导入 JSONL。损坏结构和坏持久化数据统一映射为不可恢复的
+  `log_database_invalid`，未知/缺失 schema 映射为
+  `log_database_schema_unsupported`。
+- SQLite 主错误码和保守消息分类把 busy/locked/cannot-open/permission/read-only/I/O
+  映射为可恢复的 `log_database_unavailable`；格式或持久化内容损坏才标为
+  `log_database_invalid`。
+- `Path.resolve(strict=True)` 只负责真实缺失判断；路径存在后必须通过普通文件检查，
+  目录或其他非普通目标返回 `log_database_invalid`，不进入缺库兼容分支。
+- 没有使用 `immutable=1`。SQLite 官方 WAL 文档说明，WAL 只读连接在协调文件不存在而
+  目录可写时可创建 `-wal/-shm`；immutable 只适合确定不会变化的数据库，不能冒充仍可能
+  并发写入的日志库。
+
+### 验证和边界
+
+- test 分支先固化四项合同，在旧实现上为 `4 failed in 0.39s`。
+- 修复后加入 query-only 强制、参数校验先于打开、三个入口的损坏库、坏 JSON、不完整
+  schema、locked/unavailable 分类和目录占位拒绝，专项 `10 passed in 0.43s`；既有日志/项目上下文回归 `6 passed in 0.81s`；
+  main 全量 `120 passed in 49.27s`。
+- v2 测试逐项核对 user_version、主数据库大小/mtime/SHA-256 和应用文件不变。仅允许
+  SQLite 自身根据 WAL 协议产生协调 sidecar；这不等价于 schema/data 迁移。
+- 本切片不读取或修改正式项目 SQLite，不访问 COM3、板卡、Marketplace 或安装缓存。
+  raw/error 详情与错误解析 DB-first 顺序属于后续 v3-C2/C3。

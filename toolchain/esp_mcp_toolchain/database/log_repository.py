@@ -10,7 +10,7 @@ import sqlite3
 from typing import Any, Iterable
 from uuid import UUID, uuid5
 
-from .db import connect
+from .db import CURRENT_SCHEMA_VERSION, connect, connect_readonly
 from .error_repository import (
     ErrorRepositoryError,
     get_error as select_error,
@@ -120,6 +120,23 @@ class HistoricalArtifactProfileConflictError(LogRepositoryError):
 
 class HistoricalRawClaimConflictError(LogRepositoryError):
     error_kind = "historical_artifact_raw_claim_conflict"
+
+
+class LogDatabaseQueryError(LogRepositoryError):
+    recoverable = False
+
+
+class LogDatabaseInvalidError(LogDatabaseQueryError):
+    error_kind = "log_database_invalid"
+
+
+class LogDatabaseUnavailableError(LogDatabaseQueryError):
+    error_kind = "log_database_unavailable"
+    recoverable = True
+
+
+class LogDatabaseSchemaUnsupportedError(LogDatabaseQueryError):
+    error_kind = "log_database_schema_unsupported"
 
 
 @dataclass(frozen=True)
@@ -473,6 +490,171 @@ def _get_run_row(connection: sqlite3.Connection, project_id: str, run_id: str) -
         "SELECT * FROM runs WHERE project_id = ? AND run_id = ?",
         (project_id, run_id),
     ).fetchone()
+
+
+_READONLY_BASE_COLUMNS: dict[str, frozenset[str]] = {
+    "runs": frozenset(
+        {
+            "project_id",
+            "run_id",
+            "task_type",
+            "status",
+            "started_at",
+            "ended_at",
+            "next_sequence_no",
+            "selected_port",
+            "summary",
+            "payload_json",
+        }
+    ),
+    "events": frozenset(
+        {
+            "event_uuid",
+            "project_id",
+            "run_id",
+            "sequence_no",
+            "ts",
+            "phase",
+            "level",
+            "tool",
+            "source",
+            "message",
+            "payload_json",
+        }
+    ),
+}
+_READONLY_V3_COLUMNS: dict[str, frozenset[str]] = {
+    "raw_logs": frozenset(
+        {"project_id", "raw_log_id", "run_id", "kind", "path", "created_at", "sha256"}
+    ),
+    "errors": frozenset(
+        {
+            "project_id",
+            "error_id",
+            "run_id",
+            "error_kind",
+            "file",
+            "line",
+            "column",
+            "exception_type",
+            "message",
+            "raw_text",
+            "recoverable",
+            "created_at",
+        }
+    ),
+    "historical_raw_claims": frozenset(
+        {
+            "project_id",
+            "path",
+            "run_id",
+            "event_uuid",
+            "kind",
+            "sha256",
+            "adapter_id",
+            "reconciliation_version",
+            "event_profile_sha256",
+            "artifact_bundle_sha256",
+            "claimed_at",
+        }
+    ),
+}
+
+
+def _readonly_schema_version(connection: sqlite3.Connection) -> int:
+    version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+    if version not in {2, CURRENT_SCHEMA_VERSION}:
+        raise LogDatabaseSchemaUnsupportedError(
+            f"SQLite log database schema v{version} is not supported for read-only queries; "
+            f"supported versions are v2 and v{CURRENT_SCHEMA_VERSION}."
+        )
+    required = dict(_READONLY_BASE_COLUMNS)
+    if version == CURRENT_SCHEMA_VERSION:
+        required.update(_READONLY_V3_COLUMNS)
+    table_names = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+    for table, expected_columns in required.items():
+        if table not in table_names:
+            raise LogDatabaseSchemaUnsupportedError(
+                f"SQLite log database schema v{version} is missing required table {table}."
+            )
+        actual_columns = {
+            str(row[1])
+            for row in connection.execute(f'PRAGMA table_info("{table}")')
+        }
+        missing_columns = expected_columns - actual_columns
+        if missing_columns:
+            missing = ", ".join(sorted(missing_columns))
+            raise LogDatabaseSchemaUnsupportedError(
+                f"SQLite log database schema v{version} table {table} "
+                f"is missing required columns: {missing}."
+            )
+    return version
+
+
+def _classify_sqlite_query_error(exc: sqlite3.DatabaseError) -> LogDatabaseQueryError:
+    error_code = getattr(exc, "sqlite_errorcode", None)
+    primary_code = error_code & 0xFF if isinstance(error_code, int) else None
+    unavailable_codes = {
+        getattr(sqlite3, "SQLITE_BUSY", 5),
+        getattr(sqlite3, "SQLITE_LOCKED", 6),
+        getattr(sqlite3, "SQLITE_CANTOPEN", 14),
+        getattr(sqlite3, "SQLITE_PERM", 3),
+        getattr(sqlite3, "SQLITE_READONLY", 8),
+        getattr(sqlite3, "SQLITE_IOERR", 10),
+    }
+    message = str(exc).lower()
+    unavailable_markers = (
+        "locked",
+        "busy",
+        "unable to open",
+        "permission denied",
+        "readonly",
+        "read-only",
+        "disk i/o",
+    )
+    if primary_code in unavailable_codes or any(
+        marker in message for marker in unavailable_markers
+    ):
+        return LogDatabaseUnavailableError(
+            "SQLite log database is temporarily unavailable for read-only queries."
+        )
+    return LogDatabaseInvalidError(
+        "SQLite log database is invalid or cannot be read safely."
+    )
+
+
+def _open_readonly_snapshot(
+    database: str | Path,
+) -> tuple[sqlite3.Connection, int]:
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = connect_readonly(database)
+        connection.execute("BEGIN")
+        return connection, _readonly_schema_version(connection)
+    except FileNotFoundError:
+        if connection is not None:
+            connection.close()
+        raise
+    except LogDatabaseQueryError:
+        if connection is not None:
+            connection.close()
+        raise
+    except sqlite3.DatabaseError as exc:
+        if connection is not None:
+            connection.close()
+        raise _classify_sqlite_query_error(exc) from exc
+    except OSError as exc:
+        if connection is not None:
+            connection.close()
+        raise LogDatabaseUnavailableError(
+            "SQLite log database path is unavailable for read-only queries."
+        ) from exc
 
 
 def create_run(
@@ -1478,32 +1660,103 @@ def get_run_errors(
         connection.close()
 
 
+def _latest_run_row(connection: sqlite3.Connection, project_id: str) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT r.* FROM runs AS r
+        LEFT JOIN (
+          SELECT project_id, run_id, MAX(ts) AS last_event_at
+          FROM events
+          WHERE project_id = ?
+          GROUP BY project_id, run_id
+        ) AS e
+          ON e.project_id = r.project_id AND e.run_id = r.run_id
+        WHERE r.project_id = ?
+        ORDER BY MAX(
+          r.started_at,
+          COALESCE(r.ended_at, ''),
+          COALESCE(e.last_event_at, '')
+        ) DESC, r.run_id DESC
+        LIMIT 1
+        """,
+        (project_id, project_id),
+    ).fetchone()
+
+
 def latest_run(database: str | Path, *, project_id: str) -> dict[str, Any] | None:
     connection = connect(database)
     try:
-        row = connection.execute(
-            """
-            SELECT r.* FROM runs AS r
-            LEFT JOIN (
-              SELECT project_id, run_id, MAX(ts) AS last_event_at
-              FROM events
-              WHERE project_id = ?
-              GROUP BY project_id, run_id
-            ) AS e
-              ON e.project_id = r.project_id AND e.run_id = r.run_id
-            WHERE r.project_id = ?
-            ORDER BY MAX(
-              r.started_at,
-              COALESCE(r.ended_at, ''),
-              COALESCE(e.last_event_at, '')
-            ) DESC, r.run_id DESC
-            LIMIT 1
-            """,
-            (project_id, project_id),
-        ).fetchone()
+        row = _latest_run_row(connection, project_id)
         return _run_from_row(row) if row is not None else None
     finally:
         connection.close()
+
+
+def read_latest_run_snapshot(database: str | Path, *, project_id: str) -> dict[str, Any]:
+    connection, schema_version = _open_readonly_snapshot(database)
+    try:
+        row = _latest_run_row(connection, project_id)
+        latest = _run_from_row(row) if row is not None else None
+        last_event = None
+        if latest is not None:
+            events = list_events_for_run(
+                connection,
+                project_id=project_id,
+                run_id=latest["run_id"],
+                tail=1,
+            )
+            if events:
+                last_event = events[-1]
+        return {
+            "schema_version": schema_version,
+            "latest": latest,
+            "last_event": last_event,
+        }
+    except sqlite3.DatabaseError as exc:
+        raise _classify_sqlite_query_error(exc) from exc
+    except (EventRepositoryError, KeyError, TypeError, ValueError) as exc:
+        raise LogDatabaseInvalidError(
+            "SQLite log database contains invalid stored log data."
+        ) from exc
+    finally:
+        connection.close()
+
+
+def read_run_snapshot(
+    database: str | Path,
+    *,
+    project_id: str,
+    run_id: str,
+    tail: int,
+) -> dict[str, Any]:
+    connection, schema_version = _open_readonly_snapshot(database)
+    try:
+        row = _get_run_row(connection, project_id, run_id)
+        run = _run_from_row(row) if row is not None else None
+        events = (
+            list_events_for_run(
+                connection,
+                project_id=project_id,
+                run_id=run_id,
+                tail=tail,
+            )
+            if run is not None
+            else []
+        )
+        return {
+            "schema_version": schema_version,
+            "run": run,
+            "events": events,
+        }
+    except sqlite3.DatabaseError as exc:
+        raise _classify_sqlite_query_error(exc) from exc
+    except (EventRepositoryError, KeyError, TypeError, ValueError) as exc:
+        raise LogDatabaseInvalidError(
+            "SQLite log database contains invalid stored log data."
+        ) from exc
+    finally:
+        connection.close()
+
 
 def query_events(
     database: str | Path,
@@ -1538,6 +1791,69 @@ def query_events(
             sequence_from=sequence_from,
             sequence_to=sequence_to,
         )
+    finally:
+        connection.close()
+
+
+def query_events_readonly(
+    database: str | Path,
+    *,
+    project_id: str,
+    terms: Iterable[str] = (),
+    limit: int = 20,
+    run_id: str | None = None,
+    phase: str | None = None,
+    level: str | None = None,
+    tool: str | None = None,
+    source: str | None = None,
+    from_ts: str | None = None,
+    to_ts: str | None = None,
+    sequence_from: int | None = None,
+    sequence_to: int | None = None,
+) -> dict[str, Any]:
+    if (sequence_from is not None or sequence_to is not None) and not run_id:
+        raise EventRepositoryError("run_id is required when filtering by sequence number")
+    if sequence_from is not None and sequence_from < 1:
+        raise EventRepositoryError("sequence_from must be at least 1")
+    if sequence_to is not None and sequence_to < 1:
+        raise EventRepositoryError("sequence_to must be at least 1")
+    if sequence_from is not None and sequence_to is not None and sequence_from > sequence_to:
+        raise EventRepositoryError("sequence_from must not exceed sequence_to")
+    normalized_phase = normalize_phase(phase) if phase is not None else None
+    normalized_level = normalize_level(level) if level is not None else None
+    normalized_from_ts = normalize_timestamp(from_ts) if from_ts is not None else None
+    normalized_to_ts = normalize_timestamp(to_ts) if to_ts is not None else None
+    if (
+        normalized_from_ts is not None
+        and normalized_to_ts is not None
+        and normalized_from_ts > normalized_to_ts
+    ):
+        raise EventRepositoryError("from_ts must not exceed to_ts")
+
+    connection, schema_version = _open_readonly_snapshot(database)
+    try:
+        matches = select_events(
+            connection,
+            project_id=project_id,
+            terms=terms,
+            limit=limit,
+            run_id=run_id,
+            phase=normalized_phase,
+            level=normalized_level,
+            tool=tool,
+            source=source,
+            from_ts=normalized_from_ts,
+            to_ts=normalized_to_ts,
+            sequence_from=sequence_from,
+            sequence_to=sequence_to,
+        )
+        return {"schema_version": schema_version, "matches": matches}
+    except sqlite3.DatabaseError as exc:
+        raise _classify_sqlite_query_error(exc) from exc
+    except (EventRepositoryError, KeyError, TypeError, ValueError) as exc:
+        raise LogDatabaseInvalidError(
+            "SQLite log database contains invalid stored log data."
+        ) from exc
     finally:
         connection.close()
 

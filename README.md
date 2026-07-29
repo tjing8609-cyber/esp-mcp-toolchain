@@ -961,24 +961,27 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `120 passed`、test 跨工作树全量 `531 passed, 4 skipped`。正式项目数据库仍为 v2，
   本步骤没有迁移正式库、访问 COM3、更新 Marketplace/安装缓存或修改用户 plugin manifest。
 
-### 2026-07-29 14:43 - 固化 v3-C1 只读日志查询合同
+### 2026-07-29 14:43 - 完成 v3-C1 日志查询只读边界
 
-- 缺陷根因：三个日志查询工具会先调用写入型数据库初始化；因此查询不存在的库会创建文件，
-  查询 schema v2 会静默迁移到 v3，损坏数据库还会把底层 SQLite 异常直接泄漏给调用者。
-- test 分支先加入四项预期红灯：缺库查询零副作用、JSONL 审计镜像不得被在线导入、v2
-  可查询但版本和文件不得变化、损坏库必须返回不可恢复的结构化错误。
-- 修复合同要求 main 改用 SQLite `mode=ro` 与 `query_only`，查询路径不得调用迁移或导入；
-  本提交只建立测试门禁，尚未宣称产品修复完成。
-- 红灯基线为 `4 failed in 0.41s`，全部失败均命中上述既有缺陷。本步骤只使用 pytest
-  临时项目，没有读取或修改正式 SQLite、访问 COM3、更新 Marketplace/安装缓存。
-- 实施核查时依据 SQLite 官方 WAL 约束修正了一处过严断言：WAL 模式的只读连接在协调文件
-  不存在时可能创建 `-wal/-shm`；`immutable=1` 只适合确定不再变化的数据库，不能用于仍
-  可能写入的日志库。合同因此只禁止主数据库和应用文件变化，允许 SQLite 自身协调文件；
-  仍严格校验 schema 版本、主库字节/时间和日志目录不变。
-- 复审补入“锁定/忙碌不是损坏库”合同：三个入口必须返回可恢复的
-  `log_database_unavailable`，不能误报不可恢复的 `log_database_invalid`。扩展后的 C1
-  又补入“数据库路径被目录占位不是缺库”合同，存在的非普通文件必须明确报损坏状态；
-  最终专项为 `10 passed in 0.43s`。
+- 缺陷根因：`esp_logs_latest/get/query` 原先在查询前调用写入型数据库准备，导致缺库查询
+  创建 SQLite，v2 查询静默升级到 v3，并可能在线导入 JSONL；损坏库或坏 JSON 还会泄漏
+  底层异常。
+- 新增独立 `mode=ro`、`query_only` 连接和 schema 能力探测；get/latest 的关联读取在
+  同一只读事务快照内完成。v2 只读 runs/events，v3 必须具备当前查询所需结构；未知或
+  不完整 schema 明确拒绝，查询路径不调用初始化、迁移或 importer。
+- 缺库保持兼容语义：latest 为空、get 为 `run_not_found`、query 为空结果，且不创建
+  数据库或日志目录；该结论以已经完成 `project_context_select` 为前置。损坏结构和持久化 JSON 统一返回不可恢复的
+  `log_database_invalid`。
+- test 分支先得到 `4 failed` 红灯，修复后扩展为 `10 passed`；既有日志/项目上下文回归
+  `6 passed`，main 全量 `120 passed in 49.27s`。SQLite WAL 只读连接可能按官方协议创建协调用 `-wal/-shm`，因此只严格
+  保证主数据库、schema 和应用文件不变，不对仍可能写入的日志库误用 `immutable=1`。
+- 锁定、忙碌、权限和 I/O 可用性问题返回可恢复的 `log_database_unavailable`；只有
+  格式/内容损坏返回不可恢复的 `log_database_invalid`，避免把瞬时竞争误报为永久损坏。
+  若数据库路径已存在但为目录或其他非普通文件，也按异常存储状态拒绝，不能冒充缺库。
+- 本步骤只使用 pytest 临时项目，没有读取或修改正式 SQLite、访问 COM3、更新
+  Marketplace/安装缓存，也没有纳入用户的 plugin manifest 差异。
+- 固定 `main@187fced` 合入 test 后，C1 专项 `10 passed in 0.47s`，test 分支自身源码
+  全量 `544 passed, 4 skipped in 246.95s`。
 
 ## 协作约定
 
