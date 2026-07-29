@@ -960,6 +960,26 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `120 passed`、test 跨工作树全量 `531 passed, 4 skipped`。正式项目数据库仍为 v2，
   本步骤没有迁移正式库、访问 COM3、更新 Marketplace/安装缓存或修改用户 plugin manifest。
 
+### 2026-07-29 14:43 - 完成 v3-C1 日志查询只读边界
+
+- 缺陷根因：`esp_logs_latest/get/query` 原先在查询前调用写入型数据库准备，导致缺库查询
+  创建 SQLite，v2 查询静默升级到 v3，并可能在线导入 JSONL；损坏库或坏 JSON 还会泄漏
+  底层异常。
+- 新增独立 `mode=ro`、`query_only` 连接和 schema 能力探测；get/latest 的关联读取在
+  同一只读事务快照内完成。v2 只读 runs/events，v3 必须具备当前查询所需结构；未知或
+  不完整 schema 明确拒绝，查询路径不调用初始化、迁移或 importer。
+- 缺库保持兼容语义：latest 为空、get 为 `run_not_found`、query 为空结果，且不创建
+  数据库或日志目录；该结论以已经完成 `project_context_select` 为前置。损坏结构和持久化 JSON 统一返回不可恢复的
+  `log_database_invalid`。
+- test 分支先得到 `4 failed` 红灯，修复后扩展为 `10 passed`；既有日志/项目上下文回归
+  `6 passed`，main 全量 `120 passed in 49.27s`。SQLite WAL 只读连接可能按官方协议创建协调用 `-wal/-shm`，因此只严格
+  保证主数据库、schema 和应用文件不变，不对仍可能写入的日志库误用 `immutable=1`。
+- 锁定、忙碌、权限和 I/O 可用性问题返回可恢复的 `log_database_unavailable`；只有
+  格式/内容损坏返回不可恢复的 `log_database_invalid`，避免把瞬时竞争误报为永久损坏。
+  若数据库路径已存在但为目录或其他非普通文件，也按异常存储状态拒绝，不能冒充缺库。
+- 本步骤只使用 pytest 临时项目，没有读取或修改正式 SQLite、访问 COM3、更新
+  Marketplace/安装缓存，也没有纳入用户的 plugin manifest 差异。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

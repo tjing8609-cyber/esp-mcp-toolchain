@@ -86,6 +86,16 @@ v1 数据库迁移会在单一事务内重建 runs/events/raw_logs/errors 及四
 
 时间边界与事件时间使用同一 UTC 规范化函数；`from_ts` 晚于 `to_ts` 时拒绝查询，不按原始 ISO 字符串直接比较。
 
+三个查询入口使用独立的 SQLite URI `mode=ro` 连接，并设置 `query_only=ON`；它们不调用
+数据库初始化、schema 迁移或 JSONL importer。缺库按空查询/未找到返回且不创建目录或
+数据库；schema v2 只开放 runs/events，只读期间不升级；schema v3 缺少必需表/列、未知
+版本或损坏持久化 JSON 均返回结构化错误。latest 的 run/last event 与 get 的 run/events
+分别来自同一个显式只读事务快照。
+
+WAL 模式即使以 `mode=ro` 打开，也可能在目录可写且协调文件缺失时创建 `-wal/-shm`。
+这些是 SQLite 的并发协调文件，不是应用迁移或日志导入。日志数据库可能仍有并发写入，
+所以查询层不使用只适合确定不再变化数据库的 `immutable=1`。
+
 ## 验证状态
 
 2026-07-20 最终本地门禁：SQLite 定向 `33 passed`，跨工作树完整测试 `134 passed`。当前项目 19 份旧 JSONL 已在临时数据库完成只读迁移演练：32 events，状态分布为 12 cancelled、2 failed、5 succeeded，外键检查为空。

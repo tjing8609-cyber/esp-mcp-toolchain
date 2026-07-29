@@ -7,7 +7,7 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；B4.1 仓储原语、B4.2/B4.3 纯只读 resolver 和 B4.4 项目级历史协调器已完成源码与临时数据库软件门禁。B4.4 包含持久 raw claim、事务内 profile/sequence、项目/run lease、两次解析、全局 raw 所有权预检、独立 marker 与幂等续跑。正式项目数据库和当前安装插件仍保持 v2；本轮没有访问板卡、写入/升级正式 SQLite、更新 Marketplace 或安装缓存。下一开发项为 v3-C。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；B4.1 仓储原语、B4.2/B4.3 纯只读 resolver 和 B4.4 项目级历史协调器已完成源码与临时数据库软件门禁。v3-C1 已把 latest/get/query 切换为无迁移、无在线 JSONL 导入的 SQLite 只读事务。正式项目数据库和当前安装插件仍保持 v2；本轮没有访问板卡、写入/升级正式 SQLite、更新 Marketplace 或安装缓存。下一开发项为 v3-C2 日志详情。
 
 ## 本轮已完成实现
 
@@ -136,6 +136,10 @@
 - B4.4 每个 candidate 的 claim/raw/error 在 B4.1 中原子提交，项目任务允许失败后幂等
   续跑。SQLite 已提交而最终 marker 失败时报告两个持久化状态，精确重试可补 marker；
   释放后仍为 running 的 marker 由只读 status 报告为 `interrupted`。
+- v3-C1 新增 `connect_readonly()` 和查询 schema 能力探测。三个日志查询不再调用
+  `_prepare_scope()`：缺库零创建，v2 只读 runs/events 且不升级，v3 缺结构或损坏数据
+  显式失败。latest/get 的多项读取使用同一 `BEGIN` 快照，JSONL 只保留审计/显式迁移
+  角色。WAL 自身可能创建协调 sidecar，主数据库、schema 和应用文件保持不变。
 
 ## 本地验证
 
@@ -146,6 +150,10 @@
 - B4.4 协调器入口缺失时 `9 failed`；首轮实现后 `9 passed`。复审三项合同先得到
   `3 failed, 9 passed`，修复 Busy retryable、metadata error 和 run-aware raw owner 后
   `12 passed`；B4.1-B4.4 组合 `145 passed, 1 skipped in 6.98s`。
+- v3-C1 初始四合同为预期 `4 failed in 0.39s`；实现后补强 query-only、校验先于打开、
+  三入口损坏库、坏 JSON、不完整 schema、locked/unavailable 分类和非普通路径拒绝，
+  最终专项 `10 passed in 0.43s`。既有日志与
+  项目上下文回归 `6 passed in 0.81s`，main 全量 `120 passed in 49.27s`。
 - 当前完整本地门禁：main `120 passed in 49.70s`；test 显式加载 main
   `531 passed, 4 skipped in 243.41s`。两轮独立复审 P0=0、P1=0。
 - 提示词/提高工具/架构专项：`25 passed`。
@@ -261,10 +269,12 @@
 
 ## 待完成
 
-1. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
-   同时保留有界兼容路径和项目边界。
-2. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+1. v3-C2：让 `esp_logs_get` 返回正式 raw/error 详情、来源和截断元数据；v2 明确报告
+   不具备正式 artifact 能力，不做隐式升级。
+2. v3-C3：让 `esp_error_parse_log` 优先查询正式 errors/raw_logs，并保留显式、有界且
+   项目内的旧 Monitor/event 兼容路径。
+3. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
    48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
    v2 数据库升级。
-3. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
+4. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
    精确动作单独确认。

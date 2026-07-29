@@ -701,39 +701,56 @@ def import_legacy_jsonl(*, scope: LogScope | None = None) -> dict[str, Any]:
 
 def esp_logs_latest() -> dict[str, Any]:
     scope = LogScope.active()
-    _prepare_scope(scope)
-    latest = log_repository.latest_run(scope.database_file, project_id=scope.project_id)
+    try:
+        snapshot = log_repository.read_latest_run_snapshot(
+            scope.database_file,
+            project_id=scope.project_id,
+        )
+    except FileNotFoundError:
+        return {"ok": True, "latest": None}
+    except log_repository.LogDatabaseQueryError as exc:
+        return execution_error(
+            exc.error_kind,
+            str(exc),
+            tool="esp_logs_latest",
+            recoverable=exc.recoverable,
+        )
+    latest = snapshot["latest"]
     if latest is None:
         return {"ok": True, "latest": None}
-    events = log_repository.get_run_events(
-        scope.database_file,
-        project_id=scope.project_id,
-        run_id=latest["run_id"],
-        tail=1,
-    )
-    if events:
-        latest["last_event"] = events[-1]
+    if snapshot["last_event"] is not None:
+        latest["last_event"] = snapshot["last_event"]
     return {"ok": True, "latest": latest}
 
 
 def esp_logs_get(run_id: str, tail: int = 80) -> dict[str, Any]:
-    scope = LogScope.active()
-    _prepare_scope(scope)
     if tail < 1 or tail > 10_000:
         return execution_error("invalid_tail", "tail must be between 1 and 10000.", tool="esp_logs_get")
-    run = log_repository.get_run(scope.database_file, project_id=scope.project_id, run_id=run_id)
+    scope = LogScope.active()
+    try:
+        snapshot = log_repository.read_run_snapshot(
+            scope.database_file,
+            project_id=scope.project_id,
+            run_id=run_id,
+            tail=tail,
+        )
+    except FileNotFoundError:
+        snapshot = {"run": None, "events": []}
+    except log_repository.LogDatabaseQueryError as exc:
+        return execution_error(
+            exc.error_kind,
+            str(exc),
+            tool="esp_logs_get",
+            recoverable=exc.recoverable,
+        )
+    run = snapshot["run"]
     if run is None:
         return {
             "ok": False,
             "error_kind": "run_not_found",
             "message": f"No log for run_id {run_id} in the active project",
         }
-    events = log_repository.get_run_events(
-        scope.database_file,
-        project_id=scope.project_id,
-        run_id=run_id,
-        tail=tail,
-    )
+    events = snapshot["events"]
     return {"ok": True, "project_id": scope.project_id, "run_id": run_id, "run": run, "events": events}
 
 
@@ -750,8 +767,6 @@ def esp_logs_query(
     sequence_from: int | None = None,
     sequence_to: int | None = None,
 ) -> dict[str, Any]:
-    scope = LogScope.active()
-    _prepare_scope(scope)
     if limit < 1 or limit > 1_000:
         return execution_error("invalid_limit", "limit must be between 1 and 1000.", tool="esp_logs_query")
     if sequence_from is not None and sequence_from < 1:
@@ -795,8 +810,9 @@ def esp_logs_query(
         terms = query.split()
     if not terms and query.strip():
         terms = [query.strip()]
+    scope = LogScope.active()
     try:
-        matches = log_repository.query_events(
+        snapshot = log_repository.query_events_readonly(
             scope.database_file,
             project_id=scope.project_id,
             terms=[term.lower() for term in terms],
@@ -811,8 +827,18 @@ def esp_logs_query(
             sequence_from=sequence_from,
             sequence_to=sequence_to,
         )
+        matches = snapshot["matches"]
+    except FileNotFoundError:
+        matches = []
     except EventRepositoryError as exc:
         return execution_error(exc.error_kind, str(exc), tool="esp_logs_query")
+    except log_repository.LogDatabaseQueryError as exc:
+        return execution_error(
+            exc.error_kind,
+            str(exc),
+            tool="esp_logs_query",
+            recoverable=exc.recoverable,
+        )
     return {
         "ok": True,
         "project_id": scope.project_id,

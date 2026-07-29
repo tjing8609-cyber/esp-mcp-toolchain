@@ -69,6 +69,11 @@
 
 ### Fixed
 
+- 日志查询不再调用写入型数据库初始化：缺失数据库不会被查询创建，schema v2 不会因
+  latest/get/query 静默升级，JSONL 审计镜像也不会被在线查询导入。三个入口改用
+  `mode=ro`、`query_only` 和单事务快照；损坏 schema 或持久化 JSON 返回结构化错误，
+  锁定/忙碌/权限等可用性问题与数据库损坏分开报告，目录等非普通数据库目标不再被
+  当成缺库。
 - Windows Monitor artifact lease 不再为了空锁文件在申请 byte-range lock 前写入占位字节。
   竞争者现在先尝试非阻塞锁，成功后才重写锁元数据，避免 owner 的零长度 truncate 窗口把
   正常竞争误报为不可恢复的 `PermissionError [Errno 13]`。
