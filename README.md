@@ -983,6 +983,19 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 固定 `main@187fced` 合入 test 后，C1 专项 `10 passed in 0.47s`，test 分支自身源码
   全量 `544 passed, 4 skipped in 246.95s`。
 
+### 2026-07-29 15:19 - 固化 v3-C2 正式日志详情合同
+
+- 缺陷根因：`esp_logs_get` 只返回 run/events，已经写入 schema v3 的 raw_logs/errors
+  无法通过公开日志详情读取；若直接复用现有 getter，又会另开写型连接且无行数/文本上界。
+- test 分支先加入四项预期红灯：v3 正式 artifact 与跨项目隔离、最新窗口和截断元数据、
+  v2 明确无正式 artifact 能力且不迁移、非法持久 raw 路径 fail-closed。
+- 合同保持原有 `ok/project_id/run_id/run/events`，新增
+  `query_source/raw_logs/errors/artifact_capability/artifact_truncation`。raw/error 必须在
+  C1 的同一只读事务内查询；列表使用 project/run 双过滤、稳定 `LIMIT + 1`，错误大文本
+  在 SQL 侧截断并逐字段标记。
+- 旧实现基线为 `4 failed in 0.89s`，四项均命中字段/校验能力缺失。本提交只建立测试门禁，
+  没有查询正式 SQLite、扫描 artifact 文件、访问 COM3 或修改 Marketplace/安装缓存。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。
