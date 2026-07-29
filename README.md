@@ -961,6 +961,17 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `120 passed`、test 跨工作树全量 `531 passed, 4 skipped`。正式项目数据库仍为 v2，
   本步骤没有迁移正式库、访问 COM3、更新 Marketplace/安装缓存或修改用户 plugin manifest。
 
+### 2026-07-29 14:43 - 固化 v3-C1 只读日志查询合同
+
+- 缺陷根因：三个日志查询工具会先调用写入型数据库初始化；因此查询不存在的库会创建文件，
+  查询 schema v2 会静默迁移到 v3，损坏数据库还会把底层 SQLite 异常直接泄漏给调用者。
+- test 分支先加入四项预期红灯：缺库查询零副作用、JSONL 审计镜像不得被在线导入、v2
+  可查询但版本和文件不得变化、损坏库必须返回不可恢复的结构化错误。
+- 修复合同要求 main 改用 SQLite `mode=ro` 与 `query_only`，查询路径不得调用迁移或导入；
+  本提交只建立测试门禁，尚未宣称产品修复完成。
+- 红灯基线为 `4 failed in 0.41s`，全部失败均命中上述既有缺陷。本步骤只使用 pytest
+  临时项目，没有读取或修改正式 SQLite、访问 COM3、更新 Marketplace/安装缓存。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。
