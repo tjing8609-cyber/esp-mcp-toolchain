@@ -191,7 +191,11 @@
   两项复审合同另为预期 `2 failed`。完成后 C3 专项 `7 passed in 1.09s`、相关 C1/C2/
   错误解析回归 `49 passed in 5.63s`、main 全量 `120 passed in 48.77s`、test 显式加载
   main 全量 `557 passed, 4 skipped in 250.00s`。全部使用临时 SQLite/文件；未访问或
-  升级正式数据库、访问 COM3、更新 Marketplace/安装缓存。远端推送与 CI 尚未完成。
+  升级正式数据库、访问 COM3、更新 Marketplace/安装缓存。合并后 test 自身源码全量为
+  `557 passed, 4 skipped in 250.85s`；C2/C3 的
+  [main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226)
+  与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633)
+  共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功。
 - SQLite v3-B4.3 合同在 adapter 缺失时为预期 `40 failed, 1 skipped`；独立复审补入
   精确 raw 来源绑定和 native 全记录身份合同后曾得到
   `6 failed, 40 passed, 1 skipped`；第二轮合法失败端口合同曾得到

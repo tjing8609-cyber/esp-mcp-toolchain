@@ -40,14 +40,15 @@ Monitor run lease、两次 resolver、跨 run raw 所有权预检和独立原子
 按正式 errors → 正式 raw → 有界兼容 event/Monitor 选择。正式 raw 完整比对登记 SHA-256，
 兼容 event 只取最新 64 条并在 SQL 侧限制 message/payload。C3 专项
 `7 passed`，main 全量 `120 passed`，test 显式加载 main 全量
-`557 passed, 4 skipped`。这些仍是临时数据库/文件证据，C2/C3 远端推送和 CI 尚未完成。
+`557 passed, 4 skipped`。合并后 test 自身源码仍为 `557 passed, 4 skipped`；
+[main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226)
+与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633)
+共 8 个远端矩阵 job 全部成功。这些仍是临时数据库/文件证据，不代表正式数据库升级。
 
 当前优先顺序：
 
-1. 网络恢复后按 main → test 顺序推送 C2/C3，并核对 Windows/Linux、Python 3.10/3.12
-   远端矩阵；不能用当前本地全绿替代 GitHub CI。
-2. 双分支远端门禁完成后，只同步个人 Marketplace 源并执行 validator、发布测试和
+1. 双分支远端门禁已完成；只同步个人 Marketplace 源并执行 validator、发布测试和
    48/12/12 枚举；由用户重启 Codex。
-3. 重启确认新版插件后，才允许正式项目 v2→v3 升级和历史补投影。
-4. 随后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复
+2. 重启确认新版插件后，才允许正式项目 v2→v3 升级和历史补投影。
+3. 随后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复
    MicroPython 均按具体动作单独确认。
