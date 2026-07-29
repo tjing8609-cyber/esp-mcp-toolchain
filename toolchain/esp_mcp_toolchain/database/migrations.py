@@ -460,6 +460,10 @@ _V3_INDEXES: dict[str, tuple[str, tuple[str, ...]]] = {
         "raw_logs",
         ("project_id", "kind", "created_at", "raw_log_id"),
     ),
+    "idx_historical_raw_claims_project_run_event": (
+        "historical_raw_claims",
+        ("project_id", "run_id", "event_uuid", "path"),
+    ),
     "idx_errors_project_run_created": (
         "errors",
         ("project_id", "run_id", "created_at", "error_id"),
@@ -467,6 +471,13 @@ _V3_INDEXES: dict[str, tuple[str, tuple[str, ...]]] = {
     "idx_errors_project_kind_created": (
         "errors",
         ("project_id", "error_kind", "created_at", "error_id"),
+    ),
+}
+
+_V3_UNIQUE_INDEXES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "idx_events_project_run_uuid": (
+        "events",
+        ("project_id", "run_id", "event_uuid"),
     ),
 }
 
@@ -492,25 +503,71 @@ def _validate_v3_foreign_key(connection: sqlite3.Connection, table: str) -> None
         )
 
 
+def _validate_v3_claim_foreign_keys(connection: sqlite3.Connection) -> None:
+    rows = connection.execute(
+        'PRAGMA foreign_key_list("historical_raw_claims")'
+    ).fetchall()
+    signatures = {
+        (
+            row["table"],
+            row["from"],
+            row["to"],
+            row["on_delete"],
+        )
+        for row in rows
+    }
+    expected = {
+        ("runs", "project_id", "project_id", "CASCADE"),
+        ("runs", "run_id", "run_id", "CASCADE"),
+        ("events", "project_id", "project_id", "CASCADE"),
+        ("events", "run_id", "run_id", "CASCADE"),
+        ("events", "event_uuid", "event_uuid", "CASCADE"),
+    }
+    run_rows = [row for row in rows if row["table"] == "runs"]
+    event_rows = [row for row in rows if row["table"] == "events"]
+    if (
+        len(rows) != 5
+        or signatures != expected
+        or len(run_rows) != 2
+        or len({row["id"] for row in run_rows}) != 1
+        or len(event_rows) != 3
+        or len({row["id"] for row in event_rows}) != 1
+        or event_rows[0]["id"] == run_rows[0]["id"]
+    ):
+        raise DatabaseMigrationError(
+            "schema v3 historical_raw_claims foreign keys are invalid"
+        )
+
+
 def _validate_v3_indexes(connection: sqlite3.Connection) -> None:
-    for index_name, (table, expected_columns) in _V3_INDEXES.items():
-        table_indexes = {
-            row["name"]: row
-            for row in connection.execute(f'PRAGMA index_list("{table}")')
-        }
-        index_metadata = table_indexes.get(index_name)
-        rows = connection.execute(f'PRAGMA index_info("{index_name}")').fetchall()
-        actual_columns = tuple(row["name"] for row in rows)
-        if (
-            index_metadata is None
-            or bool(index_metadata["unique"])
-            or bool(index_metadata["partial"])
-            or actual_columns != expected_columns
-        ):
-            raise DatabaseMigrationError(
-                f"schema v3 index {index_name} is not on {table} with columns "
-                f"{expected_columns}; actual columns are {actual_columns}"
-            )
+    for expected_unique, indexes in (
+        (False, _V3_INDEXES),
+        (True, _V3_UNIQUE_INDEXES),
+    ):
+        for index_name, (table, expected_columns) in indexes.items():
+            table_indexes = {
+                row["name"]: row
+                for row in connection.execute(
+                    f'PRAGMA index_list("{table}")'
+                )
+            }
+            index_metadata = table_indexes.get(index_name)
+            rows = connection.execute(
+                f'PRAGMA index_info("{index_name}")'
+            ).fetchall()
+            actual_columns = tuple(row["name"] for row in rows)
+            if (
+                index_metadata is None
+                or bool(index_metadata["unique"]) != expected_unique
+                or bool(index_metadata["partial"])
+                or actual_columns != expected_columns
+            ):
+                raise DatabaseMigrationError(
+                    f"schema v3 index {index_name} is not on {table} "
+                    f"with columns {expected_columns} and "
+                    f"unique={expected_unique}; actual columns are "
+                    f"{actual_columns}"
+                )
 
 
 def _validate_v3_checks(connection: sqlite3.Connection) -> None:
@@ -648,6 +705,7 @@ def _validate_v3_checks(connection: sqlite3.Connection) -> None:
 def _validate_v3_contract(connection: sqlite3.Connection) -> None:
     expected_primary_keys = {
         "raw_logs": ("project_id", "raw_log_id"),
+        "historical_raw_claims": ("project_id", "path"),
         "errors": ("project_id", "error_id"),
     }
     for table, expected_primary_key in expected_primary_keys.items():
@@ -657,7 +715,9 @@ def _validate_v3_contract(connection: sqlite3.Connection) -> None:
                 f"schema v3 table {table} has primary key {actual_primary_key}, "
                 f"expected {expected_primary_key}"
             )
-        _validate_v3_foreign_key(connection, table)
+        if table in {"raw_logs", "errors"}:
+            _validate_v3_foreign_key(connection, table)
+    _validate_v3_claim_foreign_keys(connection)
     _validate_v3_indexes(connection)
     _validate_v3_checks(connection)
 
