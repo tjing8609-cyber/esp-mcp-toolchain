@@ -1478,8 +1478,7 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   更新 `persisted_bytes` 并加入带 sequence 的内存记录后会通知等待者。旧测试没有使用
   这条同步路径。
 - 失败提交相对此前全绿提交只改变文档；失败测试、Monitor backend 和串口工具源码未变。
-  因此现有证据指向测试同步竞态，而不是文档或 C2/C3 产品改动。这个结论不等同于对所有
-  未来 CI 调度问题的绝对排除，仍需修复提交的远端矩阵重新验证。
+  因此现有证据指向测试同步竞态，而不是文档或 C2/C3 产品改动。
 
 ### 修复
 
@@ -1497,7 +1496,8 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 原失败节点单次 `1 passed`；20 个独立 pytest 进程为 `20/20`。
 - 条件读取、游标、停止唤醒和分块相邻回归为 `5 passed in 2.63s`。
 - `test_sqlite_monitor_artifacts.py` 为 `46 passed, 2 skipped in 34.08s`。
-- test 分支全量为 `557 passed, 4 skipped in 219.64s`。
+- test 分支最终工作树全量为 `557 passed, 4 skipped in 255.17s`。
+- [test run 30446579852](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30446579852)
+  的 Windows/Linux、Python 3.10/3.12 四个 job 均成功。
 - 本次测试使用假串口、临时项目和临时 SQLite，不访问 COM3、正式数据库或实板；没有
-  更新 Marketplace/安装缓存，也没有纳入用户 plugin manifest 差异。远端矩阵将在提交
-  推送后验证。
+  更新 Marketplace/安装缓存，也没有纳入用户 plugin manifest 差异。

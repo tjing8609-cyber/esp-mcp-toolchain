@@ -82,8 +82,9 @@
 
 - 修复 `test_monitor_stop_registers_each_finalized_chunk_once` 在慢速 Windows CI 上依赖固定
   3 秒 status 轮询的竞态。测试现在逐段写入 `abc` / `def`，通过带游标的
-  `esp_serial_monitor_read(wait_ms=30000)` 条件通知确认每段已经持久化，再执行原有
-  stop、双 chunk、SHA-256、SQLite 唯一登记和重复 stop 幂等断言；没有放宽产品合同。
+  `esp_serial_monitor_read(wait_ms=30000)` 条件通知确认每段已由 worker 写入 store 并
+  计入 `persisted_bytes`，再执行原有 stop、双 chunk、SHA-256、SQLite 唯一登记和重复
+  stop 幂等断言；没有放宽产品合同。
 - 日志查询不再调用写入型数据库初始化：缺失数据库不会被查询创建，schema v2 不会因
   latest/get/query 静默升级，JSONL 审计镜像也不会被在线查询导入。三个入口改用
   `mode=ro`、`query_only` 和单事务快照；损坏 schema 或持久化 JSON 返回结构化错误，

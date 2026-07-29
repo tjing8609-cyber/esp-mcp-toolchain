@@ -1091,7 +1091,9 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   重复 stop 不重复登记、唯一 complete event 和提交标记断言均保留。
 - 修复后原节点单次通过、独立 pytest 进程 `20/20` 通过，条件读取/游标/分块相邻回归
   `5 passed in 2.63s`，SQLite Monitor 文件 `46 passed, 2 skipped in 34.08s`，test
-  全量 `557 passed, 4 skipped in 219.64s`。远端矩阵将在本提交推送后重新验证。
+  全量 `557 passed, 4 skipped in 255.17s`。
+  [test Actions #80](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30446579852)
+  的 Windows/Linux、Python 3.10/3.12 四个 job 均成功。
 - 本次只修改测试及记录，使用临时项目和临时 SQLite；没有修改 Monitor 产品实现、正式
   数据库、COM3、Marketplace、安装缓存或用户自有 plugin manifest 差异。
 
