@@ -1038,6 +1038,27 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 本步骤没有访问 COM3、升级正式 schema-v2 数据库、更新 Marketplace/安装缓存或纳入
   用户自有的 `.codex-plugin/plugin.json` 工作树差异。下一步只同步个人 Marketplace 源。
 
+### 2026-07-29 19:03 - 修复 Windows CI 的 Monitor 固定轮询竞态
+
+- [test Actions #79](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30438663603)
+  仅 Windows/Python 3.10 在
+  `test_monitor_stop_registers_each_finalized_chunk_once` 失败；另外三个矩阵 job 成功。
+  失败发生在调用 stop 之前：测试使用固定 3 秒、每 10 ms 查询一次 status，等待异步
+  worker 把两段共 6 字节的数据写入日志。慢调度下该前置等待超时，不能证明 stop、SQLite
+  artifact 幂等、摘要或 C2/C3 产品实现失败。
+- 测试改为真正的分段同步：先放入 `abc`，用
+  `esp_serial_monitor_read(after_seq=0, wait_ms=30000)` 等待第一条条件通知并核对内容；
+  再放入 `def`，使用上一条 `next_after_seq` 等待第二条并核对内容。30 秒是失败上界，
+  记录到达会立即返回；随后仍要求 `persisted_bytes == 6`，原有两个 chunk、SHA-256、
+  重复 stop 不重复登记、唯一 complete event 和提交标记断言均保留。
+- 修复后原节点单次通过、独立 pytest 进程 `20/20` 通过，条件读取/游标/分块相邻回归
+  `5 passed in 2.63s`，SQLite Monitor 文件 `46 passed, 2 skipped in 34.08s`，test
+  全量 `557 passed, 4 skipped in 255.17s`。
+  [test Actions #80](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30446579852)
+  的 Windows/Linux、Python 3.10/3.12 四个 job 均成功。
+- 本次只修改测试及记录，使用临时项目和临时 SQLite；没有修改 Monitor 产品实现、正式
+  数据库、COM3、Marketplace、安装缓存或用户自有 plugin manifest 差异。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

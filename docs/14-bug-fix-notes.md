@@ -1453,3 +1453,51 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633)
   完成 8 个 Windows/Linux、Python 3.10/3.12 job，全部成功；尚未进入 Marketplace 或
   安装缓存。正式项目 SQLite 仍为 v2；远端软件矩阵也不能替代正式升级或实板验收。
+
+## 2026-07-29：Monitor SQLite artifact 测试在慢速 Windows runner 固定轮询超时
+
+### 症状
+
+- C2/C3 代码和测试此前已由 main/test 共 8 个矩阵 job 验证成功。随后只同步文档的
+  [test run 30438663603](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30438663603)
+  中，Ubuntu/Python 3.10、Ubuntu/Python 3.12、Windows/Python 3.12 成功，只有
+  Windows/Python 3.10 失败。
+- 失败节点为 `test_monitor_stop_registers_each_finalized_chunk_once`。测试向假串口队列
+  连续放入 `abc` 与 `def` 后，在调用 `esp_serial_monitor_stop()` 以前等待
+  `persisted_bytes == 6`；固定 3 秒窗口到期后抛出
+  `Monitor ... did not reach the expected state`。
+- 因为 stop 尚未调用，失败本身不能证明 chunk 封存、SQLite raw_log 登记、SHA-256、
+  重复 stop 幂等或 C2/C3 错误解析存在回归。
+
+### 根因
+
+- 测试用 `_wait_for_monitor()` 每 10 ms 读取一次完整 status，并把 3 秒墙钟时间当成
+  后台 worker 已消费两条队列记录的完成条件。该方法依赖 runner 调度速度，不是 Monitor
+  已提供的记录到达条件。
+- `esp_serial_monitor_read(wait_ms=...)` 本身使用 Monitor condition：记录写入 store、
+  更新 `persisted_bytes` 并加入带 sequence 的内存记录后会通知等待者。旧测试没有使用
+  这条同步路径。
+- 失败提交相对此前全绿提交只改变文档；失败测试、Monitor backend 和串口工具源码未变。
+  因此现有证据指向测试同步竞态，而不是文档或 C2/C3 产品改动。
+
+### 修复
+
+- 不修改公共 `_wait_for_monitor()`，也不只把所有轮询统一延长。目标测试改为逐段执行：
+  先放入 `abc`，使用 `after_seq=0` 和最长 `wait_ms=30000` 的条件读取确认第一条记录；
+  再放入 `def`，使用第一条返回的 `next_after_seq` 确认第二条记录。
+- `wait_ms=30000` 是失败上界，不是固定休眠；记录到达后立即返回。逐段确认还能区分首段
+  未消费与第二段触发 chunk 轮换失败。
+- 两段读取后继续检查 `persisted_bytes == 6` 和非终态持久化状态。原测试后半段保持：
+  stop 后两个规范 chunk、各自 SHA-256、`serial_monitor_chunk` 类型、第二次 stop 不新增
+  raw_log、唯一 complete event、run 状态和 sidecar 提交标记。
+
+### 验证和边界
+
+- 原失败节点单次 `1 passed`；20 个独立 pytest 进程为 `20/20`。
+- 条件读取、游标、停止唤醒和分块相邻回归为 `5 passed in 2.63s`。
+- `test_sqlite_monitor_artifacts.py` 为 `46 passed, 2 skipped in 34.08s`。
+- test 分支最终工作树全量为 `557 passed, 4 skipped in 255.17s`。
+- [test run 30446579852](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30446579852)
+  的 Windows/Linux、Python 3.10/3.12 四个 job 均成功。
+- 本次测试使用假串口、临时项目和临时 SQLite，不访问 COM3、正式数据库或实板；没有
+  更新 Marketplace/安装缓存，也没有纳入用户 plugin manifest 差异。
