@@ -7,7 +7,7 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；B4.1 仓储原语、B4.2/B4.3 纯只读 resolver 和 B4.4 项目级历史协调器已完成源码与临时数据库软件门禁。v3-C1 已把 latest/get/query 切换为无迁移、无在线 JSONL 导入的 SQLite 只读事务；v3-C2 已让 get 在同一快照返回有界、重新校验的正式 raw/error 详情；v3-C3 已在本地实现一次固定项目、正式 error/raw 优先、全文件 SHA-256 核验和有界旧 event/Monitor 兼容。正式项目数据库和当前安装插件仍保持 v2；本轮没有访问板卡、写入/升级正式 SQLite、更新 Marketplace 或安装缓存。C2/C3 尚未完成远端推送与 CI。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；B4.1 仓储原语、B4.2/B4.3 纯只读 resolver 和 B4.4 项目级历史协调器已完成源码与临时数据库软件门禁。v3-C1 已把 latest/get/query 切换为无迁移、无在线 JSONL 导入的 SQLite 只读事务；v3-C2 已让 get 在同一快照返回有界、重新校验的正式 raw/error 详情；v3-C3 已实现一次固定项目、正式 error/raw 优先、全文件 SHA-256 核验和有界旧 event/Monitor 兼容。C2/C3 已推送，main/test 的 Windows/Linux、Python 3.10/3.12 共 8 个远端 job 全部成功。正式项目数据库和当前安装插件仍保持 v2；本轮没有访问板卡、写入/升级正式 SQLite、更新 Marketplace 或安装缓存。
 
 ## 本轮已完成实现
 
@@ -282,14 +282,12 @@
 
 - 当前仓库的既有本地插件 manifest 差异不属于本次提交；个人 Marketplace 源和当前会话加载的安装缓存均为 `0.1.0+codex.20260727064819`。
 - Marketplace 源通过 plugin validator、main 发布测试 `104 passed in 14.19s` 和 `48 tools / 12 resources / 12 prompts` 直接枚举。
-- 用户重启后已核对 48/12/12。当前 B4.4/C1-C3 工作树改动尚未同步 Marketplace 或安装缓存；本轮也不会修改仓库内用户自有的 plugin manifest 差异。
+- 用户重启后已核对旧版本 48/12/12。B4.4/C1-C3 已通过本地与双分支远端门禁，但尚未同步 Marketplace 或安装缓存；本轮也不会修改仓库内用户自有的 plugin manifest 差异。
 
 ## 待完成
 
-1. 网络恢复后按 main → test 推送 C2/C3，并核对两分支 Windows/Linux、Python 3.10/3.12
-   GitHub Actions；当前本地结果不能代替远端门禁。
-2. v3-B/v3-C 双分支远端门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+1. v3-B/v3-C 双分支远端门禁已完成；只同步 Marketplace 源，运行 validator、发布测试和
    48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
    v2 数据库升级。
-3. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
+2. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
    精确动作单独确认。

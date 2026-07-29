@@ -339,15 +339,15 @@ B4.4 项目协调器合同：入口缺失时 9 failed；实现项目级非阻塞
 当前软件全量：main 120 passed in 49.70s；合入固定 main 后，test 分支自身源码 534 passed, 4 skipped in 253.66s。该结果是本地软件与临时数据库证据，不是正式项目 v2 数据库升级或实板验收
 v3-C3 DB-first 错误解析：旧实现先得到预期 5 failed，查询前上界复审再得到预期 2 failed；修复后 C3 专项 7 passed in 1.09s，相关回归 49 passed in 5.63s
 当前软件全量：main 120 passed in 48.77s；test 工作树显式加载当前 main 源码 557 passed, 4 skipped in 250.00s
-合并 `main@41e44fc` 后的 test 自身源码门禁：C3 专项 7 passed in 2.67s；全量 557 passed, 4 skipped in 250.85s。该结果只证明本地软件与临时数据库合同通过，不代表正式 schema-v2 数据库已升级、远端 CI 已完成或实板功能已验收
+合并 `main@41e44fc` 后的 test 自身源码门禁：C3 专项 7 passed in 2.67s；全量 557 passed, 4 skipped in 250.85s。该结果只证明本地软件与临时数据库合同通过，不代表正式 schema-v2 数据库已升级、Marketplace 已发布或实板功能已验收
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
 历史样本只读验证：正式项目 22 个 v1 Monitor manifest 为 14 个 `resolved`、8 个 `no_artifacts`、0 个错误；4 个固定 capture 为 1 个 native `resolved`、3 个 legacy `ineligible`，全部是旧 writer 的 `serial_capture_legacy_text`。两次检查均未连接正式 SQLite，项目 189 个文件的路径、长度、mtime 和 SHA-256 前后无差异
-当前 SQLite 边界：B4.4 与 C1-C3 已完成源码、临时 schema-v3 数据库和本地软件合同；B4.2/B4.3 resolver 仍是纯只读候选生成器，只有 B4.4 能在项目/run lease 与严格仓储门禁内执行补投影。正式项目数据库仍保持 schema v2，未启动协调器、迁移或正式历史补投影。C2/C3 尚未推送并取得远端 CI，当前 Marketplace/安装缓存也未包含这些工作树改动；没有访问 COM3 或操作板卡
-跳过边界：Windows 本地 4 项 skip 来自普通文件 symlink 创建权限（Flash 1、capture 1、Monitor 2）；目录 junction 与合成 fd/reparse 拒绝合同已执行。既有 GitHub Linux 门禁曾实际创建 symlink 并验证 fail-closed，但当前 C2/C3 候选仍需新的远端矩阵确认
+当前 SQLite 边界：B4.4 与 C1-C3 已完成源码、临时 schema-v3 数据库、本地软件合同和双分支远端矩阵；B4.2/B4.3 resolver 仍是纯只读候选生成器，只有 B4.4 能在项目/run lease 与严格仓储门禁内执行补投影。正式项目数据库仍保持 schema v2，未启动协调器、迁移或正式历史补投影。当前 Marketplace/安装缓存尚未包含这些提交；没有访问 COM3 或操作板卡
+跳过边界：Windows 本地 4 项 skip 来自普通文件 symlink 创建权限（Flash 1、capture 1、Monitor 2）；目录 junction 与合成 fd/reparse 拒绝合同已执行。本轮新远端矩阵的 8 个 job 全部成功；本地 Windows skip 不能被写成远端平台也跳过
 未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
-远端与插件：B4.3 [main run 30356471000](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356471000) 首次仅 Windows/Python 3.10 的既有 Monitor 跨进程用例在固定 8 秒 ready 窗口超时，另外 119 项及 3 个 job 成功；该用例本地独立进程重复 10/10 通过后，只重跑失败 job，run attempt 2 整体成功。[test run 30356899571](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356899571) 的 4 个 job 首次全部成功。最终共核验 8 个 Windows/Linux、Python 3.10/3.12 job；没有修改范围外代码，也未更新 Marketplace 源或安装缓存
+远端与插件：B4.3 [main run 30356471000](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356471000) 首次仅 Windows/Python 3.10 的既有 Monitor 跨进程用例在固定 8 秒 ready 窗口超时，另外 119 项及 3 个 job 成功；该用例本地独立进程重复 10/10 通过后，只重跑失败 job，run attempt 2 整体成功。[test run 30356899571](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356899571) 的 4 个 job 首次全部成功。C2/C3 的 [main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226) 与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633) 又完成 8 个 Windows/Linux、Python 3.10/3.12 job，全部成功；Marketplace 源和安装缓存仍待后续步骤
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -1060,8 +1060,21 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   main 全量 `120 passed in 48.77s`、test 显式加载 main 全量
   `557 passed, 4 skipped in 250.00s`。
 - 本步骤只使用临时 SQLite 和临时 raw/Monitor 文件，没有读取或升级正式数据库、访问
-  COM3、更新 Marketplace/安装缓存，也没有纳入用户 plugin manifest 差异。远端推送和
-  CI 尚未完成，不能把本地结果写成已发布状态。
+  COM3、更新 Marketplace/安装缓存，也没有纳入用户 plugin manifest 差异。随后
+  [main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226)
+  与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633)
+  的 8 个矩阵 job 全部成功；这仍不等于 Marketplace 已发布、正式数据库已升级或实板已验收。
+
+### 2026-07-29 17:05 - 完成 C2/C3 双分支推送与远端矩阵
+
+- `main@41e44fc` 与 `test@ae9379b` 已按 main → test 顺序推送到公开仓库；test 合并后的
+  自身源码门禁为 C3 专项 `7 passed in 2.67s`、全量
+  `557 passed, 4 skipped in 250.85s`。
+- [main Actions #76](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226)
+  与 [test Actions #77](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633)
+  均为 `completed / success`；Windows/Linux、Python 3.10/3.12 共 8 个 job 全部成功。
+- 本步骤没有访问 COM3、升级正式 schema-v2 数据库、更新 Marketplace/安装缓存或纳入
+  用户自有的 `.codex-plugin/plugin.json` 工作树差异。下一步只同步个人 Marketplace 源。
 
 ## 协作约定
 

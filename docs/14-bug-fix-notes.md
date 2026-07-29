@@ -1448,5 +1448,8 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   单文件完整摘要 I/O，两者不是同一个概念。
 - 旧 event raw_path 没有权威登记摘要，所以只保留兼容级证据；正式结论应依赖 schema v3
   errors/raw_logs。
-- C2/C3 尚未推送并通过 GitHub Actions，也未进入 Marketplace 或安装缓存。正式项目
-  SQLite 仍为 v2；本地临时数据库全绿不能替代远端矩阵、正式升级或实板验收。
+- C2/C3 已由
+  [main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226)
+  与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633)
+  完成 8 个 Windows/Linux、Python 3.10/3.12 job，全部成功；尚未进入 Marketplace 或
+  安装缓存。正式项目 SQLite 仍为 v2；远端软件矩阵也不能替代正式升级或实板验收。
