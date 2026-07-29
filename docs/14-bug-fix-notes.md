@@ -1343,3 +1343,49 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   SQLite 自身根据 WAL 协议产生协调 sidecar；这不等价于 schema/data 迁移。
 - 本切片不读取或修改正式项目 SQLite，不访问 COM3、板卡、Marketplace 或安装缓存。
   raw/error 详情与错误解析 DB-first 顺序属于后续 v3-C2/C3。
+
+## 2026-07-29：正式 raw/error 已入库但日志详情不可见
+
+### 症状
+
+- schema v3 已把串口 raw 和结构化 error 原子登记到 SQLite，但 `esp_logs_get` 仍只返回
+  run/events；调用者无法从公开详情判断某个 run 有哪些正式 artifact。
+- 既有 `get_run_raw_logs()` / `get_run_errors()` 各自调用普通写型 `connect()` 并
+  `fetchall()`。直接拼接它们会破坏 C1 的同一只读快照，并允许单个 run 返回无界行数。
+- raw/error row decoder 原先只复制列值。如果 SQLite 被手工损坏，`../escape` 路径或
+  非规范 recoverable 等值可能被当作可信详情，进而污染 C3 的文件来源选择。
+
+### 根因
+
+- B3/B4 的无界 getter 面向受 lease/事务控制的内部对账，不是 MCP 详情输出接口；C2
+  缺少独立的 connection-level、有界、只读 decoder。
+- raw/error schema 的 CHECK 约束能保护正常仓储写入，但查询边界仍需 fail-closed，
+  不能假定磁盘内容永远没有损坏或离线篡改。
+- error 的 message/raw_text 等列没有长度约束，先 `fetchall()` 再在 Python 截断仍会把
+  任意大 TEXT 拉入进程。
+
+### 修复
+
+- 在 raw/error repository 新增专用 bounded reader；保留 B3/B4 原 getter 不变。SQL
+  先限定 `project_id + run_id`，按 `created_at + id` 倒序取最新 `limit + 1`，Python
+  去掉探针行并反转为时间正序。
+- `read_run_snapshot()` 在 C1 已建立的同一只读 `BEGIN` 中依次读取 run、events、
+  raw 和 error。schema v2 完全跳过 artifact SQL，明确返回 `reason="schema_v2"`。
+- raw UUID/kind/path/time/SHA-256 和 error UUID/kind/time/行列/recoverable 重新通过
+  仓储规范。身份字段过长或不规范时返回 `log_database_invalid`，不静默生成另一身份。
+- error 的 file/exception type/message/raw text 在 SQL 中分别用
+  `substr(..., 4096/256/2048/8192)` 限制；每条 error 返回 `field_truncation`，汇总元数据
+  返回行数和字段截断状态。
+
+### 验证和边界
+
+- test 分支先加入四项红灯，在 C1 实现上得到 `4 failed in 0.89s`：正式详情缺失、
+  最新窗口/文本截断缺失、v2 能力元数据缺失、非法 raw path 未被读取校验。
+- 修复后补入并发写隔离和非法 recoverable，C2 专项 `6 passed`，C1+C2
+  `16 passed in 0.99s`。并发写在 run/events 建立快照后提交，但本次响应的 raw/error
+  都不可见，证明没有混合两个时间点。
+- main 全量 `120 passed in 48.06s`。
+- C2 只限制新增 artifact 行数和大文本字段；既有 events 的 message/payload 仍沿用
+  `tail` 合同，不能宣称整个响应有总字节上界。C3 文件读取仍必须独立执行 `max_bytes`。
+- 本轮只使用临时 SQLite，不打开任何 raw artifact，不访问正式项目数据库、COM3、
+  板卡、Marketplace 或安装缓存，也不提交用户 plugin manifest 差异。

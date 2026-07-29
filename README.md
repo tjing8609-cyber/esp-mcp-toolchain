@@ -998,6 +998,28 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 实现复审继续固化同一 `BEGIN` 快照内的并发写隔离，以及非法 error `recoverable`
   fail-closed；C2 专项扩展为 `6 passed`，与 C1 合并为 `16 passed in 0.99s`。
 
+### 2026-07-29 15:24 - 完成 v3-C2 正式日志详情
+
+- 缺陷根因：`esp_logs_get` 只返回 run/events，schema v3 已登记的 raw_logs/errors 无法
+  通过公开详情读取；现有 raw/error getter 又使用独立写型连接并无输出上界，不能直接复用。
+- 保留原有 `ok/project_id/run_id/run/events`，新增
+  `query_source/raw_logs/errors/artifact_capability/artifact_truncation`。v3 的 run、events、
+  raw 和 error 来自 C1 的同一只读事务；v2 只返回 runs/events，并明确
+  `reason="schema_v2"`，不会因物理表存在而启用正式 artifact。
+- raw 默认返回最新 1000 条、error 最新 200 条，再按 `(created_at, id)` 正序展示；
+  每类使用 project/run 双过滤和 `LIMIT + 1` 独立报告截断。error 的 file、exception type、
+  message 和 raw text 在 SQL 侧按字符上限截断，并逐记录标记。
+- 从数据库读回的 raw UUID/path/SHA-256/timestamp/kind 与 error UUID、行列号、
+  recoverable、timestamp 等重新经过仓储规范校验；路径穿越、非法类型或过长身份字段统一
+  `log_database_invalid`，不会把不可信 raw path 交给后续 C3 文件读取。
+- 旧实现四项合同均红灯；完成后 C2 专项 `6 passed`，C1+C2 合并
+  `16 passed in 0.99s`，main 全量 `120 passed in 48.06s`。并发写测试证明 artifact
+  不会越过已建立的只读快照。
+- 本步骤只使用 pytest 临时 SQLite，没有读取或修改正式 SQLite、打开 artifact 文件、
+  访问 COM3、更新 Marketplace/安装缓存，也没有纳入用户 plugin manifest 差异。
+- 固定 `main@deb8702` 合入 test 后，C2 专项 `6 passed in 0.62s`，test 分支自身源码
+  全量 `550 passed, 4 skipped in 247.72s`。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

@@ -12,6 +12,9 @@ from .event_repository import EventRepositoryError, normalize_timestamp
 
 RAW_LOG_NAMESPACE = UUID("bc76398c-a842-47d6-8228-3e920f03cdab")
 _SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
+READ_KIND_CHAR_LIMIT = 256
+READ_PATH_CHAR_LIMIT = 4096
+READ_TIMESTAMP_CHAR_LIMIT = 128
 
 
 class RawLogRepositoryError(ValueError):
@@ -228,3 +231,78 @@ def list_raw_logs_for_run(
         (project_id, run_id),
     ).fetchall()
     return [raw_log_from_row(row) for row in rows]
+
+
+def list_recent_raw_logs_for_run(
+    connection: sqlite3.Connection,
+    *,
+    project_id: str,
+    run_id: str,
+    limit: int,
+) -> tuple[list[dict[str, Any]], bool]:
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise InvalidRawLogError("limit must be a positive integer")
+    rows = connection.execute(
+        """
+        SELECT
+          project_id,
+          substr(raw_log_id, 1, 37) AS raw_log_id,
+          run_id,
+          substr(kind, 1, :kind_probe_limit) AS kind,
+          substr(path, 1, :path_probe_limit) AS path,
+          substr(created_at, 1, :timestamp_probe_limit) AS created_at,
+          CASE
+            WHEN sha256 IS NULL THEN NULL
+            ELSE substr(sha256, 1, 65)
+          END AS sha256,
+          length(raw_log_id) > 36 AS raw_log_id_too_long,
+          length(kind) > :kind_limit AS kind_too_long,
+          length(path) > :path_limit AS path_too_long,
+          length(created_at) > :timestamp_limit AS timestamp_too_long,
+          sha256 IS NOT NULL AND length(sha256) > 64 AS sha256_too_long
+        FROM raw_logs
+        WHERE project_id = :project_id AND run_id = :run_id
+        ORDER BY created_at DESC, raw_log_id DESC
+        LIMIT :row_limit
+        """,
+        {
+            "project_id": project_id,
+            "run_id": run_id,
+            "kind_limit": READ_KIND_CHAR_LIMIT,
+            "kind_probe_limit": READ_KIND_CHAR_LIMIT + 1,
+            "path_limit": READ_PATH_CHAR_LIMIT,
+            "path_probe_limit": READ_PATH_CHAR_LIMIT + 1,
+            "timestamp_limit": READ_TIMESTAMP_CHAR_LIMIT,
+            "timestamp_probe_limit": READ_TIMESTAMP_CHAR_LIMIT + 1,
+            "row_limit": limit + 1,
+        },
+    ).fetchall()
+    records: list[dict[str, Any]] = []
+    for row in rows[:limit]:
+        if (
+            row["raw_log_id_too_long"]
+            or row["kind_too_long"]
+            or row["path_too_long"]
+            or row["timestamp_too_long"]
+            or row["sha256_too_long"]
+        ):
+            raise InvalidRawLogError(
+                "stored raw log contains an overlong identity field"
+            )
+        stored = raw_log_from_row(row)
+        normalized = _normalize_record(
+            project_id=stored["project_id"],
+            raw_log_id=stored["raw_log_id"],
+            run_id=stored["run_id"],
+            kind=stored["kind"],
+            path=stored["path"],
+            created_at=stored["created_at"],
+            sha256=stored["sha256"],
+        )
+        if stored != normalized:
+            raise InvalidRawLogError(
+                "stored raw log is not in canonical repository form"
+            )
+        records.append(stored)
+    records.reverse()
+    return records, len(rows) > limit

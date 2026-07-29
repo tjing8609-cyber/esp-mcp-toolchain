@@ -16,6 +16,7 @@ from .error_repository import (
     get_error as select_error,
     insert_error,
     list_errors_for_run,
+    list_recent_errors_for_run,
     stable_error_id,
 )
 from .event_repository import (
@@ -36,6 +37,7 @@ from .raw_log_repository import (
     get_raw_log as select_raw_log,
     insert_raw_log,
     list_raw_logs_for_run,
+    list_recent_raw_logs_for_run,
     normalize_raw_log_path,
     normalize_sha256,
     stable_raw_log_id,
@@ -1728,6 +1730,12 @@ def read_run_snapshot(
     project_id: str,
     run_id: str,
     tail: int,
+    raw_log_limit: int = 1_000,
+    error_limit: int = 200,
+    error_file_char_limit: int = 4_096,
+    error_exception_type_char_limit: int = 256,
+    error_message_char_limit: int = 2_048,
+    error_raw_text_char_limit: int = 8_192,
 ) -> dict[str, Any]:
     connection, schema_version = _open_readonly_snapshot(database)
     try:
@@ -1743,10 +1751,41 @@ def read_run_snapshot(
             if run is not None
             else []
         )
+        raw_logs: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+        raw_logs_truncated = False
+        errors_truncated = False
+        error_fields_truncated = False
+        if run is not None and schema_version == CURRENT_SCHEMA_VERSION:
+            raw_logs, raw_logs_truncated = list_recent_raw_logs_for_run(
+                connection,
+                project_id=project_id,
+                run_id=run_id,
+                limit=raw_log_limit,
+            )
+            (
+                errors,
+                errors_truncated,
+                error_fields_truncated,
+            ) = list_recent_errors_for_run(
+                connection,
+                project_id=project_id,
+                run_id=run_id,
+                limit=error_limit,
+                file_char_limit=error_file_char_limit,
+                exception_type_char_limit=error_exception_type_char_limit,
+                message_char_limit=error_message_char_limit,
+                raw_text_char_limit=error_raw_text_char_limit,
+            )
         return {
             "schema_version": schema_version,
             "run": run,
             "events": events,
+            "raw_logs": raw_logs,
+            "errors": errors,
+            "raw_logs_truncated": raw_logs_truncated,
+            "errors_truncated": errors_truncated,
+            "error_fields_truncated": error_fields_truncated,
         }
     except sqlite3.DatabaseError as exc:
         raise _classify_sqlite_query_error(exc) from exc

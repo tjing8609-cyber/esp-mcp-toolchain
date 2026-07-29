@@ -37,6 +37,6 @@ Monitor run lease、两次 resolver、跨 run raw 所有权预检和独立原子
 
 当前优先顺序：
 
-1. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，同时保留有界兼容路径。
+1. v3-C3：让 `esp_error_parse_log` 优先查询正式 errors/raw_logs，并保留有界兼容路径；v3-C1 只读查询边界和 v3-C2 `esp_logs_get` 正式详情已完成。
 2. v3-B/v3-C 软件门禁通过后，只同步个人 Marketplace 源并执行 validator、发布测试和 48/12/12 枚举；用户重启确认后才允许正式 v2→v3 升级。
 3. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。

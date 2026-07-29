@@ -37,6 +37,8 @@
   native source 必须严格为唯一 UUID 的两条 `prepare → complete` 记录，且
   task/source/selected-port 一致；成功 completion 必须有匹配 port，合法失败允许
   payload 省略 port，mirror 端口可一致为 `null`。
+- `esp_logs_get` 新增 SQLite raw/error 正式详情、schema/source/capability 元数据和
+  raw/error 独立截断报告；schema v2 明确只具备 runs/events 能力。
 
 ### Changed
 
@@ -57,6 +59,9 @@
 - GitHub Actions 的 push 触发分支增加 `test`，使测试分支也执行 Windows/Linux、Python 3.10/3.12 矩阵。
 - README、CHANGELOG、开发状态页和 ADR 分工记录不同层级的信息。
 - SQLite 成为 runs/events 的正式状态与查询源；JSONL 改为审计镜像和旧数据迁移入口，`latest.json` 不再是查询权威。
+- schema v3 的日志详情在与 run/events 相同的只读事务中读取。raw/error 采用
+  project/run 双过滤的最新有界窗口；error 大文本在 SQL 侧截断并逐字段标记，raw 身份
+  与 error 结构在返回前重新校验。
 - SQLite v2→v3 改为单事务重建 `raw_logs` / `errors`：严格复制并核对行数和外键后才写
   v3 marker；失败时保持原 v2 表、数据、版本和 marker。正式项目数据库不会由本阶段
   自动升级。
