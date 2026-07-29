@@ -26,16 +26,17 @@ task/source/port 身份一致，合法失败可省略 payload port。legacy `pha
 最终本地门禁为 main `120 passed`、test 自身源码 `508 passed, 4 skipped`；
 main/test 两条 Actions 共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功。
 
-2026-07-28 已恢复 B4.4，并先完成仓储基础切片：schema v3 以 additive 方式增加
+2026-07-29 已完成 B4.4：schema v3 以 additive 方式增加
 `historical_raw_claims`，规范 raw path 在项目内形成持久唯一主键；B4.1 在同一
 `BEGIN IMMEDIATE` 内比较调用方提供的 event/run profile、精确 sequence 与
-`next_sequence_no`，再提交 claim、raw/error 或整体回滚。红灯为
-`5 failed, 11 passed`，修复后专项 `16 passed`、关联仓储/迁移 `84 passed`、main
-全量 `120 passed`。该切片只使用临时数据库；项目级协调器和正式数据库升级仍未执行。
+`next_sequence_no`，再提交 claim、raw/error 或整体回滚。项目协调器使用项目 lease、
+Monitor run lease、两次 resolver、跨 run raw 所有权预检和独立原子 marker；v2 在任何
+控制文件或迁移前拒绝。B4.1-B4.4 组合为 `145 passed, 1 skipped`，main 全量
+`120 passed`，test 跨工作树全量 `531 passed, 4 skipped`。这些只使用临时 v3 数据库；
+正式项目数据库仍为 v2，未执行升级或正式补投影。
 
 当前优先顺序：
 
-1. 完成 v3-B4.4 协调器：使用项目级 lease 重新解析 B4.2/B4.3，在任何写入前拒绝跨 run 的同一 capture raw 歧义，并把 native profile 交给已完成的事务门禁；接入项目扫描、启动、状态/独立 marker、严格幂等报告和有界失败。
-2. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，同时保留有界兼容路径。
-3. v3-B/v3-C 软件门禁通过后，只同步个人 Marketplace 源并执行 validator、发布测试和 48/12/12 枚举；用户重启确认后才允许正式 v2→v3 升级。
-4. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。
+1. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，同时保留有界兼容路径。
+2. v3-B/v3-C 软件门禁通过后，只同步个人 Marketplace 源并执行 validator、发布测试和 48/12/12 枚举；用户重启确认后才允许正式 v2→v3 升级。
+3. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。

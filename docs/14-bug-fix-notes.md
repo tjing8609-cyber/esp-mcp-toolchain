@@ -1237,3 +1237,55 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   `84 passed in 7.84s`，main 全量 `120 passed in 47.30s`。
 - 本切片只修改源码和临时测试数据库。正式项目数据库仍为 schema v2，没有调用迁移；
   项目级 lease、两次解析、全局歧义预检查和独立 marker 属于下一 B4.4 协调器切片。
+
+## 2026-07-29：历史候选缺少项目级协调、可恢复状态和全局 raw 所有权
+
+### 症状
+
+- B4.2/B4.3 只能解析单个候选，没有项目级 lease、全局扫描或启动/状态 marker。两个
+  协调器可能并发工作，跨 run 的共享 `logs/raw` 也可能在较晚的 SQLite claim 时才暴露。
+- 只比较 event UUID 不足以定义所有者；不同 run 若复用同 UUID，仍是两个所有者。
+- Monitor 历史 manifest 的终态时间可能比 SQLite 规范时间多不足一秒的小数部分，完全
+  精确比较会拒绝同一来源证据；放宽整个 profile 又会掩盖 message、port 等真实冲突。
+- 项目 Busy 异常使用既有 `recoverable` 语义，而协调器只读取 `retryable`；状态入口也曾
+  忽略 probe 返回的损坏锁元数据。
+- Windows 并发 reader 可能让 marker 的 `os.replace` 短暂返回 WinError 5/32；不加边界会
+  把瞬态共享冲突当成永久失败，无限重试又会让调用失去上界。
+
+### 原因
+
+- 文件 resolver、SQLite 事务和项目运行状态原先分属不同层，没有一个明确的锁顺序和失败
+  恢复协议。
+- 文件锁只能表示“当前谁在执行”，不能代替数据库持久 claim；marker 又不在 SQLite
+  事务内，必须把两个持久化结果分别报告。
+- B4.3 与仓储曾使用不同 run profile 字段集合；仓储若用 SQLite 预读字段补齐，会把数据库
+  自身内容冒充来源证据。
+
+### 修复
+
+- 新增持久项目 lease，锁顺序固定为项目 lease → 单个 Monitor run lease → SQLite
+  `BEGIN IMMEDIATE`。v2 通过 SQLite URI `mode=ro` 在创建 lock/marker 或迁移前拒绝。
+- 第一次解析建立整个项目的 raw 引用集合；不同 `(run_id, event_uuid)` 指向同一规范 path
+  时在任何补投影前失败。capture 全部二次解析并比对指纹；Monitor 在自己的 run lease 内
+  二次解析、比对并完成 B4.1。
+- source-proven run profile 统一为六字段，并在事务内用当前 event 构造
+  `terminal_event_uuid`。Monitor 只对 event `ts` 提供 `0..1` 秒容差；capture 默认 0，
+  其他 event/run 字段始终精确。
+- 新增 `sqlite-historical-artifacts-v1.json`：先发布 running，最终发布
+  completed/failed。SQLite 已提交但 marker 失败时不伪装回滚，而是返回
+  `database_persisted=true/marker_persisted=false`，重试以持久 claim 幂等补齐 marker。
+- `recoverable` 与 `retryable` 均映射为可重试；status 单独传播 `metadata_error`。
+  Windows replace 只对 WinError 5/32 每 5 ms 重试、总计最多 1 秒，并在发布后安全重读。
+
+### 验证和边界
+
+- 协调器缺失时 9 项合同全部红灯；实现后为 `9 passed`。复审补入 Busy、metadata 和
+  同 UUID 跨 run owner 三项，先得到预期 `3 failed, 9 passed`，修复后 `12 passed`。
+- B4.1-B4.4 组合 `145 passed, 1 skipped in 6.98s`；main 全量
+  `120 passed in 49.70s`；test 显式加载 main 全量
+  `531 passed, 4 skipped in 243.41s`。两轮独立审查未发现 P0/P1。
+- 临时目录另行验证同/跨进程非阻塞 lease、未知 marker 版本拒绝、150 次发布与 1415 次
+  并发读取零撕裂。它们是本轮补充复核，尚未全部固化为独立自动化合同，记为 P2 测试缺口。
+- 项目级协调器按 candidate 原子、允许失败后续跑，不承诺所有 candidate 共用一个 SQLite
+  事务。正式项目数据库仍为 schema v2；本轮未迁移或写正式库，未访问 COM3、板卡，
+  未更新 Marketplace/安装缓存，也未提交用户的 plugin manifest 差异。v3-C 尚未开始。

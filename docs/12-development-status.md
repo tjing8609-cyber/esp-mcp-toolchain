@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-28（Asia/Shanghai）
+更新时间：2026-07-29（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现；reset 证据持久化、4 MiB 构建配置、性能结果持久化、分层回归套件和 Flash 主机路径安全已依次完成。v3-B2 已完成 completion event/raw/error 原子写入，v3-B3 已完成 Monitor 终态 chunk/错误的精确、可重入对账；v3-B4.1 仓储原语、B4.2 历史 Monitor resolver 与 B4.3 历史固定 capture/JSONL 纯只读 adapter 均已通过双分支本地和远端矩阵。B4.4 已恢复并完成仓储基础：持久 raw claim 与 profile/sequence/artifact 原子事务已通过本地门禁；项目级 lease、二次解析、全局扫描和 marker 协调器仍在下一切片。正式项目数据库和当前安装插件仍保持 v2，本轮没有访问板卡、连接/写入正式 SQLite、升级正式 schema、更新 Marketplace 或安装缓存。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；B4.1 仓储原语、B4.2/B4.3 纯只读 resolver 和 B4.4 项目级历史协调器已完成源码与临时数据库软件门禁。B4.4 包含持久 raw claim、事务内 profile/sequence、项目/run lease、两次解析、全局 raw 所有权预检、独立 marker 与幂等续跑。正式项目数据库和当前安装插件仍保持 v2；本轮没有访问板卡、写入/升级正式 SQLite、更新 Marketplace 或安装缓存。下一开发项为 v3-C。
 
 ## 本轮已完成实现
 
@@ -126,6 +126,16 @@
   `BEGIN IMMEDIATE` 内、任何 claim/raw/error 写入前核对；claim 与 artifact 必须一一
   匹配且摘要绑定输入 profile/bundle。跨 run 重用相同项目相对 path 显式冲突，精确重试
   返回 `inserted=false`，晚阶段 error/SQLite 失败会连同 claim 和 raw 一起回滚。
+- 新增 `HistoricalProjectReconciliationLease` 与版本化项目 marker store：持久 lock
+  释放后不删除，探测缺锁不会创建文件；marker 使用同目录临时文件、fsync、原子 replace
+  和发布后重读。Windows 仅对 WinError 5/32 做最多 1 秒有界重试。
+- 新增 `reconcile_historical_project_artifacts()`：先用 URI `mode=ro` 检查 schema，
+  v2 在 lease/marker/迁移前拒绝；v3 持项目 lease 扫描 B4.2/B4.3，先拒绝不同
+  `(run_id, event_uuid)` 共用 raw path，再执行两次解析。Monitor 的第二次 resolver 与
+  SQLite 补投影都处于对应 run lease 内。
+- B4.4 每个 candidate 的 claim/raw/error 在 B4.1 中原子提交，项目任务允许失败后幂等
+  续跑。SQLite 已提交而最终 marker 失败时报告两个持久化状态，精确重试可补 marker；
+  释放后仍为 running 的 marker 由只读 status 报告为 `interrupted`。
 
 ## 本地验证
 
@@ -133,6 +143,11 @@
 - B4.4 仓储基础红灯 `5 failed, 11 passed in 1.94s`；实现后专项
   `16 passed in 1.93s`，迁移/raw/error/历史对账合并
   `84 passed in 7.84s`，main 全量 `120 passed in 47.30s`。
+- B4.4 协调器入口缺失时 `9 failed`；首轮实现后 `9 passed`。复审三项合同先得到
+  `3 failed, 9 passed`，修复 Busy retryable、metadata error 和 run-aware raw owner 后
+  `12 passed`；B4.1-B4.4 组合 `145 passed, 1 skipped in 6.98s`。
+- 当前完整本地门禁：main `120 passed in 49.70s`；test 显式加载 main
+  `531 passed, 4 skipped in 243.41s`。两轮独立复审 P0=0、P1=0。
 - 提示词/提高工具/架构专项：`25 passed`。
 - 串口生命周期、reset、Raw REPL、程序停止和错误检测关联门禁：`62 passed`。
 - 显式加载 `main` 源码的完整候选门禁：`226 passed in 29.35s`。
@@ -246,14 +261,10 @@
 
 ## 待完成
 
-1. 完成 v3-B4.4 协调器：使用项目级 lease 二次执行 B4.2/B4.3，在任何事务前拒绝跨
-   run 同一 capture raw 的歧义，把 native SQLite profile 和最后一个 `complete`
-   资格交给已完成的 B4.1 事务门禁；提供项目扫描、启动、状态/marker、严格幂等报告和
-   有界失败。
-2. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
+1. v3-C：让 `esp_logs_get` 与 `esp_error_parse_log` 优先查询正式 raw/error 仓储，
    同时保留有界兼容路径和项目边界。
-3. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
+2. v3-B/v3-C 软件门禁完成后只同步 Marketplace 源，运行 validator、发布测试和
    48 tools / 12 resources / 12 prompts 枚举；用户重启确认新插件后，才允许正式项目
    v2 数据库升级。
-4. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
+3. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、擦除和新的烧录/恢复仍按
    精确动作单独确认。

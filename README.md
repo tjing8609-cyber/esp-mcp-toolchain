@@ -270,11 +270,11 @@ MicroPython 方向：
 - memory_items / memory_audit 表。
 - 日志导出和检索增强。
 
-当前状态：SQLite 已在本地主线成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v3-A 已补齐 raw/error 约束、仓储和显式 v2→v3 迁移；v3-B2 已把固定串口 capture 的可信 raw、结构化异常和程序停止失败与 completion event 放入同一事务；v3-B3 已在源码和临时数据库完成 Monitor 终态 chunk/运行期错误的精确、可重入对账，并使用独立版本化 sidecar 记录 artifact 状态；v3-B4.1 已提供既有终态 event 的原子证据补投影，v3-B4.2 已提供纯只读历史 Monitor manifest/chunk resolver，v3-B4.3 已提供历史固定 capture/JSONL 的纯只读 adapter。v3-B4.4 仓储基础已新增持久 `historical_raw_claims` 和 B4.1 事务内 profile/sequence 门禁；项目级 lease、二次解析、全局扫描与 marker 协调器仍未实现。正式项目数据库和当前安装插件仍保持 v2，尚未执行升级；raw/error 查询接入继续后置。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
+当前状态：SQLite 已在本地主线成为 runs/events 的正式状态与查询源，JSONL 保留为审计镜像。schema v3-A 已补齐 raw/error 约束、仓储和显式 v2→v3 迁移；v3-B2/B3 已完成固定 capture 与 Monitor 终态证据投影；v3-B4.1 已提供既有终态 event 的原子证据补投影，B4.2/B4.3 已提供纯只读历史 Monitor 与固定 capture resolver。v3-B4.4 已在源码和临时 schema-v3 数据库完成：持久 `historical_raw_claims`、事务内 profile/sequence 门禁、项目级 lease、两次解析、跨 run raw 所有权预检、Monitor run lease、独立 marker、幂等续跑和中断状态读取均已接通。正式项目数据库和当前安装插件仍保持 v2，尚未执行升级或正式历史补投影；v3-C raw/error 查询接入尚未开始。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
 
 ## 当前进度
 
-截至 2026-07-28，已完成：
+截至 2026-07-29，已完成：
 
 - 仓库结构初始化。
 - GitHub 远端同步，主分支为 `main`。
@@ -297,6 +297,7 @@ MicroPython 方向：
 - SQLite v3-B4.1 历史证据补投影原语：只允许向既有终态 run 的最后一个 `complete` event 原子补入 raw/error；不创建 run/event、不改变 event 或 sequence，并对项目/run/event 归属、重试、并发和失败回滚执行严格合同。
 - SQLite v3-B4.2 历史 Monitor resolver：只从当前项目 `logs/serial/<run_id>` 读取 manifest 和 finalized chunks；v1 旧绝对路径仅作跨平台词法校验，实际文件位置始终由当前 run 目录派生。resolver 使用单一安全 fd 计算 manifest 摘要，复核目录链、chunk 精确集合/连续编号/长度/SHA-256 和 B3 ownership，返回不可变的待投影证据，不获取 lease、不连接或写入 SQLite。
 - SQLite v3-B4.3 历史固定 capture adapter：显式绑定安全的 session basename、run 和 event UUID，严格解析 legacy single-event，以及恰好由唯一 UUID 的 `prepare → complete` 构成且 task/source/port 元数据一致的 native JSONL；合法失败事件允许一致的 `selected_port` 为端口名或 `null` 且 completion payload 省略 port，成功事件仍必须提供一致端口。旧绝对 `raw_path` 只作 Windows/POSIX 词法校验，实际文件只由当前项目 `logs/raw/<basename>` 派生并在同一安全 fd 上计算长度/SHA-256。legacy source 或旧式文件名登记为 `serial_capture_legacy_text`，只有 native source 与 UUID 排他文件名同时成立才可声明 `serial_capture_raw`；legacy `phase=unknown` 候选明确标记为不具备 B4.1 投影资格。
+- SQLite v3-B4.4 历史项目协调器：schema-v3 持久 claim 以 `(project_id, path)` 形成唯一所有权并通过复合外键绑定同一 run/event；协调器先以 SQLite URI `mode=ro` 拒绝非 v3 项目，再持项目级非阻塞 lease 扫描 B4.2/B4.3 候选。不同 `(run_id, event_uuid)` 共用 raw path 会在任何补投影前失败；capture 两次解析必须指纹一致，Monitor 在自己的 run lease 内再次解析并在释放前调用严格 B4.1。独立 `sqlite-historical-artifacts-v1.json` marker 记录 running/completed/failed，中断和“SQLite 已提交但 marker 发布失败”均可观测、可幂等修复。
 - Codex skill 文件和示例工作流。
 - Codex 插件 manifest 补齐 `name`、`version`、`description`、`author`、`homepage`、`repository`、`license`、`keywords`、`skills`、`apps`、`mcpServers` 和 `interface`。`hooks.json` 已创建；`hooks` 未写入 `plugin.json`，因为当前插件验证器会拒绝该字段，优先保证插件可见和可验证。
 - `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
@@ -332,13 +333,14 @@ SQLite v3-B3 Monitor 终态产物专项：43 passed, 2 skipped
 SQLite v3-B4.1 红灯复审：4 failed, 7 passed；最终专项：11 passed in 1.78s；SQLite 相关：146 passed, 2 skipped in 50.21s
 SQLite v3-B4.2 resolver：初始红灯 42 failed（仅缺入口）；独立复审补强后 58 passed in 1.66s；既有 Monitor 回归 28 passed in 41.00s
 SQLite v3-B4.3 capture adapter：初始红灯 40 failed, 1 skipped；独立复审补入精确 raw 来源绑定和 native 全记录身份合同后曾得到 6 failed, 40 passed, 1 skipped；第二轮复审的合法失败端口合同曾得到 2 failed, 48 passed, 1 skipped。全部修复后专项 50 passed, 1 skipped in 1.31s；main 全量 120 passed in 49.93s
-B4.4 仓储基础：test 分支红灯 5 failed, 11 passed；实现 additive schema-v3 claim 表、事务内 profile/sequence 校验、跨 run 唯一 path claim 和回滚后，专项 16 passed in 1.93s，迁移/raw/error/历史对账合并 84 passed in 7.84s，main 全量 120 passed in 47.30s
-当前软件全量：B4.3 最终源码 main 120 passed in 49.93s；合入 main 与 50 条 B4.3 合同后，test 分支自身源码 508 passed, 4 skipped in 254.09s
+B4.4 仓储基础：test 分支红灯 5 failed, 11 passed；实现 additive schema-v3 claim 表、事务内 profile/sequence 校验、复合事件所有权、严格六字段 run profile 和回滚后，repository/Monitor/capture 三文件合同 133 passed, 1 skipped in 5.56s
+B4.4 项目协调器：入口缺失时 9 failed；首轮实现后 9 passed。复审新增 Busy 可重试、损坏锁元数据可观测、跨 run 复用同 UUID 仍算两个所有者三项合同，先得到预期 3 failed, 9 passed，修复后 12 passed；B4.1-B4.4 组合 145 passed, 1 skipped in 6.98s
+当前软件全量：main 120 passed in 49.70s；test 工作树显式加载当前 main 源码 531 passed, 4 skipped in 243.41s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
 历史样本只读验证：正式项目 22 个 v1 Monitor manifest 为 14 个 `resolved`、8 个 `no_artifacts`、0 个错误；4 个固定 capture 为 1 个 native `resolved`、3 个 legacy `ineligible`，全部是旧 writer 的 `serial_capture_legacy_text`。两次检查均未连接正式 SQLite，项目 189 个文件的路径、长度、mtime 和 SHA-256 前后无差异
-当前 SQLite 边界：正式项目数据库和当前安装插件仍保持 schema v2；v3-B4.2/B4.3 只生成文件证据候选，不判断正式数据库资格、不调用 B4.1，也不写 sidecar/marker。B4.4 当前只完成临时数据库中的事务原语：profile/sequence、artifact 与持久 raw claim 同一提交或回滚；持项目 lease 的二次扫描、Monitor run lease、marker 和实际项目补投影仍未实现。没有升级正式数据库、访问 COM3 或操作板卡
+当前 SQLite 边界：B4.4 已完成源码、临时 schema-v3 数据库和软件合同；正式项目数据库经 `mode=ro` 核对仍为 schema v2，未启动协调器、迁移或正式历史补投影。当前 Marketplace/安装缓存也未包含本工作树改动；没有访问 COM3 或操作板卡
 跳过边界：Windows 本地 3 项 skip 来自普通文件 symlink 创建权限（WinError 1314）及既有平台权限边界；目录 junction 与合成 fd/reparse 拒绝合同已执行。GitHub Linux 两套环境实际创建 symlink 并验证 fail-closed：恢复预检立即拒绝，不创建 sidecar、不写 SQLite、不改 manifest 或外部目标
 未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
 远端与插件：B4.3 [main run 30356471000](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356471000) 首次仅 Windows/Python 3.10 的既有 Monitor 跨进程用例在固定 8 秒 ready 窗口超时，另外 119 项及 3 个 job 成功；该用例本地独立进程重复 10/10 通过后，只重跑失败 job，run attempt 2 整体成功。[test run 30356899571](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356899571) 的 4 个 job 首次全部成功。最终共核验 8 个 Windows/Linux、Python 3.10/3.12 job；没有修改范围外代码，也未更新 Marketplace 源或安装缓存
@@ -936,6 +938,27 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   [main run 30347587842](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347587842)
   与 [test run 30347592644](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30347592644)
   共 8 个 job 全部成功，且没有重跑失败 job。本步骤没有访问 COM3、板卡或正式项目数据库。
+
+### 2026-07-29 13:57 - 完成 SQLite v3-B4.4 历史项目协调器
+
+- 原 B4.2/B4.3 只生成单个候选，没有项目级执行者；租约外 profile 预检、run-scoped raw ID
+  和独立 marker 都不能在进程退出后形成 SQLite 内的唯一所有权。Monitor 的历史秒级时间与
+  SQLite 规范时间还可能存在不足一秒的差异。
+- schema v3 新增持久 `historical_raw_claims`，并以复合外键证明 claim 的 event 属于同一
+  project/run；严格仓储入口只接受来源可证明的 event 十字段和 run 六字段，Monitor 仅对
+  event `ts` 使用不超过 1 秒的容差，其他字段仍精确比较。
+- 新增项目级持久非阻塞 lease 和版本化 marker store。协调器只读探测 schema，v2 在创建
+  lock/marker 前拒绝；v3 扫描 capture/Monitor，先拒绝不同 `(run_id, event_uuid)` 的共享
+  raw，再两次解析。Monitor 的第二次解析与 B4.1 调用均在该 run lease 内。
+- SQLite 逐 candidate 原子提交，项目级任务允许失败后幂等续跑；最终 marker 发布失败不会
+  回滚已经提交的 SQLite，而会返回 `database_persisted=true/marker_persisted=false`，
+  下次精确重试补齐 marker。释放后遗留 running marker 会报告 `interrupted`。
+- Windows 原子替换在并发读者存在时可能短暂返回 WinError 5/32；store 只对这两类共享冲突
+  做最多 1 秒的有界重试。Busy 的 `recoverable` 会映射为 `retryable=true`，损坏锁元数据
+  通过 status 明确返回 `ok=false`。
+- 项目协调器 12 项合同、B4.1-B4.4 组合 `145 passed, 1 skipped`、main 全量
+  `120 passed`、test 跨工作树全量 `531 passed, 4 skipped`。正式项目数据库仍为 v2，
+  本步骤没有迁移正式库、访问 COM3、更新 Marketplace/安装缓存或修改用户 plugin manifest。
 
 ## 协作约定
 
