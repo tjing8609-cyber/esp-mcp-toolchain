@@ -995,6 +995,8 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   在 SQL 侧截断并逐字段标记。
 - 旧实现基线为 `4 failed in 0.89s`，四项均命中字段/校验能力缺失。本提交只建立测试门禁，
   没有查询正式 SQLite、扫描 artifact 文件、访问 COM3 或修改 Marketplace/安装缓存。
+- 实现复审继续固化同一 `BEGIN` 快照内的并发写隔离，以及非法 error `recoverable`
+  fail-closed；C2 专项扩展为 `6 passed`，与 C1 合并为 `16 passed in 0.99s`。
 
 ## 协作约定
 

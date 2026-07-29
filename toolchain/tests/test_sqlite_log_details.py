@@ -408,3 +408,147 @@ def test_v3_get_rejects_noncanonical_stored_raw_path():
     assert result["ok"] is False
     assert result["error_kind"] == "log_database_invalid"
     assert result["recoverable"] is False
+
+
+def test_v3_get_reads_run_events_and_artifacts_from_one_snapshot(monkeypatch):
+    scope = log_tools.LogScope.active()
+    init_database(scope.database_file, project_id=scope.project_id)
+    run_id = "single-snapshot-details"
+    _create_run(scope, project_id=scope.project_id, run_id=run_id)
+    initial_raw = _register_raw(
+        scope,
+        project_id=scope.project_id,
+        run_id=run_id,
+        path="logs/raw/initial.bin",
+        created_at="2026-07-29T00:00:02+00:00",
+    )
+    initial_error = _register_error(
+        scope,
+        project_id=scope.project_id,
+        run_id=run_id,
+        created_at="2026-07-29T00:00:03+00:00",
+        message="initial error",
+        raw_text="initial traceback",
+    )
+    original = log_repository.list_recent_raw_logs_for_run
+    concurrent_raw_id = str(uuid4())
+    concurrent_error_id = str(uuid4())
+
+    def insert_after_snapshot(connection, **kwargs):
+        writer = sqlite3.connect(scope.database_file)
+        try:
+            writer.execute("PRAGMA foreign_keys = ON")
+            writer.execute(
+                """
+                INSERT INTO raw_logs (
+                  project_id, raw_log_id, run_id, kind, path, created_at, sha256
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    scope.project_id,
+                    concurrent_raw_id,
+                    run_id,
+                    "serial_capture_raw",
+                    "logs/raw/concurrent.bin",
+                    "2026-07-29T00:00:04+00:00",
+                    "b" * 64,
+                ),
+            )
+            writer.execute(
+                """
+                INSERT INTO errors (
+                  project_id, error_id, run_id, error_kind, file, line, column,
+                  exception_type, message, raw_text, recoverable, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    scope.project_id,
+                    concurrent_error_id,
+                    run_id,
+                    "micropython_traceback",
+                    "main.py",
+                    8,
+                    1,
+                    "RuntimeError",
+                    "concurrent error",
+                    "concurrent traceback",
+                    0,
+                    "2026-07-29T00:00:05+00:00",
+                ),
+            )
+            writer.commit()
+        finally:
+            writer.close()
+        return original(connection, **kwargs)
+
+    monkeypatch.setattr(
+        log_repository,
+        "list_recent_raw_logs_for_run",
+        insert_after_snapshot,
+    )
+
+    result = log_tools.esp_logs_get(run_id)
+
+    assert [record["raw_log_id"] for record in result["raw_logs"]] == [
+        initial_raw["raw_log_id"]
+    ]
+    assert [record["error_id"] for record in result["errors"]] == [
+        initial_error["error_id"]
+    ]
+    assert concurrent_raw_id in {
+        record["raw_log_id"]
+        for record in log_repository.get_run_raw_logs(
+            scope.database_file,
+            project_id=scope.project_id,
+            run_id=run_id,
+        )
+    }
+    assert concurrent_error_id in {
+        record["error_id"]
+        for record in log_repository.get_run_errors(
+            scope.database_file,
+            project_id=scope.project_id,
+            run_id=run_id,
+        )
+    }
+
+
+def test_v3_get_rejects_noncanonical_stored_error_value():
+    scope = log_tools.LogScope.active()
+    init_database(scope.database_file, project_id=scope.project_id)
+    run_id = "invalid-error-value"
+    _create_run(scope, project_id=scope.project_id, run_id=run_id)
+    connection = sqlite3.connect(scope.database_file)
+    try:
+        connection.execute("PRAGMA ignore_check_constraints = ON")
+        connection.execute(
+            """
+            INSERT INTO errors (
+              project_id, error_id, run_id, error_kind, file, line, column,
+              exception_type, message, raw_text, recoverable, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                scope.project_id,
+                str(uuid4()),
+                run_id,
+                "micropython_traceback",
+                "main.py",
+                1,
+                1,
+                "ValueError",
+                "invalid recoverable",
+                "traceback",
+                2,
+                "2026-07-29T00:00:02+00:00",
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = log_tools.esp_logs_get(run_id)
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "log_database_invalid"
+    assert result["recoverable"] is False
