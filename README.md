@@ -1031,6 +1031,10 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 旧实现定向基线为 `5 failed in 0.87s`，五项逐一命中上述能力缺口。本提交只建立测试
   门禁，使用 pytest 临时 SQLite 和临时 raw 文件；没有读取或修改正式数据库、访问 COM3、
   更新 Marketplace/安装缓存或纳入用户 plugin manifest 差异。
+- 边界复审再加入两项 SQL 查询前上界：截断的 event payload 不得解码，最新 64 条窗口
+  之外的旧 event 不得进入解析；旧实现为预期 `2 failed`，main 候选合计 `7 passed in
+  1.09s`。原先 monkeypatch `esp_logs_get` 的三项兼容测试改用真实临时 SQLite 事件，
+  Monitor 断言同步为正式 errors 优先，相关 C1/C2/错误解析组合为 `47 passed in 4.72s`。
 
 ## 协作约定
 

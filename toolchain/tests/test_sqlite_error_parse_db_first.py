@@ -301,3 +301,70 @@ def test_v2_parse_uses_bounded_structured_event_without_migration():
     }
     assert result["scanned_bytes"] <= 4096
     assert version == 2
+
+
+def test_legacy_compatibility_does_not_decode_truncated_event_payload():
+    scope = log_tools.LogScope.active()
+    init_database(scope.database_file, project_id=scope.project_id)
+    run_id = "bounded-legacy-payload"
+    _create_run(scope, run_id)
+    report = {
+        "has_error": True,
+        "error_kind": "micropython_traceback",
+        "file": "too-large.py",
+        "line": 1,
+        "exception_type": "OversizedPayloadFault",
+        "message": "must not be decoded after SQL truncation",
+        "recoverable": True,
+    }
+    _append_event(
+        scope,
+        run_id,
+        message="bounded compatibility payload",
+        payload={
+            "has_error": True,
+            "error_report": report,
+            "padding": "x" * 20_000,
+        },
+    )
+
+    result = error_tools.esp_error_parse_log(run_id, max_bytes=4096)
+
+    assert result["ok"] is True
+    assert result["has_error"] is False
+    assert result["scan_truncated"] is True
+    assert not any(
+        source["kind"] == "structured_error_report"
+        for source in result["scan_sources"]
+    )
+
+
+def test_legacy_compatibility_uses_latest_bounded_event_window():
+    scope = log_tools.LogScope.active()
+    init_database(scope.database_file, project_id=scope.project_id)
+    run_id = "bounded-legacy-window"
+    _create_run(scope, run_id)
+    _append_event(
+        scope,
+        run_id,
+        message=(
+            "Traceback (most recent call last):\n"
+            '  File "too-old.py", line 1\n'
+            "OldWindowFault: must remain outside the bounded window"
+        ),
+        payload={},
+    )
+    for index in range(64):
+        _append_event(
+            scope,
+            run_id,
+            message=f"normal latest event {index}",
+            payload={},
+        )
+
+    result = error_tools.esp_error_parse_log(run_id, max_bytes=4096)
+
+    assert result["ok"] is True
+    assert result["has_error"] is False
+    assert result["scan_truncated"] is True
+    assert result["scanned_bytes"] <= 4096

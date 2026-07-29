@@ -583,7 +583,11 @@ def test_background_monitor_detects_once_and_parse_log_scans_persisted_raw(monke
     parsed = error_tools.esp_error_parse_log(run_id)
     assert parsed["has_error"] is True
     assert parsed["exception_type"] == "RuntimeError"
-    assert any(source["kind"] == "serial_monitor_raw" for source in parsed["scan_sources"])
+    assert any(source["kind"] == "sqlite_errors" for source in parsed["scan_sources"])
+    assert not any(
+        source["kind"] == "serial_monitor_raw"
+        for source in parsed["scan_sources"]
+    )
     SERIAL_MONITOR_MANAGER.shutdown_all(1)
 
 
@@ -747,7 +751,9 @@ def test_run_file_mpremote_automatically_reports_traceback(monkeypatch):
     assert result["error_report"]["file"] == "remote.py"
 
 
-def test_error_parse_log_accepts_structured_monitor_event_without_raw(monkeypatch):
+def test_error_parse_log_accepts_structured_monitor_event_without_raw():
+    scope = log_tools.LogScope.active()
+    run_id = log_tools.new_run_id("structured_monitor_only")
     report = {
         "has_error": True,
         "error_kind": "micropython_traceback",
@@ -758,52 +764,52 @@ def test_error_parse_log_accepts_structured_monitor_event_without_raw(monkeypatc
         "recoverable": True,
         "suggested_next_actions": [],
     }
-    monkeypatch.setattr(
-        error_tools,
-        "esp_logs_get",
-        lambda **_kwargs: {
-            "ok": True,
-            "events": [
-                {
-                    "message": "MicroPython runtime error detected.",
-                    "payload_json": {"has_error": True, "error_report": report},
-                }
-            ],
-        },
+    log_tools.start_run("serial_monitor", run_id=run_id, scope=scope)
+    log_tools.write_event(
+        "esp_serial_monitor",
+        "error",
+        "MicroPython runtime error detected.",
+        {"has_error": True, "error_report": report},
+        run_id=run_id,
+        phase="complete",
+        scope=scope,
     )
+    log_tools.finish_run(run_id, "failed", scope=scope)
 
-    parsed = error_tools.esp_error_parse_log("structured_monitor_only")
+    parsed = error_tools.esp_error_parse_log(run_id)
 
     assert parsed["has_error"] is True
     assert parsed["exception_type"] == "MonitorFault"
     assert any(source["kind"] == "structured_error_report" for source in parsed["scan_sources"])
 
 
-def test_error_parse_log_rejects_raw_path_outside_project_log_root(monkeypatch, tmp_path):
+def test_error_parse_log_rejects_raw_path_outside_project_log_root(tmp_path):
+    scope = log_tools.LogScope.active()
+    run_id = log_tools.new_run_id("outside_path")
     external = tmp_path / "outside.log"
     external.write_text("ValueError: should not be read", encoding="utf-8")
-    monkeypatch.setattr(
-        error_tools,
-        "esp_logs_get",
-        lambda **_kwargs: {
-            "ok": True,
-            "events": [
-                {
-                    "message": "capture",
-                    "payload_json": {"raw_path": str(external)},
-                }
-            ],
-        },
+    log_tools.start_run("serial_capture", run_id=run_id, scope=scope)
+    log_tools.write_event(
+        "esp_serial_capture",
+        "info",
+        "capture",
+        {"raw_path": str(external)},
+        run_id=run_id,
+        phase="complete",
+        scope=scope,
     )
+    log_tools.finish_run(run_id, "succeeded", scope=scope)
 
-    parsed = error_tools.esp_error_parse_log("outside_path")
+    parsed = error_tools.esp_error_parse_log(run_id)
 
     assert parsed["has_error"] is False
-    assert {item["reason"] for item in parsed["skipped_sources"]} == {"outside_project_log_root"}
+    assert {
+        item["reason"] for item in parsed["skipped_sources"]
+    } == {"legacy raw path is outside the active project log root"}
     assert not any(source["kind"] == "serial_capture_raw" for source in parsed["scan_sources"])
 
 
-def test_error_parse_log_honors_scan_limit_before_late_traceback(monkeypatch):
+def test_error_parse_log_honors_scan_limit_before_late_traceback():
     scope = log_tools.LogScope.active()
     raw_dir = scope.log_root / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -813,16 +819,20 @@ def test_error_parse_log_honors_scan_limit_before_late_traceback(monkeypatch):
         + '\nTraceback (most recent call last):\n  File "late.py", line 1\nLateFault: late',
         encoding="utf-8",
     )
-    monkeypatch.setattr(
-        error_tools,
-        "esp_logs_get",
-        lambda **_kwargs: {
-            "ok": True,
-            "events": [{"message": "capture", "payload_json": {"raw_path": str(raw_path)}}],
-        },
+    run_id = log_tools.new_run_id("bounded")
+    log_tools.start_run("serial_capture", run_id=run_id, scope=scope)
+    log_tools.write_event(
+        "esp_serial_capture",
+        "info",
+        "capture",
+        {"raw_path": str(raw_path)},
+        run_id=run_id,
+        phase="complete",
+        scope=scope,
     )
+    log_tools.finish_run(run_id, "succeeded", scope=scope)
 
-    parsed = error_tools.esp_error_parse_log("bounded", max_bytes=4096)
+    parsed = error_tools.esp_error_parse_log(run_id, max_bytes=4096)
 
     assert parsed["scanned_bytes"] == 4096
     assert parsed["scan_truncated"] is True
