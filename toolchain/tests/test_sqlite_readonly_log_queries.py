@@ -246,3 +246,20 @@ def test_unknown_or_incomplete_schema_is_rejected_without_migration():
     assert result["recoverable"] is False
     assert _project_snapshot(scope.project_dir) == before
     assert not scope.log_root.exists()
+
+
+def test_locked_database_is_unavailable_not_corrupt(monkeypatch):
+    def locked(*_args, **_kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(log_repository, "connect_readonly", locked)
+
+    results = [
+        log_tools.esp_logs_latest(),
+        log_tools.esp_logs_get("locked-run"),
+        log_tools.esp_logs_query("locked"),
+    ]
+
+    assert all(result["ok"] is False for result in results)
+    assert all(result["error_kind"] == "log_database_unavailable" for result in results)
+    assert all(result["recoverable"] is True for result in results)
