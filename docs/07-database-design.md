@@ -1,6 +1,6 @@
 # SQLite 日志数据库设计
 
-更新时间：2026-07-20
+更新时间：2026-07-29
 
 ## 定位
 
@@ -112,6 +112,42 @@ error 的 `file`、`exception_type`、`message`、`raw_text` 分别在 SQL 侧�
 整个 `esp_logs_get` 响应的总字节上界。C3 读取真实 artifact 文件时还必须使用自己的
 `max_bytes`，不能把详情行数上限当成文件读取授权。
 
+### DB-first 错误解析
+
+`esp_error_parse_log` 不复用公开 `esp_logs_get`，而是先捕获一次 `LogScope`，再调用
+`read_error_parse_snapshot()`。该仓储入口使用 C1 的 `mode=ro + query_only + BEGIN`
+连接，从同一项目/run 快照读取 C2 的有界 errors/raw_logs 和兼容 event 投影；不准备
+数据库、不迁移、不导入 JSONL，也不会在读取后重新查询活动项目。
+
+来源权威顺序固定为：
+
+1. schema v3 正式 errors：直接返回最新正式结构化 error，不打开任何 raw 文件。
+2. schema v3 正式 raw_logs：只消费 `serial_capture_raw` 与 `serial_monitor_chunk`，
+   不与旧 event 文本混合。
+3. 当没有可用正式 error/raw 时，才消费旧 event/Monitor 兼容证据。
+
+兼容 event 查询只取最新 64 条。message 在 SQL 侧最多投影 8192 字符，之后仍受本次
+`max_bytes` 总字节限制；payload 最多投影 16384 字符，若探针显示截断则整个 payload
+不解码，不能从不完整 JSON 提取 error_report 或 raw_path。schema v2 只读取这些
+runs/events 投影，即使物理上残留 raw/error 表也不启用正式 artifact 能力。
+
+正式 raw path 必须与 kind/run 形状一致：固定 capture 为 `raw/<file>`，Monitor chunk
+为 `serial/<run_id>/chunk-NNNNNN.bin`。日志根、每层父目录和文件均执行 no-reparse/
+普通文件/读前后身份检查；单文件完整核验上限为 64 MiB。工具在同一安全 fd 上读取全文件
+并比对 SQLite 登记 SHA-256，但只把 `max_bytes` 范围内的内容送给错误解析器。摘要缺失、
+不匹配、路径类型冲突或目录身份变化都 fail-closed。
+
+旧 Monitor 兼容先验证 manifest、磁盘 chunk 精确集合、长度和摘要，再有界读取；旧 event
+raw_path 只允许当前项目 logs 内的安全文件。后者没有 SQLite 登记摘要，所以只能报告
+“已计算 SHA-256”，不能标为“已与权威摘要比对”。输出用 `query_source` 标识 SQLite
+版本，用 `source_truncation` 区分 raw/error/event 窗口或字段截断。
+
 ## 验证状态
 
-2026-07-20 最终本地门禁：SQLite 定向 `33 passed`，跨工作树完整测试 `134 passed`。当前项目 19 份旧 JSONL 已在临时数据库完成只读迁移演练：32 events，状态分布为 12 cancelled、2 failed、5 succeeded，外键检查为空。
+- 2026-07-29 C3 本地门禁：专项 `7 passed in 1.09s`，相关回归
+  `49 passed in 5.63s`，main 全量 `120 passed in 48.77s`，test 显式加载 main
+  `557 passed, 4 skipped in 250.00s`。使用临时 SQLite/文件；未访问或升级正式数据库，
+  未访问 COM3，远端 CI 尚未完成。
+- 2026-07-20 历史本地门禁：SQLite 定向 `33 passed`，跨工作树完整测试
+  `134 passed`。当时当前项目 19 份旧 JSONL 已完成迁移：32 events，状态分布为
+  12 cancelled、2 failed、5 succeeded，外键检查为空。

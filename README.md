@@ -335,13 +335,14 @@ SQLite v3-B4.2 resolver：初始红灯 42 failed（仅缺入口）；独立复�
 SQLite v3-B4.3 capture adapter：初始红灯 40 failed, 1 skipped；独立复审补入精确 raw 来源绑定和 native 全记录身份合同后曾得到 6 failed, 40 passed, 1 skipped；第二轮复审的合法失败端口合同曾得到 2 failed, 48 passed, 1 skipped。全部修复后专项 50 passed, 1 skipped in 1.31s；main 全量 120 passed in 49.93s
 B4.4 仓储基础：test 分支红灯 5 failed, 11 passed；实现 additive schema-v3 claim 表、事务内 profile/sequence 校验、复合事件所有权、严格六字段 run profile 和回滚后，repository/Monitor/capture 三文件合同 133 passed, 1 skipped in 5.56s
 B4.4 项目协调器：入口缺失时 9 failed；首轮实现后 9 passed。复审新增 Busy 可重试、损坏锁元数据可观测、跨 run 复用同 UUID 仍算两个所有者三项合同，先得到预期 3 failed, 9 passed，修复后 12 passed；B4.1-B4.4 组合 145 passed, 1 skipped in 6.98s
-当前软件全量：main 120 passed in 49.70s；test 工作树显式加载当前 main 源码 531 passed, 4 skipped in 243.41s
+v3-C3 DB-first 错误解析：旧实现先得到预期 5 failed，查询前上界复审再得到预期 2 failed；修复后 C3 专项 7 passed in 1.09s，相关回归 49 passed in 5.63s
+当前软件全量：main 120 passed in 48.77s；test 工作树显式加载当前 main 源码 557 passed, 4 skipped in 250.00s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
 历史样本只读验证：正式项目 22 个 v1 Monitor manifest 为 14 个 `resolved`、8 个 `no_artifacts`、0 个错误；4 个固定 capture 为 1 个 native `resolved`、3 个 legacy `ineligible`，全部是旧 writer 的 `serial_capture_legacy_text`。两次检查均未连接正式 SQLite，项目 189 个文件的路径、长度、mtime 和 SHA-256 前后无差异
-当前 SQLite 边界：B4.4 已完成源码、临时 schema-v3 数据库和软件合同；正式项目数据库经 `mode=ro` 核对仍为 schema v2，未启动协调器、迁移或正式历史补投影。当前 Marketplace/安装缓存也未包含本工作树改动；没有访问 COM3 或操作板卡
-跳过边界：Windows 本地 3 项 skip 来自普通文件 symlink 创建权限（WinError 1314）及既有平台权限边界；目录 junction 与合成 fd/reparse 拒绝合同已执行。GitHub Linux 两套环境实际创建 symlink 并验证 fail-closed：恢复预检立即拒绝，不创建 sidecar、不写 SQLite、不改 manifest 或外部目标
+当前 SQLite 边界：B4.4 与 C1-C3 已完成源码、临时 schema-v3 数据库和本地软件合同；正式项目数据库仍保持 schema v2，未启动协调器、迁移或正式历史补投影。C2/C3 尚未推送并取得远端 CI，当前 Marketplace/安装缓存也未包含这些工作树改动；没有访问 COM3 或操作板卡
+跳过边界：Windows 本地 4 项 skip 来自普通文件 symlink 创建权限（Flash 1、capture 1、Monitor 2）；目录 junction 与合成 fd/reparse 拒绝合同已执行。既有 GitHub Linux 门禁曾实际创建 symlink 并验证 fail-closed，但当前 C2/C3 候选仍需新的远端矩阵确认
 未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
 远端与插件：B4.3 [main run 30356471000](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356471000) 首次仅 Windows/Python 3.10 的既有 Monitor 跨进程用例在固定 8 秒 ready 窗口超时，另外 119 项及 3 个 job 成功；该用例本地独立进程重复 10/10 通过后，只重跑失败 job，run attempt 2 整体成功。[test run 30356899571](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30356899571) 的 4 个 job 首次全部成功。最终共核验 8 个 Windows/Linux、Python 3.10/3.12 job；没有修改范围外代码，也未更新 Marketplace 源或安装缓存
 ```
@@ -999,6 +1000,30 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   不会越过已建立的只读快照。
 - 本步骤只使用 pytest 临时 SQLite，没有读取或修改正式 SQLite、打开 artifact 文件、
   访问 COM3、更新 Marketplace/安装缓存，也没有纳入用户 plugin manifest 差异。
+
+### 2026-07-29 16:10 - 完成 v3-C3 DB-first 错误解析
+
+- 缺陷根因：旧 `esp_error_parse_log` 先调用公开 `esp_logs_get`，随后再次读取活动项目，
+  可能在项目切换时混合两个 LogScope；它只消费 event/raw_path/Monitor，忽略 schema v3
+  已登记的正式 errors/raw_logs，也没有把登记 SHA-256 作为文件完整性权威。
+- 新入口一次固定 LogScope，并在同一 query-only SQLite 快照读取选择信息。优先级固定为
+  正式 errors → 正式 raw_logs → 显式兼容 event/Monitor；存在正式 error 时不打开 raw，
+  schema v2 不查询物理 raw/error 表、不迁移也不导入 JSONL。
+- 正式 raw 只接受 `raw/<file>` 的 `serial_capture_raw` 和
+  `serial/<run_id>/chunk-NNNNNN.bin` 的 `serial_monitor_chunk`。目录链和文件均拒绝
+  symlink/reparse，单文件最多完整核验 64 MiB，并在安全 fd 上读取全文件比对登记
+  SHA-256；交给解析器的字节仍受 `max_bytes` 的 4096–1048576 上界限制。
+- 兼容 event 只取最新 64 条；message 最多 SQL 投影 8192 字符且再受总 `max_bytes`
+  限制，payload 最多投影 16384 字符，发生截断时不解码。旧 Monitor 先核对 manifest、
+  完整 chunk 集、长度和 SHA-256；旧 event raw_path 仅允许项目 logs 内安全文件，并明确
+  只计算摘要、没有登记摘要可供权威比对。
+- test 分支旧实现先得到 `5 failed in 0.87s`，上界复审另得预期 `2 failed`；完成后
+  C3 专项 `7 passed in 1.09s`、相关 C1/C2/错误解析回归 `49 passed in 5.63s`、
+  main 全量 `120 passed in 48.77s`、test 显式加载 main 全量
+  `557 passed, 4 skipped in 250.00s`。
+- 本步骤只使用临时 SQLite 和临时 raw/Monitor 文件，没有读取或升级正式数据库、访问
+  COM3、更新 Marketplace/安装缓存，也没有纳入用户 plugin manifest 差异。远端推送和
+  CI 尚未完成，不能把本地结果写成已发布状态。
 
 ## 协作约定
 

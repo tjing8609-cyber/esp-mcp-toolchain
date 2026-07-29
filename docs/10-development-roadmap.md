@@ -10,7 +10,7 @@
 6. 后台串口 Monitor：状态机、不可变项目绑定、游标读取、有界缓冲、分块落盘、跨进程串口锁和退出清理。软件测试、四平台 CI、插件缓存验证和历史真实 ESP 串口验收已完成。
 7. SQLite schema 与仓储层：SQLite 已成为 runs/events 正式查询源；project-scoped schema、v1/JSONL 迁移、事务序号、UUID 幂等和 run 生命周期已完成并发布。
 8. 日志查询增强：`run_id`、phase、level、tool、source、时间和 sequence 过滤已接通；后续导出和聚合属于非阻断增强。
-9. 任务书 12 项能力：6 项基础和 6 项提高均已有正式工具或闭环实现；公开提示词重组为 12 套，工具面为 48 tools / 12 resources / 12 prompts。独立 Conda 启动器已绑定 `esp-mcp-toolchain` 环境，其中 `mpremote 1.28.0` 已验证。当前会话加载的插件为 `0.1.0+codex.20260727064819`，48/12/12 工具面已核对；本工作树的新 B4.4 源码尚未同步到 Marketplace 或安装缓存。实板验收已确认 runtime、串口 Monitor 和文件上传/读取/列表；相对下载误写插件缓存后暂停。
+9. 任务书 12 项能力：6 项基础和 6 项提高均已有正式工具或闭环实现；公开提示词重组为 12 套，工具面为 48 tools / 12 resources / 12 prompts。独立 Conda 启动器已绑定 `esp-mcp-toolchain` 环境，其中 `mpremote 1.28.0` 已验证。当前会话加载的插件为 `0.1.0+codex.20260727064819`，48/12/12 工具面已核对；本工作树的新 B4.4/C1-C3 源码尚未同步到 Marketplace 或安装缓存。实板验收已确认 runtime、串口 Monitor 和文件上传/读取/列表；相对下载误写插件缓存后暂停。
 10. 项目数据迁移体系：工程路径重绑定、项目合并、导出、导入和完整性校验。与数据库 schema 迁移是两类任务，继续排在本轮任务书能力发布之后。
 
 v3-B4.1、B4.2 与 B4.3 已完成双分支远端门禁。v3-B4.3 历史固定 capture
@@ -35,8 +35,19 @@ Monitor run lease、两次 resolver、跨 run raw 所有权预检和独立原子
 `120 passed`，test 跨工作树全量 `531 passed, 4 skipped`。这些只使用临时 v3 数据库；
 正式项目数据库仍为 v2，未执行升级或正式补投影。
 
+2026-07-29 已完成 C1-C3 的本地软件链：查询入口使用只读事务且不在线迁移/导入；
+`esp_logs_get` 在同一快照返回有界正式 raw/error；`esp_error_parse_log` 固定一次项目作用域，
+按正式 errors → 正式 raw → 有界兼容 event/Monitor 选择。正式 raw 完整比对登记 SHA-256，
+兼容 event 只取最新 64 条并在 SQL 侧限制 message/payload。C3 专项
+`7 passed`，main 全量 `120 passed`，test 显式加载 main 全量
+`557 passed, 4 skipped`。这些仍是临时数据库/文件证据，C2/C3 远端推送和 CI 尚未完成。
+
 当前优先顺序：
 
-1. v3-C3：让 `esp_error_parse_log` 优先查询正式 errors/raw_logs，并保留有界兼容路径；v3-C1 只读查询边界和 v3-C2 `esp_logs_get` 正式详情已完成。
-2. v3-B/v3-C 软件门禁通过后，只同步个人 Marketplace 源并执行 validator、发布测试和 48/12/12 枚举；用户重启确认后才允许正式 v2→v3 升级。
-3. 插件重启后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复 MicroPython 均按具体动作单独确认。
+1. 网络恢复后按 main → test 顺序推送 C2/C3，并核对 Windows/Linux、Python 3.10/3.12
+   远端矩阵；不能用当前本地全绿替代 GitHub CI。
+2. 双分支远端门禁完成后，只同步个人 Marketplace 源并执行 validator、发布测试和
+   48/12/12 枚举；由用户重启 Codex。
+3. 重启确认新版插件后，才允许正式项目 v2→v3 升级和历史补投影。
+4. 随后继续相对下载和剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复
+   MicroPython 均按具体动作单独确认。
