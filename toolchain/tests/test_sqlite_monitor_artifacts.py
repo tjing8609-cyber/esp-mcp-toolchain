@@ -241,11 +241,27 @@ def test_monitor_stop_registers_each_finalized_chunk_once(monkeypatch):
     )
     run_id = started["run_id"]
     MonitorSerial.queue.put(b"abc")
-    MonitorSerial.queue.put(b"def")
-    running = _wait_for_monitor(
+    first = serial_tools.esp_serial_monitor_read(
         run_id,
-        lambda status: status["persisted_bytes"] == 6,
+        after_seq=0,
+        wait_ms=30_000,
     )
+    assert first["ok"] is True, first
+    assert [record["text"] for record in first["records"]] == ["abc"]
+
+    MonitorSerial.queue.put(b"def")
+    second = serial_tools.esp_serial_monitor_read(
+        run_id,
+        after_seq=first["next_after_seq"],
+        wait_ms=30_000,
+    )
+    assert second["ok"] is True, second
+    assert [record["text"] for record in second["records"]] == ["def"]
+
+    running_result = serial_tools.esp_serial_monitor_status(run_id)
+    assert running_result["monitors"], running_result
+    running = running_result["monitors"][0]
+    assert running["persisted_bytes"] == 6
     assert running["logging_persistence_state"] == "not_terminal"
     assert running["logging_persisted"] is None
 

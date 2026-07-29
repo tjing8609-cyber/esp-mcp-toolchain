@@ -267,6 +267,14 @@
   两项复审另为预期 `2 failed`。完成后专项 `7 passed in 1.09s`、相关回归
   `49 passed in 5.63s`、main 全量 `120 passed in 48.77s`、test 显式加载 main 全量
   `557 passed, 4 skipped in 250.00s`。仅使用临时 SQLite/raw/Monitor 文件。
+- C2/C3 文档同步后的
+  [test run 30438663603](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30438663603)
+  仅 Windows/Python 3.10 在既有 Monitor 用例的固定 3 秒前置轮询超时，另外三个 job
+  成功。失败发生在 stop 及 SQLite artifact 断言之前，相关测试与产品源码和此前全绿
+  提交相同。测试现改为逐段输入并通过带游标的条件读取确认 `abc`、`def`，再保留全部
+  stop/幂等/摘要断言；单项独立进程 `20/20`、相邻回归 `5 passed`、Monitor 文件
+  `46 passed, 2 skipped`、test 全量 `557 passed, 4 skipped in 219.64s`。修复提交的
+  远端矩阵尚待推送后验证。
 - 本次路径软件测试使用 mpremote / Raw REPL mock、临时项目目录和临时 SQLite，不访问真实开发板；下节单独记录此前已执行的实板动作。
 
 ## 安全与实板状态
