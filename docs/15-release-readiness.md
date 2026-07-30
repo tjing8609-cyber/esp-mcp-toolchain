@@ -1,4 +1,4 @@
-# v0.1.0 正式发布验证记录
+# v0.1.0 Tag 前冻结检查记录
 
 更新时间：2026-07-30（Asia/Shanghai）
 
@@ -17,9 +17,9 @@
 - 无蜂鸣器 UART-only ESP-IDF 构建、烧录、监控、从地址 0 写回完整 4 MiB 备份，
   以及 MicroPython/mpremote 恢复复核闭环。
 
-当前状态是“源码已冻结、发布门禁尚未全部完成”，不是“tag/Release 已存在”。本次是
-GitHub-only 发布，Marketplace 更新、cachebuster 和插件重启验收不适用。本文件区分
-已经确认的能力、仍需执行的发布动作和明确排除的业务固件范围。
+本文件冻结 tag 创建前已经确认的本地证据，并保留外部发布操作的记录位；它不预称
+GitHub Actions、tag 或 Release 状态。本次是 GitHub-only 发布，Marketplace 更新、
+cachebuster 和插件重启验收不适用。
 
 ## v0.1.0 构成
 
@@ -31,41 +31,45 @@ GitHub-only 发布，Marketplace 更新、cachebuster 和插件重启验收不�
 4. README、CHANGELOG、开发状态、路线图、能力矩阵、Bug 学习记录和本发布清单。
 
 确定性 UART 行为候选已形成 main 提交 `d93f848`，test 合同已形成提交
-`ff373c4`，第一次 main 合入 test 已形成合并提交 `89e0b58`。本次 `v0.1.0`
-版本元数据文档仍需单独提交并同步到 test。
+`ff373c4`，第一次 main 合入 test 已形成合并提交 `89e0b58`。首轮版本元数据检查点为
+`main@e63fc15`，文档状态修订前 test 检查点为 `test@636ca0f`；两者都不冒充最终
+发布 SHA。
 
 仓库内 `.codex-plugin/plugin.json` 的现有差异属于用户自有改动，不在本候选范围，
 不得暂存、覆盖或随发布提交。
 
 ## 软件验证
 
-本轮行为候选已经完成三层本地门禁：
+本轮候选已经完成本地子门禁、跨工作树预检和文档状态修订前 branch-local 检查：
 
 ```text
 Python 3.12.13
 pytest 9.1.1
 UART-only 专项：5 passed in 0.30s
 main 全量：120 passed in 61.67s
-test 跨工作树：587 collected / 583 passed / 4 skipped / 0 failed in 332.84s
+test 文档修订前跨工作树预检：587 collected / 583 passed / 4 skipped / 0 failed in 332.84s
+test 文档状态修订前 branch-local：587 collected / 583 passed / 4 skipped / 0 failed in 263.85s (0:04:23)
 ```
 
 4 项 skip 均来自当前 Windows 账户无法创建普通文件 symlink 测试夹具：
-Flash 1 项、历史 capture 1 项、Monitor 2 项；不是功能失败。test 工作树通过
+Flash 1 项、历史 capture 1 项、Monitor 2 项；不是功能失败。文档状态修订前
+branch-local 检查点在 `test@636ca0f`、Python 3.12.13 下，从 `index-test` 自身执行：
 
 ```powershell
-$env:ESP_MCP_SOURCE_ROOT = "C:\Users\16224\Desktop\ShanDong University\summer_holiday_1\index"
+Remove-Item Env:ESP_MCP_SOURCE_ROOT -ErrorAction SilentlyContinue
+Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
 python -m pytest
 ```
 
-显式加载 main 工作树源码，因此该门禁覆盖当前
-`CONFIG_APP_COMPILE_TIME_DATE=n`、UART-only README 和对应测试合同。发布文档本身
-另以 diff、证据一致性和 `git diff --check` 复核；pytest 结果不被扩写为对全部文字
-陈述的自动验证。
+这证明测试从 test 分支自身加载，而不是依赖跨工作树源码覆盖。发布文档另以 diff、
+证据一致性和 `git diff --check` 复核；pytest 结果不被扩写为对全部文字陈述的自动验证。
 
-本地 `main@d93f848` 与 `test@89e0b58` 已包含行为候选并领先远端；当前远端
-`main@1e09789` 与 `test@8ba27b5` 的既有 Actions 不包含本版本。上述 test 结果是
-跨工作树门禁，清除 `ESP_MCP_SOURCE_ROOT` 后的 final branch-local 全量仍待执行。
-只有精确推送后的新 Actions 才能作为正式发布门禁。
+首轮版本元数据检查点为 `main@e63fc15`，文档状态修订前 test 检查点为
+`test@636ca0f`。这些文档合入新的 test HEAD 后仍会复跑 branch-local；该新结果和远端
+操作的精确证据进入 GitHub Release/Actions。仓库快照不自证远端发布操作；tag 内容也
+无法自证其后创建的 GitHub Release。`v0.1.0` 的精确发布证据以
+[tag/Release 页面](https://github.com/tjing8609-cyber/esp-mcp-toolchain/releases/tag/v0.1.0)
+及其对应 GitHub Actions 为准。
 
 ## 实板封口证据
 
@@ -144,22 +148,29 @@ python -m pytest
 ## v0.1.0 发布检查表
 
 - [x] 精确复核 main/test diff，继续排除 `.codex-plugin/plugin.json` 用户差异。
-- [x] 运行最终 UART-only 专项、main 全量和 test 跨工作树全量测试。
+- [x] 运行 UART-only 专项、main 全量和 test 跨工作树预检。
 - [x] 分步提交 main 行为候选和 test 合同；提交正文记录
   Cause/Fix/Validation/Scope。
 - [x] 完成第一次 main 合入 test，合并提交为 `89e0b58`。
-- [ ] 提交本次 `v0.1.0` 版本元数据文档并同步到 test。
-- [ ] 清除跨工作树源码覆盖后，在 test 分支自身运行 final branch-local 全量门禁。
-- [ ] 推送 main/test，并等待新的 Windows/Linux、Python 3.10/3.12 Actions 全部成功。
+- [x] 首轮版本元数据检查点为 `main@e63fc15`，文档状态修订前 test 检查点为
+  `test@636ca0f`；两者不是最终发布 SHA。
+- [x] 在文档状态修订前 `test@636ca0f` 清除跨工作树源码覆盖后完成 branch-local 检查：
+  `587 collected / 583 passed / 4 skipped / 0 failed in 263.85s (0:04:23)`。
+- [ ] 外部操作记录：文档合入新的 test HEAD 后复跑 branch-local，并将精确结果记录到
+  GitHub Release/Actions。
+- [ ] 外部操作记录：在对应 GitHub Actions 全部完成后登记其精确运行链接。
 - [x] 确认本次为 GitHub-only 发布；Marketplace 更新、cachebuster、安装缓存写入和
   插件重启验收均不适用。
-- [x] 冻结版本号 `v0.1.0` 并形成
-  `docs/16-release-notes-v0.1.0.md` 发布说明草案。
-- [ ] 新 Actions 全部成功后创建 `v0.1.0` tag 和正式 Release。
+- [x] 冻结版本号 `v0.1.0` 并形成可直接发布的
+  `docs/16-release-notes-v0.1.0.md`。
+- [ ] 外部操作记录：登记
+  [v0.1.0 tag/Release 页面](https://github.com/tjing8609-cyber/esp-mcp-toolchain/releases/tag/v0.1.0)。
 - [x] 已记录蜂鸣器问题的业务固件范围、非工具链缺陷和非发布门禁结论，同时保留 UART
   证据不得扩展为 GPIO/蜂鸣器电气验证的边界。
 
-在 final branch-local、推送和新 Actions 完成前，不得把发布说明草案写成远端已发布。
+两个未勾选项是 tag 前冻结时预留的外部操作记录位，不表示读者查看本文时这些操作仍未
+完成。tag 后无需改写 tag 中的本文件；精确状态始终以 GitHub Release 页面和对应
+GitHub Actions 为准。
 
 ## 发布时不得声称
 
@@ -168,4 +179,5 @@ python -m pytest
   MicroPython/mpremote 复核，没有第二次完整 4 MiB read-back。
 - 不得把首次 host build 的 176,896 字节 `AA9E9AFA...09A9` 写成本次实板烧录镜像；
   本次验收的是 176,816 字节 `4017628F...8CA2`。
-- 不得把当前远端绿灯写成覆盖尚未推送的 `v0.1.0`。
+- 不得用仓库快照或 tag 内容自行证明 GitHub Release 与对应 Actions 状态；应引用外部
+  Release 页面和精确 Actions 运行。

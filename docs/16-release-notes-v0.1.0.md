@@ -2,9 +2,7 @@
 
 日期：2026-07-30（Asia/Shanghai）
 
-> 状态边界：本源码快照已冻结为首个 GitHub 版本 `v0.1.0`，但 final branch-local
-> 全量门禁、main/test 推送后的新 GitHub Actions、tag 和正式 Release 仍待完成。
-> 本文件是发布说明草案，不表示 tag 或 Release 已经存在。
+`v0.1.0` 是通用 ESP MCP 工具链的首个 GitHub 版本。
 
 ## 发布范围
 
@@ -66,18 +64,21 @@ Fix：UART-only 示例的 defaults 固定
 
 ## 本地门禁
 
-源码冻结前的最终本地结果为：
+本版本的本地验证结果为：
 
 ```text
 UART-only 专项：5 passed in 0.30s
 main 全量：120 passed in 61.67s
-test 跨工作树：587 collected / 583 passed / 4 skipped / 0 failed in 332.84s
+test 文档修订前跨工作树预检：587 collected / 583 passed / 4 skipped / 0 failed in 332.84s
+test 文档状态修订前 branch-local：587 collected / 583 passed / 4 skipped / 0 failed in 263.85s (0:04:23)
 ```
 
-4 项 skip 是当前 Windows 账户无法创建普通文件 symlink 测试夹具：Flash 1 项、
-历史 capture 1 项、Monitor 2 项；不是功能失败。test 跨工作树结果不替代尚待执行的
-final branch-local 全量，也不替代推送后新的 Windows/Linux、Python 3.10/3.12
-GitHub Actions。
+首轮版本元数据检查点为 `main@e63fc15`，文档状态修订前 test 检查点为
+`test@636ca0f`；它们不是最终发布 SHA。该 branch-local 检查使用 Python 3.12.13，在
+清除 `ESP_MCP_SOURCE_ROOT` / `PYTHONPATH` 后从 `index-test` 自身执行
+`python -m pytest`。4 项 skip 是当前 Windows 账户无法创建普通文件 symlink 测试夹具：
+Flash 1 项、历史 capture 1 项、Monitor 2 项；不是功能失败。文档合入新的 test HEAD
+后仍会复跑相同门禁，精确结果进入 GitHub Release/Actions 外部证据。
 
 ## 蜂鸣器与业务固件边界
 
@@ -85,18 +86,14 @@ GitHub Actions。
 不再安排蜂鸣器专项，该项不阻塞 `v0.1.0`。UART-only 源码和本轮工具调用没有主动配置
 GPIO25、LEDC、PWM 或蜂鸣器，但这不证明蜂鸣器、供电、复位线路或板级电气瞬态状态。
 
-## 发布边界
+## 发布与证据边界
 
-本次是 GitHub-only 发布。个人 Marketplace 更新、cachebuster、安装缓存写入和插件
-重启验收不适用；当前已安装的 `0.1.0+codex.20260730084223` 只是历史插件背景，不是
-本源码快照的发布证据。
+本次是 GitHub-only 发布；个人 Marketplace 更新、cachebuster、安装缓存写入和插件
+重启验收不属于本版本发布范围。
 
-只有以下剩余门禁全部成功后，才创建 `v0.1.0` tag 和正式 Release：
-
-1. 提交并同步本次版本元数据文档；
-2. test 分支 final branch-local 全量通过；
-3. main/test 精确推送；
-4. 新 GitHub Actions 矩阵全部成功。
+tag 中的仓库内容无法自证其后创建的 GitHub Release。`v0.1.0` 的精确发布证据以
+[tag/Release 页面](https://github.com/tjing8609-cyber/esp-mcp-toolchain/releases/tag/v0.1.0)
+及其对应 GitHub Actions 为准。
 
 完整验证证据和禁止扩大声明的边界见
-`docs/15-release-readiness.md`。
+[v0.1.0 tag 前冻结检查记录](https://github.com/tjing8609-cyber/esp-mcp-toolchain/blob/v0.1.0/docs/15-release-readiness.md)。
