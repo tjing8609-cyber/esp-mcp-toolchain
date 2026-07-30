@@ -294,7 +294,17 @@
 - 已审查映射为 ESP32-D0WD-V3、GPIO34 KEY1、GPIO32 低有效 LED、GPIO25 PWM 蜂鸣器、UART0 115200；2026-07-27 的 MicroPython runtime 探测已作为新的 board-test 事实增量写回。
 - 授权前备份 4,194,304 字节，SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；`erase_flash_20260727_131837_f672becc` 成功，`restore_flash_20260727_131918_88af58ec` 成功恢复并校验官方 MicroPython v1.28.0 BIN。
 - 动作后捕获到 MicroPython v1.28.0 banner；运行时信息、20 条串口 Monitor 标记和三个临时文件的上传/读取/列表通过。hard reset 工具仍保留 `reset_confirmed=false` 与 `output_causality_confirmed=false` 的严格边界。
-- 相对下载返回成功但实际写入版本化安装缓存，因此 `remote_file_management` 尚未通过；程序停止、异常解析、GPIO34 只读、板上回归、性能、软复位、临时文件删除和日志闭环也尚未执行。
+- 2026-07-30 hard reset run 捕获的启动输出显示板上实际运行后续烧入的 ESP-IDF 示例；
+  这解释了 Raw REPL 与 mpremote 超时。经明确授权，当前 ESP-IDF 4 MiB 备份 SHA-256 为
+  `5ACF1DB30021D3B1C1A83264E586007A7F36AB2C5B604522612E2E6C164E2365`，随后擦除并恢复
+  已核验的 MicroPython v1.28.0；启动 banner 与 `>>>` 已捕获。
+- 相对上传、板端读回和相对下载使用全新 21 字节载荷完成。下载实际落在 workspace，
+  源/目标 SHA-256 同为
+  `2DDF47ADFD6E81358CE6B00AA1EF332AF66AE718BD3AE2CAAC452218958CD163`，插件缓存同名文件
+  数为 0，因此 `remote_file_management` 的相对路径门禁已通过。
+- 本轮文档提交前完整软件门禁为 main `120 passed in 54.85s`、test 显式加载 main
+  `557 passed, 4 skipped in 245.46s`；4 项 skip 是 Windows 普通文件 symlink 权限边界。
+- 程序停止、异常解析、GPIO34 只读、板上回归、性能、软复位和临时文件删除仍待执行。
 - `build_flash_monitor` 只支持 ESP-IDF build→flash→monitor 链，本次 Raw BIN 恢复不能作为其通过证据；若执行需另行授权，恢复 MicroPython 还需再次授权。
 
 ## 插件发布状态
@@ -309,8 +319,6 @@
 
 ## 待完成
 
-1. 继续相对下载验收：使用 workspace 内的显式本地目标，核对返回路径、实际文件、
-   字节数和 SHA-256，确认不会写入版本化安装缓存。
-2. 继续程序停止、GPIO34 只读、板上回归、性能、软复位和日志闭环；每项单独记录成功
+1. 继续程序停止、错误解析、GPIO34 只读、板上回归、性能、软复位和日志闭环；每项单独记录成功
    证据与不证明的边界。
-3. 临时板端文件删除、擦除和新的烧录/恢复仍按精确动作单独确认。
+2. 临时板端文件删除、擦除和新的烧录/恢复仍按精确动作单独确认。

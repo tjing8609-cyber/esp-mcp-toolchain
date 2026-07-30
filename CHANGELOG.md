@@ -76,6 +76,10 @@
 - 2026-07-29 在 Marketplace 新插件重启确认、临时副本演练和 v2 备份完成后，正式项目
   数据库已显式升级到 schema v3；历史协调器首次补入 5 条 raw、1 条 error 和 5 条
   claim，第二次回放 5 项全部为 `already_reconciled`。
+- 2026-07-30 实板复验先通过启动输出确认板上实际运行 ESP-IDF，而不是把 Raw REPL
+  超时误报为文件工具回归；经用户明确授权完成当前 4 MiB flash 备份、整片擦除和
+  MicroPython v1.28.0 恢复后，相对上传/下载均返回 workspace 内规范绝对路径，21 字节
+  载荷逐字节和 SHA-256 一致，版本化安装缓存未出现同名下载文件。
 - 同步工具统一使用 start/prepare/complete/finish run 生命周期；后台 Monitor 在启动时固定完整 `LogScope`，并由 worker 写入原项目终态。
 - 跨工作树门禁由 `index-test` 明确加载 `index` 源码，并校验实际导入来源，避免测试工作树误测自身旧实现。
 - GitHub Actions 只检出被推送的单个分支；test 推送前必须合入固定、已验证的 main，不能把本地 `ESP_MCP_SOURCE_ROOT` 跨工作树覆盖当作远端分支同步。
