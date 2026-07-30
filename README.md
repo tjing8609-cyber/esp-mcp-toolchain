@@ -1119,6 +1119,51 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   加载 main 源码为 `557 passed, 4 skipped in 245.46s`。4 项 skip 仍来自 Windows
   普通文件 symlink 权限，不涉及实板操作或本次相对路径验收。
 
+### 2026-07-30 13:00 - 完成剩余 MicroPython 实板验收并修复正式错误漏投影
+
+- 先执行无 GPIO、无文件写入的活动循环；`exec_code_20260730_125717_51c9ec88` 收到
+  Raw REPL ACK 和启动标记后按预期未在 1.2 秒内结束。随后
+  `program_stop_20260730_125724_a9e36938` 两次发送 Ctrl-C，捕获
+  `KeyboardInterrupt` 与 `>>>`，返回 `stop_confirmed=true`、清理完成且
+  `reset_command_sent=false`。打开串口的控制线效应仍不能排除。
+- 受控 run `exec_code_20260730_125742_1024f69a` 产生
+  `ValueError: ESP_MCP_ACCEPTANCE_ERROR`；完整 Raw REPL 终止帧已收到，
+  `esp_error_parse_log` 从 authoritative schema-v3 事件兼容来源准确恢复
+  `<stdin>:2`、异常类型和消息，扫描未截断。
+- 该 run 的 complete event 已含结构化 `error_report`，但正式 `errors` 行数为 0。
+  根因是 `esp_exec_code` 与同样复用 `_attach_error_report()` 的 `esp_run_file`
+  没有声明 completion artifact。源码现为两项只启用
+  `completion_artifacts=("structured_error",)`；不同时加入较宽泛的
+  `result_error`，避免同一异常产生两条不同粒度记录并影响 DB-first 选择。
+- 修复合同在旧实现上得到预期 `2 failed, 1 passed`；修复后专项、成功不误写和
+  Raw REPL 嵌套运行文件单条投影均通过。独立审查为 P0=0、P1=0。历史 run 不会由
+  源码修改自动补投影；新版 Marketplace 重载后的实板正式 error 仍需单独复验。
+- `gpio_status_20260730_125804_b64cdc22` 对 GPIO34 返回有效电平 `0`，
+  `gpio_read_only=true`、`mode_changed=false`、`failed_count=0`。这只证明调用时的
+  逻辑电平和工具代码未传入模式参数，不证明实体按键动作或寄存器经独立测量未变。
+- 三个受版本控制脚本上传后均逐文件读回核对。正向 run
+  `regression_test_20260730_125904_536d5573` 执行 safe runtime 与 GPIO34 用例，
+  得到 `2 passed, 0 failed, 0 skipped`；GPIO34 用例输出电平 `1`，并显式执行
+  `Pin(34, Pin.IN)`，因此不能拿它代替上一项严格只读查询。独立 negative run
+  `regression_test_20260730_125910_53f2c8a1` 按预期返回
+  `regression_failed` 和一项 `test_failed`，未被误报为通过。GPIO32 stateful、
+  GPIO25、蜂鸣器和 PWM 均未执行。
+- `performance_profile_20260730_125937_ade171bb` 对纯整数循环采集 7/7 个成功样本：
+  `timing_us` 最小/中位/均值/最大为
+  `4643 / 4648 / 4766.14 / 5465`，每次 `memory_delta_bytes=-208`。这是
+  `ticks_us` 与 `gc.mem_free` 插桩结果，不是采样 profiler、功耗或长期泄漏结论。
+- soft reset run `reset_20260730_125952_687488e1` 捕获 135 字节
+  `MPY: soft reboot`、MicroPython v1.28.0 banner 与 `>>>`，SHA-256 为
+  `3A78210005A02F30F974E42CB00B0511A0234AFF9A4402D6B87805E7C47EDAF2`；
+  completion 保留 `reset_confirmed=false`、`output_causality_confirmed=false` 和
+  `physical_reset_excluded=false`。复位后板端无 `main.py`，`boot.py` 仅为官方注释模板。
+- COM3 最终可用且未占用。板端仍保留三个回归脚本和
+  `/mcp_acceptance_payload.txt`；未获得删除确认。本轮没有擦除、烧录、hard reset、
+  GPIO32 LED 或蜂鸣器动作，也没有出现 USB/串口断连。
+- 最终完整软件门禁：main `120 passed in 60.53s`；test 显式加载 main 源码
+  `559 passed, 4 skipped in 296.00s`。4 项 skip 仍是 Windows 普通文件 symlink
+  权限边界，不涉及本次错误投影修复或实板动作。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

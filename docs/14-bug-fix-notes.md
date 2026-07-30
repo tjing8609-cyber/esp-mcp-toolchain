@@ -1592,3 +1592,56 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   中同名文件数为 0。
 - 备份、擦除、恢复、reset 和下载终态均从 authoritative schema-v3 SQLite 读回。板端
   临时文件未删除，程序停止、错误解析、GPIO、回归、性能和软复位仍需后续独立验收。
+
+## 2026-07-30：exec/run-file 已解析 Traceback，但正式 SQLite errors 为空
+
+### 症状
+
+- 实板 run `exec_code_20260730_125742_1024f69a` 执行受控
+  `ValueError("ESP_MCP_ACCEPTANCE_ERROR")`。
+- 即时响应收到完整 Raw REPL `OK + stdout EOT + stderr EOT + >`，并正确生成
+  `micropython_traceback / ValueError / <stdin>:2`。
+- `esp_error_parse_log` 也能恢复同一异常，但 `scan_sources` 使用
+  `structured_error_report` 兼容来源；同一 run 的 `esp_logs_get.errors` 和正式
+  `errors` 表查询均为 0 行。
+
+### 根因
+
+- B2 的 completion artifact 合同采用逐工具显式 opt-in。当时固定 capture 声明
+  `serial_capture_raw/result_error/structured_error`，程序停止只声明
+  `result_error`；默认 `logged_task` 不投影任何 artifact。
+- `esp_exec_code` 和 `esp_run_file` 都调用 `_attach_error_report()`，因此 complete
+  event 已含结构化报告，但两项装饰器没有声明 `structured_error`。查询层没有丢数据；
+  error parser 是在正式 errors 为空时按设计回退到有界兼容 event。
+- 仓库与已安装插件的 `exec_tools.py`、`log_tools.py`、`log_repository.py` 和
+  `schema.sql` 摘要一致，排除了 Marketplace/安装缓存漂移。
+
+### 修复
+
+- `esp_exec_code` 与 `esp_run_file` 的 `logged_task` 均增加
+  `completion_artifacts=("structured_error",)`。
+- 不同时增加 `result_error`。同一 Traceback 若写入宽泛 wrapper 和具体 structured
+  两条 error，现有 DB-first 最新项选择可能返回较宽泛的
+  `raw_repl_runtime_error`，反而丢失精确文件、行号与异常类型。
+- Raw REPL 的 `esp_run_file` 会嵌套调用 `esp_exec_code`；活动 `logged_task` 上下文会
+  跳过内层 run，由外层只登记一条 structured error。mpremote 分支直接由外层登记。
+- 历史 run 不自动回填。若以后需要把旧 event 的结构化报告补入 errors，应设计独立、
+  可预演且幂等的正式数据库协调流程，不能由查询静默写入。
+
+### 测试和边界
+
+- 新合同在旧实现上得到预期 `2 failed, 1 passed`：exec 与 mpremote run-file 缺少正式
+  error，成功 exec 不误写。
+- 修复后 exec、mpremote run-file、成功不误写均通过；独立审查补充 Raw REPL run-file
+  嵌套单条投影合同并通过。相关执行/停止/错误/SQLite 定向门禁为 `68 passed`，新增
+  Raw REPL 单项与整文件门禁分别为 `1 passed`、`27 passed`。
+- 最终完整门禁为 main `120 passed in 60.53s`、test 显式加载 main 源码
+  `559 passed, 4 skipped in 296.00s`；4 项 skip 仍是 Windows 普通文件 symlink
+  权限，不涉及本次修复。
+- 独立审查为 P0=0、P1=0；兼容 event fallback 保留，旧日志仍可读。
+- 本切片只正式投影可解析的 MicroPython Traceback。`mpremote_timeout`、
+  `raw_repl_enter_failed` 等没有 `error_report` 的顶层操作错误仍不进入 errors；如要扩展
+  必须单独设计 `result_error` 的优先级和去重合同。
+- 当前安装插件仍为 `0.1.0+codex.20260729114414`。源码软件门禁不能替代新版 Marketplace
+  重载后的实板验证；后续应执行新的受控异常，并要求
+  `esp_logs_get.errors` 恰有一条、`esp_error_parse_log` 来源为 `sqlite_errors`。

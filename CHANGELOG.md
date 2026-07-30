@@ -80,6 +80,11 @@
   超时误报为文件工具回归；经用户明确授权完成当前 4 MiB flash 备份、整片擦除和
   MicroPython v1.28.0 恢复后，相对上传/下载均返回 workspace 内规范绝对路径，21 字节
   载荷逐字节和 SHA-256 一致，版本化安装缓存未出现同名下载文件。
+- 2026-07-30 继续完成 MicroPython 实板验收：活动循环可由 `esp_program_stop` 中断并
+  观察到 `KeyboardInterrupt` 与 `>>>`；受控 `ValueError` 可由日志解析器恢复；
+  GPIO34 严格只读查询、两项正向回归、独立 negative、7 次无硬件副作用性能插桩和
+  soft reset 均取得项目级 run 与 SQLite completion 证据。该批测试未访问 GPIO25、
+  蜂鸣器或 PWM，也没有发生串口断连，不能用于判断蜂鸣器瞬时电流问题。
 - 同步工具统一使用 start/prepare/complete/finish run 生命周期；后台 Monitor 在启动时固定完整 `LogScope`，并由 worker 写入原项目终态。
 - 跨工作树门禁由 `index-test` 明确加载 `index` 源码，并校验实际导入来源，避免测试工作树误测自身旧实现。
 - GitHub Actions 只检出被推送的单个分支；test 推送前必须合入固定、已验证的 main，不能把本地 `ESP_MCP_SOURCE_ROOT` 跨工作树覆盖当作远端分支同步。
@@ -89,6 +94,10 @@
 
 ### Fixed
 
+- 修复 `esp_exec_code` 和 `esp_run_file` 已生成 MicroPython `error_report`、却未把它
+  原子投影到 schema-v3 `errors` 的 producer 漏项。两项工具现在只启用
+  `structured_error`，不同时登记较宽泛的 `result_error`；成功执行不产生 error，
+  Raw REPL 嵌套运行文件也只登记一次。历史 run 不会由本次源码修改自动回填。
 - 修复正式数据库封口脚本把“持久锁文件存在”误判为“项目租约仍活动”的验收错误。
   B4.4 锁文件按设计在 release 后保留；正确判据是只读 status/probe 返回
   `active=false`、锁元数据有效且 OS 文件锁可重新取得。

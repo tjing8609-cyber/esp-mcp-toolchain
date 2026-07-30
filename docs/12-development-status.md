@@ -1,13 +1,13 @@
 # 当前开发状态
 
-更新时间：2026-07-29（Asia/Shanghai）
+更新时间：2026-07-30（Asia/Shanghai）
 
 ## 当前分支
 
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3、B4.1-B4.4 与 v3-C1-C3 已完成源码、本地/远端软件门禁和 Marketplace 发布。当前安装插件为 `0.1.0+codex.20260729114414`；正式项目数据库已在 v2 备份和临时副本演练后显式升级到 v3，并完成首次历史补投影与第二次幂等回放。本次正式 SQLite 验收没有访问板卡。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3、B4.1-B4.4 与 v3-C1-C3 已完成源码、本地/远端软件门禁和 Marketplace 发布。当前安装插件为 `0.1.0+codex.20260729114414`；正式项目数据库已在 v2 备份和临时副本演练后显式升级到 v3，并完成首次历史补投影与第二次幂等回放。2026-07-30 已继续完成活动程序停止、受控异常解析、GPIO34、回归、性能与 soft reset 实板验收；验收发现的 exec/run-file 正式错误漏投影已在仓库源码修复，尚待新版 Marketplace 重载后的正式数据库复验。
 
 ## 本轮已完成实现
 
@@ -302,9 +302,33 @@
   源/目标 SHA-256 同为
   `2DDF47ADFD6E81358CE6B00AA1EF332AF66AE718BD3AE2CAAC452218958CD163`，插件缓存同名文件
   数为 0，因此 `remote_file_management` 的相对路径门禁已通过。
-- 本轮文档提交前完整软件门禁为 main `120 passed in 54.85s`、test 显式加载 main
-  `557 passed, 4 skipped in 245.46s`；4 项 skip 是 Windows 普通文件 symlink 权限边界。
-- 程序停止、异常解析、GPIO34 只读、板上回归、性能、软复位和临时文件删除仍待执行。
+- 活动循环由 `program_stop_20260730_125724_a9e36938` 确认中断：
+  `interrupt_write_count=2`、`KeyboardInterrupt`、`>>>`、`stop_confirmed=true`，
+  cleanup 完成；它没有显式发送 reset，但 `physical_reset_excluded=false`。
+- 受控 `ValueError` run `exec_code_20260730_125742_1024f69a` 的 Raw REPL 完整终止帧、
+  即时 `error_report` 和 `esp_error_parse_log` 结构均正确。正式 errors 为空暴露
+  producer 漏项；`esp_exec_code` / `esp_run_file` 现只声明 `structured_error`
+  completion artifact。旧实现红灯为 `2 failed, 1 passed`，修复后专项通过，独立审查
+  P0=0、P1=0；安装插件仍是旧版本，不能提前把正式 `sqlite_errors` 复验记为通过。
+- GPIO34 严格查询 run `gpio_status_20260730_125804_b64cdc22` 返回有效电平 `0`、
+  `gpio_read_only=true`、`mode_changed=false`、`failed_count=0`；没有同步人工按键观察，
+  不能断言实体 KEY1 当时被按下。正向回归 run
+  `regression_test_20260730_125904_536d5573` 为 `2/0/0`，其中 GPIO34 脚本显式设置
+  `Pin.IN` 并读到 `1`；negative run `regression_test_20260730_125910_53f2c8a1`
+  按预期为一项 `test_failed`，未被误报为通过。
+- 性能 run `performance_profile_20260730_125937_ade171bb` 得到 7/7 成功样本，
+  `timing_us` 中位数 `4648`、均值 `4766.14`，每次堆差值 `-208` 字节；仅表示
+  instrumented wall time 和 `gc.mem_free` 差值，不表示功耗、供电或长期泄漏。
+- soft reset run `reset_20260730_125952_687488e1` 捕获 135 字节
+  `MPY: soft reboot`、MicroPython v1.28.0 banner 与 `>>>`，输出 SHA-256 为
+  `3A78210005A02F30F974E42CB00B0511A0234AFF9A4402D6B87805E7C47EDAF2`；仍保留
+  `reset_confirmed=false`、`output_causality_confirmed=false`。复位后无 `main.py`，
+  `/boot.py` 为官方注释模板。
+- 本批实板操作未访问 GPIO25、蜂鸣器、PWM 或 GPIO32 stateful 用例，未发生 COM3
+  断连；因此不能据此确认或排除蜂鸣器瞬时电流掉电。板端三个回归脚本与既有 21 字节
+  载荷仍保留，未执行删除。
+- 本轮最终完整软件门禁为 main `120 passed in 60.53s`、test 显式加载 main
+  `559 passed, 4 skipped in 296.00s`；4 项 skip 是 Windows 普通文件 symlink 权限边界。
 - `build_flash_monitor` 只支持 ESP-IDF build→flash→monitor 链，本次 Raw BIN 恢复不能作为其通过证据；若执行需另行授权，恢复 MicroPython 还需再次授权。
 
 ## 插件发布状态
@@ -319,6 +343,10 @@
 
 ## 待完成
 
-1. 继续程序停止、错误解析、GPIO34 只读、板上回归、性能、软复位和日志闭环；每项单独记录成功
-   证据与不证明的边界。
-2. 临时板端文件删除、擦除和新的烧录/恢复仍按精确动作单独确认。
+1. 将 exec/run-file `structured_error` 修复同步到个人 Marketplace；用户重启后重新执行
+   受控异常，确认正式 `errors` 恰有一条且 `esp_error_parse_log.scan_sources` 使用
+   `sqlite_errors`，不再依赖兼容 event。
+2. 如需把 GPIO34 与实体 KEY1 active-low 行为升级为板测证据，需用户分别在松开和按下
+   状态触发两次查询；单次 0/1 不足以证明实体动作。
+3. 临时板端三个回归脚本、`/mcp_acceptance_payload.txt` 的删除，以及擦除和新的
+   烧录/恢复仍按精确动作单独确认。
