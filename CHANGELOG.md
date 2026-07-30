@@ -14,8 +14,10 @@
 - 新增跨进程串口锁、进程所有权与端口身份记录、只针对已结束进程的陈旧锁恢复，以及 MCP Server 退出清理。
 - 新增 Windows / Linux、Python 3.10 / 3.12 的 GitHub Actions 全量测试矩阵。
 - 新增 `examples/esp_idf_uart_smoke`：只输出 UART0 READY 和每秒递增 HEARTBEAT，不编译
-  额外应用源文件，也不引用 GPIO、LEDC、PWM、RMT、DAC 或蜂鸣器接口；用于在蜂鸣器专项
-  延期时独立验收 ESP-IDF 构建和串口链。
+  额外应用源文件，也不引用 GPIO、LEDC、PWM、RMT、DAC 或蜂鸣器接口；用于隔离 ESP MCP
+  工具链构建/串口验收与业务固件的 GPIO25/蜂鸣器行为。
+- 新增 `docs/15-release-readiness.md`，集中记录当前发布候选、实板 run/哈希、
+  正式发布前清单、业务固件范围和不得扩大声明的证据边界。
 
 - 新增 SQLite schema v2 与 runs/events 仓储，包含 project-scoped 复合键、外键、JSON 对象约束、规范 UUID、事务 sequence 和结构化查询索引。
 - 新增 v1 数据库重建迁移、legacy JSONL 稳定快照与可重复导入，以及 `docs/adr/0003-sqlite-log-authority.md`。
@@ -51,6 +53,10 @@
 
 ### Changed
 
+- UART-only 示例 defaults 设置 `CONFIG_APP_COMPILE_TIME_DATE=n`，避免普通增量
+  build/flash 仅因编译日期和时间改变 app 镜像；烧录规则同时要求对最终实际写入的全部
+  分段重新计算大小和 SHA-256，任何漂移都必须停止验收；只有当前精确授权已包含恢复时，
+  才按该授权使用本轮新鲜备份恢复，否则保留证据并请求确认。
 - `esp_project_build` 新增默认关闭的 `confirm_target_change`。后端把构建分成
   `build`、`define_target_build`、`fullclean_build`、
   `fullclean_define_target_build` 和 `set_target_build` 五种计划；后三种在未明确确认时
@@ -102,7 +108,8 @@
   `esp_error_parse_log` 只使用 `sqlite_errors`，不再依赖兼容 event；调用结束后
   COM3 仍可用且未占用。本次没有刷写、擦除、删除、GPIO 或板端文件修改，也未调用
   reset 工具或显式发送复位命令；`physical_reset_excluded=false`，串口控制线效应未独立排除。
-  蜂鸣器瞬时电流专项按用户决定延期，不属于本轮完成声明。
+  用户后续确认蜂鸣器瞬时电流问题属于业务固件，不是 ESP MCP 工具链缺陷；本项目不再
+  安排该专项，且该项不阻塞发布。上述 UART/回归结果仍不能扩展为蜂鸣器电气证据。
 - 同步工具统一使用 start/prepare/complete/finish run 生命周期；后台 Monitor 在启动时固定完整 `LogScope`，并由 worker 写入原项目终态。
 - 跨工作树门禁由 `index-test` 明确加载 `index` 源码，并校验实际导入来源，避免测试工作树误测自身旧实现。
 - GitHub Actions 只检出被推送的单个分支；test 推送前必须合入固定、已验证的 main，不能把本地 `ESP_MCP_SOURCE_ROOT` 跨工作树覆盖当作远端分支同步。
@@ -112,6 +119,12 @@
 
 ### Fixed
 
+- 修复 UART-only 已审查 app 哈希会在 `idf.py flash` 阶段漂移的问题。根因是
+  `CONFIG_APP_COMPILE_TIME_DATE=y` 使 ESP-IDF 的 `esp_app_desc.c` 写入
+  `__DATE__` / `__TIME__`；第一次闭环的实时工具输出检测到哈希从
+  `AA9E9AFA...09A9` 变为 `C0B4DE4F...1745` 后停止串口验收并按既有授权恢复。该漂移
+  摘要没有进入 SQLite/JSONL completion payload。关闭该配置后，两次普通增量构建均成功；
+  第二次构建后的最终烧录前复核确立了 bootloader、partition 和 app 三段输入。
 - 修复普通 `esp_project_build` 在 `sdkconfig` 缺失或 target 不匹配时自动执行
   `set-target`、从而绕过 full clean 显式确认的问题。新预检同时检查 sdkconfig、
   `build/CMakeCache.txt` 和既有 `sdkconfig.old`；结果区分 planned、command started、
@@ -241,6 +254,24 @@
 
 ### Validation
 
+- 当前未提交候选的最终本地门禁为 UART-only 专项 `5 passed in 0.30s`、main
+  `120 passed in 61.67s`、test 跨工作树
+  `583 passed, 4 skipped, 0 failed in 332.84s`，覆盖
+  `CONFIG_APP_COMPILE_TIME_DATE=n`、UART-only 示例说明和对应 test 合同。发布文档另以
+  diff、证据一致性和 `git diff --check` 复核；4 项 skip 均为 Windows 普通文件
+  symlink 测试夹具权限边界。
+- KEY1 两态只读实板结果为松开 GPIO34=`1`、按住 GPIO34=`0`，两次均未改变模式。
+  第二次 UART-only 闭环使用 4,194,304 字节新鲜备份，SHA-256
+  `F28649C0194A67C951E5DFCB8BC690B526ABD1CFDA50D94BE2027F5DCA66CE89`；
+  烧录后捕获 READY 和连续 HEARTBEAT `0..8`，随后从地址 0 写回完整 4 MiB 备份并
+  验证 MicroPython Raw REPL/mpremote 恢复；没有执行恢复后的全片回读。
+- 本次实板接受的 app 为 176,816 字节，SHA-256
+  `4017628FA6BDFD2453C6518299F60D0ACF2A15BD3C43D466DE7CA8EF365D8CA2`；
+  7 秒原始串口日志为 476 字节，SHA-256
+  `C0411F143FDF459800DCB06C335ADA57FABBF285EC4C6B09E248DE672F9ED50C`，
+  没有结构化错误。四个临时验收文件随后按精确路径删除；本次会话最终实时工具返回只
+  列出 `/boot.py`，而持久审计摘要没有保存该目录 stdout。
+- 以下 GitHub Actions 与 Marketplace 结果属于此前已提交快照，不覆盖当前未提交候选。
 - GitHub main run `30525807125` 的 Ubuntu/Python 3.10 job 首次暴露 Monitor 启停竞态：
   `1 failed, 119 passed`；其余三个 main job 成功，且本轮提交未修改 Monitor 源码，
   因此不是 UART/target 变更回归。确定性合同在旧实现上为预期 `1 failed`，修复后与
@@ -250,7 +281,8 @@
   `30526826689` 与 test run `30526826402` 共 8 个 Windows/Linux、Python 3.10/3.12
   job 全部成功。个人 Marketplace 源以一次 cachebuster 更新为
   `0.1.0+codex.20260730084223`，validator、源目录 `120 passed in 57.90s` 和
-  `48 tools / 12 resources / 12 prompts` 直接枚举通过；活动安装缓存等待重启确认。
+  `48 tools / 12 resources / 12 prompts` 直接枚举通过；用户重启后，当前任务已从
+  该版本安装路径加载 ESP skill 和 MCP tools。
 - 后续文档 main run `30528050703` 又暴露 main 未回同步 test 分支既有
   `366f288` 合同：高频 status 在最后一条 4096 字节记录 append 完成前可合法看到
   received 领先 persisted，旧测试却提前退出等待。test run `30528050497` 四个 job
@@ -264,11 +296,11 @@
   MCP 架构合并定向门禁为 `39 passed in 2.30s`，main 全量为
   `120 passed in 60.59s`，test 显式加载当前 main 为
   `582 passed, 4 skipped in 297.08s`。最终独立复审为 P0=0、P1=0。
-- ESP-IDF 5.2.1 实际增量构建返回 `target_plan=build`、
+- ESP-IDF 5.2.1 首次 host 增量构建返回 `target_plan=build`、
   `confirmation_required=false`、`fullclean_planned=false`、
   `set_target_planned=false`、`target_verified=true`。BIN 为 176,896 字节，SHA-256 为
-  `AA9E9AFA7036D2F78B183A4834835EBEDDD859AB3914D3509F9C00FD0AD409A9`；构建未访问
-  COM3，也未擦除、烧录、删除或驱动 GPIO25/PWM。
+  `AA9E9AFA7036D2F78B183A4834835EBEDDD859AB3914D3509F9C00FD0AD409A9`；该阶段未访问
+  COM3，也未擦除、烧录、删除或驱动 GPIO25/PWM。该值不是后续实板闭环接受的镜像。
 - v3-C3 五项首轮合同在旧实现上为预期 `5 failed in 0.87s`；查询前 payload/最新事件窗口
   两项复审合同另为预期 `2 failed`。完成后 C3 专项 `7 passed in 1.09s`、相关 C1/C2/
   错误解析回归 `49 passed in 5.63s`、main 全量 `120 passed in 48.77s`、test 显式加载

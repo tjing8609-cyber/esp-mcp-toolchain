@@ -1663,16 +1663,18 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   也未调用 reset 工具或显式发送复位命令；`physical_reset_excluded=false`，串口控制线
   效应未独立排除。
 - 该实板调用直接覆盖 exec producer；mpremote run-file 与 Raw REPL 嵌套 run-file
-  的单条正式投影由前述软件合同覆盖。蜂鸣器瞬时电流专项按用户决定延期，不能由本结果
-  推断。
+  的单条正式投影由前述软件合同覆盖。该结果本身不能推断蜂鸣器瞬时电流问题；用户后续
+  确认其属于业务固件，不是 ESP MCP 工具链缺陷，因此不再作为工具链专项或发布门禁。
 
 ## 2026-07-30：无蜂鸣器验收若复用 key/LED/buzzer 示例会在启动阶段访问 GPIO25
 
 ### 症状
 
-- 用户决定暂不处理蜂鸣器瞬时电流专项，但原计划中的 ESP-IDF 实板闭环仍指向
+- 用户当时决定暂不处理蜂鸣器瞬时电流专项，但原计划中的 ESP-IDF 实板闭环仍指向
   `examples/esp_idf_key_led_buzzer`。
 - 只承诺“不按 KEY1”仍不足以建立无蜂鸣器边界。
+- 用户后续确认该问题属于业务固件，不是 ESP MCP 工具链缺陷；当前范围结论见本节末和
+  发布状态页。
 
 ### 根因
 
@@ -1699,8 +1701,8 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   为 DIO / 40 MHz / 4 MiB，地址为 `0x1000`、`0x10000`、`0x8000`。
 - 源码静态边界不能证明 ROM bootloader、复位瞬间或板级上拉下拉的 GPIO25 电气波形；
   这需要示波器。当前结果也没有烧录或监控 UART-only 固件。
-- 本步骤未访问 COM3，未驱动 GPIO25/PWM，未擦除、烧录、删除或恢复；蜂鸣器专项继续
-  标记为延期。
+- 本步骤未访问 COM3，未驱动 GPIO25/PWM，未擦除、烧录、删除或恢复。该电气问题后续
+  由用户归类为业务固件范围，不再安排工具链专项，也不进入工具链发布门禁。
 
 ## 2026-07-30：普通 build 隐式执行 set-target，绕过 full clean 确认门
 
@@ -1806,7 +1808,8 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   `30526826689` 与 test run `30526826402` 的 8 个 Windows/Linux、Python 3.10/3.12
   job 全部成功。个人 Marketplace 源版
   `0.1.0+codex.20260730084223` 通过 validator、`120 passed in 57.90s` 和
-  `48 tools / 12 resources / 12 prompts` 直接枚举；安装态等待用户重启确认。
+  `48 tools / 12 resources / 12 prompts` 直接枚举；该阶段安装态等待用户重启，
+  后续当前任务已从该版本路径加载 ESP skill 和 MCP tools。
 - 本步骤只使用 fake serial、临时日志/SQLite 和 GitHub 日志；未访问 COM3、复位、烧录、
   擦除、删除、GPIO25、PWM 或蜂鸣器。
 
@@ -1847,3 +1850,84 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   “测试同步错误”，不支持“产品已确认丢数据”。
 - 本步骤只使用 fake serial、临时日志和 GitHub 日志；未访问 COM3、复位、烧录、擦除、
   删除、GPIO25、PWM 或蜂鸣器。
+
+## 2026-07-30：`idf.py flash` 重编时间元数据导致已审查固件哈希漂移
+
+### 症状
+
+- UART-only 第一次授权闭环在烧录前已经审查 app：
+  176,896 字节，SHA-256
+  `AA9E9AFA7036D2F78B183A4834835EBEDDD859AB3914D3509F9C00FD0AD409A9`。
+- 实际执行 `idf.py flash` 时，本次会话实时工具输出显示 ESP-IDF 重新编译
+  `esp_app_desc.c`，本地 app SHA-256 变为 `C0B4DE4F...1745`。这意味着“先审查的
+  镜像”和“实际写入前生成的镜像”已不是同一产物。该摘要未进入 SQLite/JSONL
+  completion payload，只能作为当时的实时观察，不能当作持久化审计字段。
+- flash run 本身成功不代表安全门通过。继续监控 READY/HEARTBEAT 会把一个未经最终
+  哈希审查的镜像误记为正式验收输入。
+
+### 根因
+
+- 生成的 `sdkconfig` 当时包含 `CONFIG_APP_COMPILE_TIME_DATE=y`。
+- ESP-IDF 应用描述在该配置下使用 `__DATE__` / `__TIME__`。即使业务源码、工具链版本
+  和 Git 提交没有变化，只要 `esp_app_desc.c` 在不同时间重新编译，app 二进制和
+  SHA-256 就会改变。
+- 原安全流程只在 flash 前审查已有 build 产物，没有把“flash 子命令可能触发增量重编”
+  视为新的构建输入边界。
+
+### 修复
+
+- 受版本控制的 `examples/esp_idf_uart_smoke/sdkconfig.defaults` 增加
+  `CONFIG_APP_COMPILE_TIME_DATE=n`，使普通增量重编不再仅因日期/时间改变应用描述。
+- test 分支的 UART-only defaults 合同从九项扩展为十项，并要求示例 README 明确记录
+  `CONFIG_APP_COMPILE_TIME_DATE=n` 与 `__DATE__` / `__TIME__` 根因。
+- 开发规则新增永久安全门：每次烧录前必须对最终实际写入的 bootloader、partition、
+  app 等全部分段重新计算大小和 SHA-256；build/flash 导致任何已审查分段变化时立即
+  停止后续功能验收。
+- 烧录已经开始时，不尝试用旧哈希解释新镜像；只有当前精确用户授权已明确包含恢复，
+  才使用该轮新鲜完整备份恢复，否则停止、保存证据并请求确认。
+
+### 验证
+
+- 第一次闭环检测到漂移后没有继续 UART 验收，使用
+  `restore_flash_20260730_192410_333ff2ac` 写回该轮完整 4 MiB 备份。
+- 修复后的普通增量构建
+  `build_20260730_192625_8ef67c38` 和
+  `build_20260730_192812_b9042a6e` 均为
+  `target_plan=build`、`fullclean_planned=false`、
+  `set_target_planned=false`、`target_verified=true`。构建日志不持久化三段历史哈希；
+  第二次构建后的最终烧录前复核确立了当前输入：
+  - bootloader：26,720 字节，
+    `1BFB7F309DB6C232FB20AF613B3A2E0E0570C615DD41DEADFF213F6C5015ABE8`
+  - partition：3,072 字节，
+    `7F00B6C042A89B15B0CAC534F82ED988CAF29278FF5700B0C511EB1B5BB7C820`
+  - app：176,816 字节，
+    `4017628FA6BDFD2453C6518299F60D0ACF2A15BD3C43D466DE7CA8EF365D8CA2`
+- 第二次闭环使用新备份
+  `backup_flash_20260730_193625_9ba0d34b`，大小 4,194,304 字节，SHA-256
+  `F28649C0194A67C951E5DFCB8BC690B526ABD1CFDA50D94BE2027F5DCA66CE89`。
+  `flash_20260730_193819_dfa2a884` 只写目标区段，没有调用整片擦除工具。
+- `reset_20260730_193902_3172efe8` 捕获 READY 与 HEARTBEAT `0,1`；
+  `serial_capture_20260730_193904_5fdcba4c` 在 115200 连续捕获 7 秒和
+  HEARTBEAT `2..8`，476 字节原始日志 SHA-256 为
+  `C0411F143FDF459800DCB06C335ADA57FABBF285EC4C6B09E248DE672F9ED50C`，
+  没有结构化错误。
+- `restore_flash_20260730_193928_f67fad17` 随后从地址 0 写回完整 4,194,304 字节；
+  MicroPython Raw REPL 和 mpremote 文件访问恢复。这里没有执行恢复后的第二次完整
+  4 MiB read-back，因此不声称当前 flash 重新读回摘要等于备份摘要。
+- 当前未提交候选的最终本地门禁为 UART-only 专项 `5 passed in 0.30s`、main
+  `120 passed in 61.67s`、test 跨工作树
+  `583 passed, 4 skipped, 0 failed in 332.84s`，覆盖 defaults、UART-only 示例说明
+  与 test 合同；发布文档另以 diff、证据一致性和 `git diff --check` 复核。正式发布仍需
+  候选提交后的新远端矩阵。
+
+### 经验与剩余风险
+
+- “构建成功”“flash 成功”和“烧录输入已审查”是三个不同结论，不能互相替代。
+- 关闭编译时间戳只消除一个非确定性来源。Git-derived app version、ESP-IDF/编译器、
+  sdkconfig、依赖锁或其他生成输入变化仍可能合法改变镜像，所以最终分段哈希门不能删除。
+- UART READY/HEARTBEAT 只证明应用有序串口输出；不证明 GPIO25 的物理电平，也不能
+  确认或排除蜂鸣器瞬时电流、供电跌落或 USB 断连，该证据边界保持不变。用户已确认该
+  问题属于业务固件，不是 ESP MCP 工具链缺陷；不再安排工具链专项，也不阻塞发布。
+- reset run 保留 `reset_confirmed=false` 与
+  `output_causality_confirmed=false`；只能记录“脉冲已发送并捕获到随后启动输出”，
+  不能写成工具独立证明了复位因果。

@@ -7,10 +7,16 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3、B4.1-B4.4 与 v3-C1-C3 已完成源码、本地/远端软件门禁和 Marketplace 发布。当前安装插件为 `0.1.0+codex.20260730053724`；正式项目数据库已在 v2 备份和临时副本演练后显式升级到 v3，并完成首次历史补投影与第二次幂等回放。2026-07-30 已继续完成活动程序停止、受控异常解析、GPIO34、回归、性能与 soft reset 实板验收；exec/run-file 正式错误漏投影已修复并发布，重启后的受控 exec 已确认该 run 的 `esp_logs_get.errors` 恰好返回一条且解析来源为 `sqlite_errors`。
-- 本轮新增的 UART-only 示例和 `esp_project_build` target/fullclean 门禁已完成源码、定向合同
-  与 ESP-IDF 5.2.1 主机构建；它们尚未提交、推送或同步到 Marketplace，因此不能把当前
-  安装版本写成已包含本轮变化。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测、SQLite v3
+  正式日志链、12 套任务书能力和 48/12/12 MCP 面均已完成。当前 Codex 任务已从
+  Marketplace 安装版本 `0.1.0+codex.20260730084223` 加载 ESP skill 和 MCP tools。
+- 2026-07-30 已完成非蜂鸣器实板封口：KEY1 松开/按住两态、UART-only
+  backup→flash→READY/HEARTBEAT→restore、MicroPython/mpremote 恢复，以及四个临时
+  验收文件的精确删除。用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP
+  工具链缺陷；该项不再专项处理，不是工具链未完成项，也不阻塞发布。
+- 当前工作树新增确定性构建修复 `CONFIG_APP_COMPILE_TIME_DATE=n`、对应 test 合同和
+  发布文档；这些变更尚未形成正式 main/test 提交，也没有新的远端 Actions 或
+  Marketplace 包，因此项目状态是“发布候选，等待正式发布”。
 
 ## 本轮已完成实现
 
@@ -158,6 +164,14 @@
 ## 本地验证
 
 - 测试工作树通过 `ESP_MCP_SOURCE_ROOT` 显式加载实现工作树源码。
+- 当前未提交候选的最终本地门禁为 UART-only 专项 `5 passed in 0.30s`、main
+  `120 passed in 61.67s`、test 跨工作树
+  `583 passed, 4 skipped, 0 failed in 332.84s`，Python 3.12.13、pytest 9.1.1；
+  覆盖 `CONFIG_APP_COMPILE_TIME_DATE=n`、UART-only 示例说明和 test 合同。发布文档另以
+  diff、证据一致性和 `git diff --check` 复核。4 项 skip 是 Windows 普通文件 symlink
+  测试夹具权限边界，不是功能失败。
+- 当前远端 `main@1e09789` / `test@8ba27b5` 仍只证明上一提交；本候选最终本地全量
+  已完成，但必须推送新提交后，才能用新的 Actions 作为正式发布证据。
 - B4.4 仓储基础红灯 `5 failed, 11 passed in 1.94s`；实现后专项
   `16 passed in 1.93s`，迁移/raw/error/历史对账合并
   `84 passed in 7.84s`，main 全量 `120 passed in 47.30s`。
@@ -293,6 +307,46 @@
 
 ## 安全与实板状态
 
+- 最终非蜂鸣器封口以 2026-07-30 晚间的第二次 UART-only 闭环为当前证据；此前各批次
+  记录保留为历史阶段，不得覆盖本节最终结论。
+- KEY1 两态已完成：`gpio_status_20260730_191534_37959ed8` 在用户确认松开时读取
+  GPIO34=`1`，`gpio_status_20260730_191640_87385e23` 在用户确认按住时读取
+  GPIO34=`0`。两次均为只读查询且未改变 GPIO 模式；硬件映射已更新为
+  `board_test_confirmed / confidence=1.0`。
+- 第一次 UART-only 闭环中，`idf.py flash` 因
+  `CONFIG_APP_COMPILE_TIME_DATE=y` 重编 `esp_app_desc.c`，应用哈希发生漂移。系统没有
+  继续串口验收，而是用该轮新鲜 4 MiB 备份恢复。修复后
+  `CONFIG_APP_COMPILE_TIME_DATE=n`。该漂移来自本次会话实时工具输出，未进入
+  SQLite/JSONL completion payload。后续普通增量构建
+  `build_20260730_192625_8ef67c38` /
+  `build_20260730_192812_b9042a6e` 均成功；第二次构建后的最终烧录前复核确立了
+  实板输入。
+- 该最终实板输入为 bootloader 26,720 字节
+  `1BFB7F309DB6C232FB20AF613B3A2E0E0570C615DD41DEADFF213F6C5015ABE8`，
+  partition 3,072 字节
+  `7F00B6C042A89B15B0CAC534F82ED988CAF29278FF5700B0C511EB1B5BB7C820`，
+  app 176,816 字节
+  `4017628FA6BDFD2453C6518299F60D0ACF2A15BD3C43D466DE7CA8EF365D8CA2`。
+- 第二次闭环新备份 run `backup_flash_20260730_193625_9ba0d34b` 读取
+  4,194,304 字节，文件 SHA-256 为
+  `F28649C0194A67C951E5DFCB8BC690B526ABD1CFDA50D94BE2027F5DCA66CE89`。
+  `flash_20260730_193819_dfa2a884` 只写目标区段，没有调用整片擦除工具。
+- `reset_20260730_193902_3172efe8` 捕获 READY 和 HEARTBEAT `0,1`；
+  `serial_capture_20260730_193904_5fdcba4c` 在 115200 连续捕获 7 秒和
+  HEARTBEAT `2..8`，原始日志 476 字节、SHA-256
+  `C0411F143FDF459800DCB06C335ADA57FABBF285EC4C6B09E248DE672F9ED50C`，
+  且没有结构化错误。
+- `restore_flash_20260730_193928_f67fad17` 从地址 0 写回完整 4,194,304 字节；
+  `hardware_info_20260730_194102_9624e720` 与后续 mpremote 目录查询确认
+  MicroPython Raw REPL 和文件访问恢复。本轮没有做恢复后的第二次完整 4 MiB
+  read-back，不能声称当前 flash 重新读回摘要等于备份摘要。
+- 经删除前目录复核，四个明确授权的临时验收路径已逐个删除。最终实时目录查询
+  `file_list_20260730_194316_f3f30c16` 的本次会话实时工具返回只包含 `/boot.py`；
+  SQLite/JSONL 摘要只证明四次删除终态与最终列目录命令成功，没有持久化该目录 stdout。
+  没有格式化、没有删除其他路径，也没有操作 GPIO25/PWM/蜂鸣器。
+- reset 工具仍报告 `reset_confirmed=false` 与
+  `output_causality_confirmed=false`；当前证据是“脉冲已发送且捕获到随后启动输出”，
+  不是 reset 工具独立证明因果。UART-only 也只证明有序串口输出，不证明物理 GPIO 电平。
 - 当前项目上下文为 `summer-holiday-1-2268049d8188`。
 - 已审查映射为 ESP32-D0WD-V3、GPIO34 KEY1、GPIO32 低有效 LED、GPIO25 PWM 蜂鸣器、UART0 115200；2026-07-27 的 MicroPython runtime 探测已作为新的 board-test 事实增量写回。
 - 授权前备份 4,194,304 字节，SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；`erase_flash_20260727_131837_f672becc` 成功，`restore_flash_20260727_131918_88af58ec` 成功恢复并校验官方 MicroPython v1.28.0 BIN。
@@ -332,10 +386,10 @@
   `3A78210005A02F30F974E42CB00B0511A0234AFF9A4402D6B87805E7C47EDAF2`；仍保留
   `reset_confirmed=false`、`output_causality_confirmed=false`。复位后无 `main.py`，
   `/boot.py` 为官方注释模板。
-- 本批实板操作未访问 GPIO25、蜂鸣器、PWM 或 GPIO32 stateful 用例，未发生 COM3
-  断连；因此不能据此确认或排除蜂鸣器瞬时电流掉电。板端三个回归脚本与既有 21 字节
-  载荷仍保留，未执行删除。
-- 本轮最终完整软件门禁为 main `120 passed in 60.59s`、test 显式加载 main
+- 该阶段实板操作未访问 GPIO25、蜂鸣器、PWM 或 GPIO32 stateful 用例，未发生 COM3
+  断连；因此不能据此确认或排除蜂鸣器瞬时电流掉电。当时板端回归脚本与载荷仍保留，
+  后续已按精确授权完成删除，见本节顶部的最终封口记录。
+- 该阶段完整软件门禁为 main `120 passed in 60.59s`、test 显式加载 main
   `582 passed, 4 skipped in 297.08s`；4 项 skip 是 Windows 普通文件 symlink 权限边界。
 - 新增 `examples/esp_idf_uart_smoke`，因为原 `esp_idf_key_led_buzzer` 启动即初始化
   LEDC/GPIO25，不能满足无蜂鸣器边界。首次 host build run
@@ -352,8 +406,9 @@
   plan 做两次检查，同时拒绝链接或非普通文件形式的 `CMakeCache.txt`。新增普通 build
   与首次 define-target 零 spawn 合同；定向 `39 passed in 2.30s`，最终独立复审
   P0=0、P1=0。
-- `build_flash_monitor` 的 host build 已完成；完整 4 MiB backup→flash→monitor 心跳→
-  restore MicroPython 尚未执行，仍需精确授权。此前 Raw BIN 恢复不能冒充该链通过。
+- 后续已完成独立的 4 MiB backup→flash→READY/HEARTBEAT→restore MicroPython
+  闭环；本次接受的是 176,816 字节、SHA-256 `4017628F...8CA2` 的确定性 app，
+  不是首次 host build 的 176,896 字节 `AA9E9AFA...09A9`。
 - 首次推送后的 main run `30525807125` 有 3/4 job 成功；Ubuntu/Python 3.10 在既有
   Monitor 启停竞态中命中 `STOPPED + last_error=null`，旧 start 入口链式 `.get()` 后
   抛 `AttributeError`。现已按 `dict | None` 合同规范化并提供结构化 fallback；确定性
@@ -371,23 +426,25 @@
 
 - 当前仓库的既有本地 plugin manifest 差异不属于本次提交，文件摘要保持不变。
   个人 Marketplace 源已用一次 cachebuster 更新为
-  `0.1.0+codex.20260730084223`；当前会话加载的安装缓存仍为上一版
-  `0.1.0+codex.20260730053724`，没有直接修改。
+  `0.1.0+codex.20260730084223`；用户重启后，当前 Codex 任务已从该版本路径
+  加载 ESP skill 和 MCP tools。安装缓存没有被直接修改。
 - 新 Marketplace 源通过 plugin validator、发布测试 `120 passed in 57.90s` 和
-  `48 tools / 12 resources / 12 prompts` 直接枚举；仍需用户重启后核对活动版本和
-  工具加载，源目录通过不能替代安装态验收。
+  `48 tools / 12 resources / 12 prompts` 直接枚举；活动版本切换已确认，但当前
+  未提交确定性构建修复只有在本候选同时发布为 Codex 插件时，才需要新包、一次
+  cachebuster 和再次重启验收。
 - B4.4/C1-C3 的正式数据库验收此前已完成；本次新版只追加 exec structured-error
   正式投影复验。本轮仍不会修改仓库内用户自有的 plugin manifest 差异。
-- UART-only 示例、构建门禁和 Monitor 竞态修复已提交、合入 test、完成双分支推送和
-  Marketplace 源同步；当前安装缓存继续代表旧版本，重启前不作为本轮活动实现证据。
+- 既有 UART-only 示例、构建门禁和 Monitor 竞态修复已提交、合入 test、完成双分支
+  推送和 Marketplace 源同步；当前工作树的编译时间戳修复和最终封口文档仍属于新的
+  `[Unreleased]` 候选。
 
 ## 项目封口后的可选或需授权事项
 
-1. 如需把 GPIO34 与实体 KEY1 active-low 行为升级为板测证据，需用户分别在松开和按下
-   状态触发两次查询；单次 0/1 不足以证明实体动作。
-2. 临时板端三个回归脚本和 `/mcp_acceptance_payload.txt` 的删除仍按精确路径与
-   `confirm=true` 单独确认。
-3. UART-only host build 已完成；严格实板闭环仍需当前 4 MiB 备份、flash、至少三条连续
-   HEARTBEAT 的 monitor 证据及整片恢复 MicroPython。各高风险动作保持精确确认。
-4. 蜂鸣器瞬时电流专项按用户决定延期。现有结果不能确认或排除该问题，也不会把它写成
-   本项目已验证能力。
+1. KEY1 两态、临时文件删除和 UART-only 严格实板闭环已经完成，不再列为待办。
+2. 当前候选最终本地 main/test 全量已完成；正式发布仍需精确提交、双分支新 Actions，
+   以及版本号、Release Notes 和 Git tag。
+3. 仅发布 GitHub 仓库时无需更新 Marketplace；若同时发布 Codex 插件，还需同步个人
+   Marketplace 源、使用一次 cachebuster，并由用户重启验收。
+4. 用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；无需
+   后续工具链动作，也不是可选待办或发布阻塞。现有 UART 结果仍不写成蜂鸣器电气验证。
+5. 详细发布清单和禁止扩大声明的边界见 `docs/15-release-readiness.md`。

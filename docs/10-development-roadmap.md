@@ -10,7 +10,7 @@
 6. 后台串口 Monitor：状态机、不可变项目绑定、游标读取、有界缓冲、分块落盘、跨进程串口锁和退出清理。软件测试、四平台 CI、插件缓存验证和历史真实 ESP 串口验收已完成。
 7. SQLite schema 与仓储层：SQLite 已成为 runs/events 正式查询源；project-scoped schema、v1/JSONL 迁移、事务序号、UUID 幂等和 run 生命周期已完成并发布。
 8. 日志查询增强：`run_id`、phase、level、tool、source、时间和 sequence 过滤已接通；后续导出和聚合属于非阻断增强。
-9. 任务书 12 项能力：6 项基础和 6 项提高均已有正式工具或闭环实现；公开提示词重组为 12 套，工具面为 48 tools / 12 resources / 12 prompts。独立 Conda 启动器已绑定 `esp-mcp-toolchain` 环境，其中 `mpremote 1.28.0` 已验证。个人 Marketplace 源已更新为 `0.1.0+codex.20260730084223`，当前安装缓存仍为上一版 `0.1.0+codex.20260730053724`，等待重启核对；正式项目 SQLite 已显式升级到 v3 并完成历史补投影。当前实板门禁已覆盖 runtime、串口 Monitor、文件上传/读取/列表/相对下载、活动程序停止、受控错误解析、GPIO34、正向与 negative 回归、无硬件副作用性能插桩和 soft reset。实板发现的 exec/run-file 正式错误漏投影已在源码与合同中修复；重启后的受控 run `exec_code_20260730_150437_0d9c65aa` 已确认该 run 的 `esp_logs_get.errors` 恰好返回一条，解析来源仅为 `sqlite_errors`。
+9. 任务书 12 项能力：6 项基础和 6 项提高均已有正式工具或闭环实现；公开提示词重组为 12 套，工具面为 48 tools / 12 resources / 12 prompts。独立 Conda 启动器已绑定 `esp-mcp-toolchain` 环境，其中 `mpremote 1.28.0` 已验证。个人 Marketplace 源已更新为 `0.1.0+codex.20260730084223`，用户重启后当前任务已从该版本路径加载；若本候选还要作为 Codex 插件发布，当前未提交的编译时间戳修复才需要进入下一版包并再次验收。正式项目 SQLite 已显式升级到 v3 并完成历史补投影。当前实板门禁已覆盖 runtime、串口 Monitor、文件上传/读取/列表/相对下载/删除、活动程序停止、受控错误解析、GPIO34 与 KEY1 两态、正向与 negative 回归、无硬件副作用性能插桩、soft reset，以及 UART-only backup→flash→monitor→restore。实板发现的 exec/run-file 正式错误漏投影已在源码与合同中修复；重启后的受控 run `exec_code_20260730_150437_0d9c65aa` 已确认该 run 的 `esp_logs_get.errors` 恰好返回一条，解析来源仅为 `sqlite_errors`。
 10. 项目数据迁移体系：工程路径重绑定、项目合并、导出、导入和完整性校验。与数据库 schema 迁移是两类任务，继续排在本轮任务书能力发布之后。
 
 v3-B4.1、B4.2 与 B4.3 已完成双分支远端门禁。v3-B4.3 历史固定 capture
@@ -55,13 +55,19 @@ Monitor run lease、两次 resolver、跨 run raw 所有权预检和独立原子
 3. exec/run-file `structured_error` 修复已发布；用户重启后的受控异常确认
    该 run 的 `esp_logs_get.errors` 恰好返回一条，且 `esp_error_parse_log` 来源从兼容
    event 变为正式 `sqlite_errors`。
-4. GPIO34 的实体 KEY1 active-low 行为仍需用户分别在松开/按下状态观察。
-5. 临时板端文件删除、当前版本 ESP-IDF build→flash→monitor 和随后恢复 MicroPython
-   均按具体动作单独确认；蜂鸣器瞬时电流专项按用户决定延期，不计入本轮完成声明。
-6. Monitor 空错误竞态已用确定性合同修复；合入 test 后本地 `583 passed, 4 skipped`，
-   main/test 新一轮 8 个远端 job 全部成功。个人 Marketplace 源新版通过 validator、
-   `120 passed` 和 `48/12/12` 枚举，活动版本仍需用户重启确认。
-7. 后续 main 文档 run 暴露高频计数测试的旧完成条件仍未从 test 回同步：实时
-   `bytes_received` 可短暂领先 `persisted_bytes` 一条 4096 字节记录。现已复用 test
-   的既有双计数等待和 stop 终态复核，不改变生产锁；独立进程 `30/30`、main
-   `120 passed`。
+4. GPIO34 与实体 KEY1 active-low 两态已由用户控制的松开 `1`、按住 `0` 两次只读
+   查询确认；四个临时验收文件也已按精确路径逐个删除，本次会话最终实时工具返回仅
+   列出 `/boot.py`。
+5. UART-only 第二次闭环已完成：新鲜 4 MiB 备份、确定性三段镜像、目标区段烧录、
+   READY 与连续 HEARTBEAT `0..8`、从地址 0 写回完整 4 MiB 备份，以及 MicroPython
+   Raw REPL/mpremote 恢复复核。闭环没有调用整片擦除工具，也没有做恢复后全片回读。
+6. `CONFIG_APP_COMPILE_TIME_DATE=n` 关闭了首次闭环发现的编译日期/时间哈希漂移；
+   但每次正式烧录仍必须对最终实际写入的全部分段重新计算哈希，任何变化立即停止；只有
+   当前精确授权已包含恢复时才使用新鲜备份恢复，否则保留证据并请求确认。
+7. Monitor 空错误竞态和高频完成条件均已修复并通过既有远端门禁。当前候选的最终本地
+   main/test 门禁已完成；下一步是形成精确提交并取得新的双分支 Actions。
+8. 仅发布 GitHub 仓库时无需更新 Marketplace。若同时发布 Codex 插件，才进入个人
+   Marketplace 源同步、一次 cachebuster 和用户重启验收；之后再决定版本标签和 Release。
+9. 用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；该专项
+   已退出工具链路线图，不再安排，也不阻塞发布。现有 UART/软件证据仍不扩展为 GPIO25
+   启动瞬态、供电跌落或 USB 断连的电气证明。
