@@ -33,7 +33,12 @@ def _attach_error_report(result: dict) -> dict:
     return result
 
 
-@logged_task(task_type="exec_code", selected_port_arg="port", payload_args=("backend", "capture_ms"))
+@logged_task(
+    task_type="exec_code",
+    selected_port_arg="port",
+    payload_args=("backend", "capture_ms"),
+    completion_artifacts=("structured_error",),
+)
 def esp_exec_code(
     port: str | None = None,
     backend: RawReplBackend = "raw_repl",
@@ -119,6 +124,7 @@ def esp_program_stop(
     task_type="run_file",
     selected_port_arg="port",
     payload_args=("backend", "path", "path_type", "capture_ms"),
+    completion_artifacts=("structured_error",),
 )
 def esp_run_file(
     port: str | None = None,
