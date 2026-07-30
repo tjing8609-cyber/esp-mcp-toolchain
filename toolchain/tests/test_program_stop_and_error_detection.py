@@ -655,6 +655,53 @@ def test_exec_code_automatically_reports_raw_repl_traceback(monkeypatch):
     assert result["has_error"] is True
     assert result["error_report"]["exception_type"] == "ZeroDivisionError"
     assert result["error_report"]["file"] == "main.py"
+    logs = log_tools.esp_logs_get(result["run_id"], tail=20)
+    assert [
+        (
+            item["error_kind"],
+            item["file"],
+            item["line"],
+            item["exception_type"],
+            item["message"],
+        )
+        for item in logs["errors"]
+    ] == [
+        (
+            "micropython_traceback",
+            "main.py",
+            8,
+            "ZeroDivisionError",
+            "division by zero",
+        )
+    ]
+
+    parsed = error_tools.esp_error_parse_log(result["run_id"])
+    assert parsed["has_error"] is True
+    assert parsed["exception_type"] == "ZeroDivisionError"
+    assert any(source["kind"] == "sqlite_errors" for source in parsed["scan_sources"])
+    assert not any(
+        source["kind"] == "structured_error_report"
+        for source in parsed["scan_sources"]
+    )
+
+
+def test_successful_exec_code_does_not_persist_structured_error(monkeypatch):
+    monkeypatch.setattr(
+        exec_tools,
+        "execute_code",
+        lambda *_args, **_kwargs: {
+            "ok": True,
+            "stdout": "ok\n",
+            "stderr": "",
+            "message": "execution completed",
+        },
+    )
+
+    result = exec_tools.esp_exec_code(port="COM_TEST", code="print('ok')")
+
+    assert result["ok"] is True
+    logs = log_tools.esp_logs_get(result["run_id"], tail=20)
+    assert logs["errors"] == []
 
 
 def test_error_parse_log_uses_persisted_structured_exec_report():
@@ -749,6 +796,80 @@ def test_run_file_mpremote_automatically_reports_traceback(monkeypatch):
     assert result["has_error"] is True
     assert result["error_report"]["exception_type"] == "BuzzerFault"
     assert result["error_report"]["file"] == "remote.py"
+    logs = log_tools.esp_logs_get(result["run_id"], tail=20)
+    assert [
+        (
+            item["error_kind"],
+            item["file"],
+            item["line"],
+            item["exception_type"],
+            item["message"],
+        )
+        for item in logs["errors"]
+    ] == [
+        (
+            "micropython_traceback",
+            "remote.py",
+            3,
+            "BuzzerFault",
+            "unsafe duty",
+        )
+    ]
+
+    parsed = error_tools.esp_error_parse_log(result["run_id"])
+    assert parsed["has_error"] is True
+    assert parsed["exception_type"] == "BuzzerFault"
+    assert any(source["kind"] == "sqlite_errors" for source in parsed["scan_sources"])
+    assert not any(
+        source["kind"] == "structured_error_report"
+        for source in parsed["scan_sources"]
+    )
+
+
+def test_run_file_raw_repl_persists_one_structured_error(monkeypatch):
+    monkeypatch.setattr(
+        exec_tools,
+        "execute_code",
+        lambda *_args, **_kwargs: {
+            "ok": False,
+            "stdout": "",
+            "stderr": (
+                'Traceback (most recent call last):\n'
+                '  File "remote_raw.py", line 5, in <module>\n'
+                "RuntimeError: raw remote failed"
+            ),
+            "message": "raw execution failed",
+        },
+    )
+
+    result = exec_tools.esp_run_file(
+        port="COM_TEST",
+        backend="raw_repl",
+        path="/remote_raw.py",
+        path_type="remote",
+    )
+
+    assert result["has_error"] is True
+    assert result["error_report"]["exception_type"] == "RuntimeError"
+    logs = log_tools.esp_logs_get(result["run_id"], tail=20)
+    assert [
+        (
+            item["error_kind"],
+            item["file"],
+            item["line"],
+            item["exception_type"],
+            item["message"],
+        )
+        for item in logs["errors"]
+    ] == [
+        (
+            "micropython_traceback",
+            "remote_raw.py",
+            5,
+            "RuntimeError",
+            "raw remote failed",
+        )
+    ]
 
 
 def test_error_parse_log_accepts_structured_monitor_event_without_raw():
