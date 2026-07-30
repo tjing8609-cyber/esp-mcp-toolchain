@@ -361,6 +361,11 @@
   `120 passed in 59.15s`。修复合入 test 后标准全量为
   `583 passed, 4 skipped in 314.90s`；main run `30526826689` 与 test run
   `30526826402` 共 8 个矩阵 job 全部成功。
+- 文档 main run `30528050703` 的 Ubuntu/Python 3.10 又命中高频 status 完成条件竞态：
+  received 已为 262144，persisted 仍为 258048；另外三个 main job 与 test run
+  `30528050497` 四个 job 成功。test 分支 `366f288` 早已等待双计数并在 stop 后复核，
+  但未回同步 main。现只回同步该测试合同；独立进程 `30/30`、main 全量
+  `120 passed in 57.79s`，没有修改产品持久化时序。
 
 ## 插件发布状态
 
@@ -368,7 +373,7 @@
   个人 Marketplace 源已用一次 cachebuster 更新为
   `0.1.0+codex.20260730084223`；当前会话加载的安装缓存仍为上一版
   `0.1.0+codex.20260730053724`，没有直接修改。
-- 新 Marketplace 源通过 plugin validator、发布测试 `120 passed in 59.16s` 和
+- 新 Marketplace 源通过 plugin validator、发布测试 `120 passed in 57.90s` 和
   `48 tools / 12 resources / 12 prompts` 直接枚举；仍需用户重启后核对活动版本和
   工具加载，源目录通过不能替代安装态验收。
 - B4.4/C1-C3 的正式数据库验收此前已完成；本次新版只追加 exec structured-error
