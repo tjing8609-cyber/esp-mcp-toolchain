@@ -354,6 +354,11 @@
   P0=0、P1=0。
 - `build_flash_monitor` 的 host build 已完成；完整 4 MiB backup→flash→monitor 心跳→
   restore MicroPython 尚未执行，仍需精确授权。此前 Raw BIN 恢复不能冒充该链通过。
+- 首次推送后的 main run `30525807125` 有 3/4 job 成功；Ubuntu/Python 3.10 在既有
+  Monitor 启停竞态中命中 `STOPPED + last_error=null`，旧 start 入口链式 `.get()` 后
+  抛 `AttributeError`。现已按 `dict | None` 合同规范化并提供结构化 fallback；确定性
+  红灯 `1 failed`，修复后相关 `2 passed`、竞争用例独立 `30/30`、main 全量
+  `120 passed in 59.15s`。修复尚待重新合并 test 并推送 CI。
 
 ## 插件发布状态
 

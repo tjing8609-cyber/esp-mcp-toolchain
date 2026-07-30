@@ -1767,3 +1767,40 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   安全。
 - destructive 三种确认路径只通过临时目录和模拟子进程验证，本轮没有实际执行
   fullclean、set-target、烧录、擦除、恢复、文件删除或 COM3 操作。
+
+## 2026-07-30：Monitor 启停竞态把合法空错误对象当作字典
+
+### 症状
+
+- GitHub main run `30525807125` 的 Ubuntu/Python 3.10 job 在
+  `test_monitor_stop_while_starting_is_bounded` 失败；启动线程没有返回结果，pytest
+  同时报出未处理线程异常。
+- 直接异常为 `AttributeError: 'NoneType' object has no attribute 'get'`，位置是
+  `esp_serial_monitor_start()` 处理启动后已进入 `STOPPED` 的分支。
+
+### 根因
+
+- `MonitorSession.status()` 的正式形状允许 `last_error` 为 object 或 null。干净的并发
+  stop 可以进入 `STARTING → STOPPING → STOPPED`，此时没有业务错误，所以值为 null。
+- 旧代码使用 `status.get("last_error", {}).get(...)`。字典默认值只在 key 不存在时
+  生效；key 存在且值为 null 时，第一段仍返回 `None`，第二个 `.get()` 必然失败。
+- `03c84bc..28c8054` 没有修改 Monitor 工具、后端或该测试；四矩阵中另三个 job 成功。
+  因此它是既有调度竞态被 Linux/Python 3.10 暴露，不是 UART/ESP-IDF target 修复引入。
+
+### 修复
+
+- 读取 `last_error` 后先用 `isinstance(..., dict)` 校验；非 dict 统一作为空错误对象处理。
+- error kind 和 message 分别使用稳定 fallback
+  `serial_monitor_start_failed` / `Serial monitor failed during startup.`，公开工具返回
+  结构化失败并保留原始 monitor 状态，不让异常逃出启动线程。
+- 全仓同类访问点复审没有发现第二个未进行类型或真值防护的链式调用。
+
+### 测试和边界
+
+- 新增确定性 fake-session 合同，固定 `status()` 与 `request_stop()` 均返回
+  `STOPPED + last_error=None`。旧实现为预期 `1 failed`；修复后该合同与既有并发合同
+  合并为 `2 passed`。
+- 原并发合同以独立 pytest 进程连续复跑 `30/30`；main 全量
+  `120 passed in 59.15s`。独立只读复审认可最小修复和确定性合同。
+- 本步骤只使用 fake serial、临时日志/SQLite 和 GitHub 日志；未访问 COM3、复位、烧录、
+  擦除、删除、GPIO25、PWM 或蜂鸣器。

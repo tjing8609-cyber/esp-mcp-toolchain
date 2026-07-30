@@ -1226,6 +1226,23 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `target_verified=true`。完整 4 MiB 备份、烧录、串口心跳和恢复 MicroPython 尚未执行，
   等待精确授权；蜂鸣器、GPIO25 和 PWM 继续排除。
 
+### 2026-07-30 - 修复 Monitor 启动与停止竞态中的空错误对象
+
+- main push run
+  [30525807125](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30525807125)
+  只有 Ubuntu/Python 3.10 失败：`test_monitor_stop_while_starting_is_bounded`
+  中启动线程在 `STOPPED` 状态读取 `last_error=null`，旧代码对该值继续调用 `.get()`，
+  抛出 `AttributeError`；该 job 为 `1 failed, 119 passed`，其余三个 main job 成功。
+- `last_error` 的状态合同本来允许 object 或 null；旧默认参数 `{}` 只在 key 缺失时生效，
+  key 存在且值为 null 时不会替代。修复把非 dict 值规范为空对象，并使用稳定的
+  `serial_monitor_start_failed` 与启动失败消息。
+- 新增不依赖线程调度的 fake-session 合同，固定 `STOPPED + last_error=None`。旧实现为
+  预期 `1 failed`，修复后与真实并发合同合并为 `2 passed`；并发合同独立进程
+  `30/30`，main 全量 `120 passed in 59.15s`。独立复审确认无第二个同型访问点。
+- 这是既有 Monitor 竞态被 Linux/Python 3.10 调度暴露；`03c84bc..28c8054` 没有修改
+  Monitor 源码或原测试，因此不能归因于 UART/target 改动。本修复未访问 COM3，也没有
+  复位、烧录、擦除、删除或 GPIO25/PWM/蜂鸣器动作。
+
 ## 协作约定
 
 - 新功能优先从 `toolchain/esp_mcp_toolchain/tools/` 增加工具入口。

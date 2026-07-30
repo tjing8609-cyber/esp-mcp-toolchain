@@ -486,15 +486,18 @@ def esp_serial_monitor_start(
     status = session.status()
     if status["state"] in {"FAILED", "DISCONNECTED", "STOPPED"}:
         status = session.request_stop(2.0)
+        last_error = status.get("last_error")
+        if not isinstance(last_error, dict):
+            last_error = {}
         return _finish_monitor_start_failure(
             tool=tool,
             run_id=run_id,
             scope=scope,
-            error_kind=status.get("last_error", {}).get(
-                "error_kind", "serial_monitor_start_failed"
+            error_kind=str(
+                last_error.get("error_kind") or "serial_monitor_start_failed"
             ),
-            message=status.get("last_error", {}).get(
-                "message", "Serial monitor failed during startup."
+            message=str(
+                last_error.get("message") or "Serial monitor failed during startup."
             ),
             details={"monitor": status},
             logging_warnings=prepare_warnings,
