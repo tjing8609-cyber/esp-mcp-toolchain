@@ -10,6 +10,33 @@ Python CLI -> stdio MCP Server -> Codex / AI 编程助手调用
 
 本仓库只做通用工具链，不绑定具体业务项目，例如数字钢琴、传感器项目、机器人项目等。业务固件代码应放在独立仓库或 `examples/` 之外的业务项目中。
 
+## 发布候选摘要
+
+截至 2026-07-30，本项目已经形成任务书要求的 6 项基础能力、6 项提高能力、
+12 套公开 prompts、48 个 MCP tools 和 12 个 MCP resources。正式日志查询以
+project-scoped SQLite schema v3 为权威来源，JSONL 保留为审计镜像和显式迁移入口。
+
+本轮非蜂鸣器实板封口也已完成：
+
+- GPIO34 与实体 KEY1 的松开 `1`、按住 `0` 两态关系已按只读方式确认。
+- 独立 `esp_idf_uart_smoke` 在 COM3 上输出 READY 和连续 HEARTBEAT `0..8`。
+- 每次 UART-only 烧录均以新鲜 4 MiB 备份为恢复边界；最终从地址 0 写回完整
+  4 MiB 备份，并确认 MicroPython Raw REPL 与 mpremote 文件访问恢复，但没有执行
+  恢复后的全片回读。
+- 四个明确授权的板端临时验收文件已逐个删除；本次会话最终实时工具返回只列出
+  `/boot.py`。
+- 当前 Codex 任务已从个人 Marketplace 安装版本
+  `0.1.0+codex.20260730084223` 加载 ESP skill 和 MCP tools。
+
+这里的“发布候选”不等于已经正式发布。当前确定性构建修复、对应测试和本次文档仍需
+形成精确的 main/test 提交，推送后取得新的 GitHub Actions 矩阵结果，再由用户决定
+版本标签和正式 Release。仅发布 GitHub 仓库时无需更新个人 Marketplace；若同时发布
+Codex 插件，则还必须更新 Marketplace 源、使用一次 cachebuster，并由用户重启验收。
+按用户确认，蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；本项目
+不再安排蜂鸣器专项，该项不阻塞提交、Actions、Marketplace、标签或 Release。UART-only
+证据仍只覆盖工具链串口链路，不扩展为蜂鸣器或 GPIO25 电气验证。详细范围和发布前清单
+见 `docs/15-release-readiness.md`。
+
 ## 项目边界
 
 本仓库负责：
@@ -270,7 +297,7 @@ MicroPython 方向：
 - memory_items / memory_audit 表。
 - 日志导出和检索增强。
 
-当前状态：SQLite 已在本地主线成为 runs/events/raw/errors 的正式状态与查询源，JSONL 保留为审计镜像。schema v3-A、v3-B2/B3、v3-B4.1-B4.4 与 v3-C1-C3 均已完成源码、软件门禁和发布；Marketplace 与安装缓存为 `0.1.0+codex.20260730053724`。2026-07-29 已先备份并在临时副本演练，再将正式项目数据库显式升级到 v3：111 runs、224 events 不变，历史协调器新增 5 raw、1 error、5 claim，第二次回放 5 项全部幂等。2026-07-30 重启后的受控 exec 又确认该 run 的 `esp_logs_get.errors` 恰好返回一条且解析来源仅为 `sqlite_errors`。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现。
+当前状态：SQLite 已在本地主线成为 runs/events/raw/errors 的正式状态与查询源，JSONL 保留为审计镜像。schema v3-A、v3-B2/B3、v3-B4.1-B4.4 与 v3-C1-C3 均已完成源码、软件门禁和发布；当前任务加载的 Marketplace 安装版本为 `0.1.0+codex.20260730084223`。2026-07-29 已先备份并在临时副本演练，再将正式项目数据库显式升级到 v3：111 runs、224 events 不变，历史协调器新增 5 raw、1 error、5 claim，第二次回放 5 项全部幂等。2026-07-30 重启后的受控 exec 又确认该 run 的 `esp_logs_get.errors` 恰好返回一条且解析来源仅为 `sqlite_errors`。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现；当前未提交的确定性构建修复尚未进入该安装版本。
 
 ## 当前进度
 
@@ -306,7 +333,7 @@ MicroPython 方向：
 - `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。2026-07-30 本轮收尾已把个人 Marketplace 源更新为 `0.1.0+codex.20260730084223`；validator、源目录 `120 passed in 57.90s` 和源码直接枚举均确认 `48 tools / 12 resources / 12 prompts`。当前会话与安装缓存仍是已验证的上一版 `0.1.0+codex.20260730053724`，需用户重启后再确认加载新版，不能把源同步写成活动插件已更新。
+- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。2026-07-30 本轮收尾已把个人 Marketplace 源更新为 `0.1.0+codex.20260730084223`；validator、源目录 `120 passed in 57.90s` 和源码直接枚举均确认 `48 tools / 12 resources / 12 prompts`。用户重启后，当前 Codex 任务已从该版本安装路径加载 ESP skill 和 MCP tools；这证明活动插件版本已切换，但不替代当前未提交候选的重新打包和发布验证。
 - 初始测试集。
 - 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；本地门禁可从 `index-test` 显式加载 `index` 的主线源码。GitHub Actions 只检出被推送的单个分支，因此推送 test 前必须把固定、已验证的 main 合入 test，不能用本地跨工作树绿灯代替 test 分支自身的远端合同。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
@@ -349,15 +376,26 @@ v3-C3 DB-first 错误解析：旧实现先得到预期 5 failed，查询前上�
 合并 `main@41e44fc` 后的 test 自身源码门禁：C3 专项 7 passed in 2.67s；全量 557 passed, 4 skipped in 250.85s。该结果只证明本地软件与临时数据库合同通过，不代表正式 schema-v2 数据库已升级、Marketplace 已发布或实板功能已验收
 UART-only 示例：旧 main 初始 4 failed；首轮 4 passed；复审收紧后 5 passed
 ESP-IDF target/fullclean 门禁：旧实现首轮 6 failed, 6 passed，二轮 8 failed, 3 passed；最终 UART/构建/日志/MCP 定向 39 passed in 2.30s
-当前软件全量：main 120 passed in 57.79s；合入修复后的 test 分支自身源码 583 passed, 4 skipped in 314.90s
+当前候选最终本地门禁：UART-only 专项 5 passed in 0.30s；main
+120 passed in 61.67s；test 显式加载本轮 main 工作树源码，
+583 passed, 4 skipped, 0 failed in 332.84s。该轮覆盖
+`CONFIG_APP_COMPILE_TIME_DATE=n`、UART-only 示例说明和对应 test 合同；发布文档另以
+diff、证据一致性和 `git diff --check` 复核
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：2026-07-30 已把当前 ESP-IDF 4 MiB 完整备份为 SHA-256 `5ACF1DB30021D3B1C1A83264E586007A7F36AB2C5B604522612E2E6C164E2365`；擦除 run `erase_flash_20260730_120550_7455b13f` 和 MicroPython v1.28.0 恢复 run `restore_flash_20260730_120609_a5476af6` 成功，写入哈希已校验；hard reset 捕获 v1.28.0 banner 与 `>>>`。相对下载 run `file_download_20260730_120738_d3d58548` 将 21 字节载荷落在 workspace，源/目标 SHA-256 同为 `2DDF47ADFD6E81358CE6B00AA1EF332AF66AE718BD3AE2CAAC452218958CD163`
 历史样本只读验证：正式项目 22 个 v1 Monitor manifest 为 14 个 `resolved`、8 个 `no_artifacts`、0 个错误；4 个固定 capture 为 1 个 native `resolved`、3 个 legacy `ineligible`，全部是旧 writer 的 `serial_capture_legacy_text`。两次检查均未连接正式 SQLite，项目 189 个文件的路径、长度、mtime 和 SHA-256 前后无差异
 当前 SQLite 边界：B4.4 与 C1-C3 已完成源码、临时数据库、本地/远端软件门禁、Marketplace 发布及正式项目验收。B4.2/B4.3 resolver 仍只生成纯只读候选，只有 B4.4 能在项目/run lease 与严格仓储门禁内执行补投影。正式库为 schema v3；升级前 v2 备份 SHA-256 为 `5D5F75E12C54EF6137CFD2BA991A949FF2574304E96BC67A97B961649AA8711D`。首次补投影得到 5 raw、1 error、5 claim，第二次回放零新增；运行插件已返回 authoritative schema-v3 raw/error。此步骤没有访问 COM3 或操作板卡
-跳过边界：Windows 本地 4 项 skip 来自普通文件 symlink 创建权限（Flash 1、capture 1、Monitor 2）；目录 junction 与合成 fd/reparse 拒绝合同已执行。本轮新远端矩阵的 8 个 job 全部成功；本地 Windows skip 不能被写成远端平台也跳过
-当前收尾边界：程序停止、错误解析、GPIO34 严格查询、正向/negative 回归、性能插桩和 soft reset 均已完成；仍需用户配合完成 KEY1 松开/按下两态关联，板端临时文件删除保持显式确认门。UART-only ESP-IDF host build 已完成且未访问 COM3；完整 backup→flash→monitor→restore 仍需精确授权。`esp_project_build` 不再隐式 set-target/fullclean，目标或缓存切换必须单独确认；全部五种计划在读取 cache 前及启动前检查 build 路径。蜂鸣器瞬时电流专项已按用户决定延期
-远端与插件：C2/C3 的 [main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226) 与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633) 共 8 个 job 成功；Monitor 测试同步修复后的 [test run 30446579852](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30446579852)、[main run 30447473492](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30447473492) 和最终 [test run 30448083294](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30448083294) 均成功。Marketplace/安装缓存 `0.1.0+codex.20260730053724` 和正式 schema-v3 数据库均已验收
+跳过边界：Windows 本地 4 项 skip 来自普通文件 symlink 创建权限（Flash 1、capture 1、Monitor 2）；目录 junction 与合成 fd/reparse 拒绝合同已执行。上一已提交快照的新远端矩阵 8 个 job 全部成功，但不覆盖当前未提交候选；本地 Windows skip 不能被写成远端平台也跳过
+当前收尾边界：程序停止、错误解析、GPIO34 严格查询与 KEY1 松开/按住两态、
+正向/negative 回归、性能插桩、soft reset、UART-only
+backup→flash→READY/HEARTBEAT→restore 和板端临时文件删除均已完成。
+`esp_project_build` 不再隐式 set-target/fullclean，目标或缓存切换必须单独确认；
+全部五种计划在读取 cache 前及启动前检查 build 路径。按用户确认，蜂鸣器瞬时电流/
+掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；本项目不再安排该专项，也不把它作为
+发布门禁。本轮 UART 证据只证明应用未主动配置 GPIO25/PWM，不扩展为启动、复位或其他
+电气行为的证明
+历史远端与插件：C2/C3 的 [main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226) 与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633) 共 8 个 job 成功；Monitor 测试同步修复后的 [test run 30446579852](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30446579852)、[main run 30447473492](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30447473492) 和最终 [test run 30448083294](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30448083294) 均成功。当时 Marketplace/安装缓存 `0.1.0+codex.20260730053724` 和正式 schema-v3 数据库已验收；这些历史结果不覆盖当前活动版本 `0.1.0+codex.20260730084223` 之后尚未提交的候选。
 ```
 开发日志（同一天按提交时间分开）：
 
@@ -1231,13 +1269,14 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   [main Actions](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30516686299)
   和 [test Actions](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30516731640)
   共 8 个 Windows/Linux、Python 3.10/3.12 job 全部成功。
-- 用户决定暂不处理蜂鸣器瞬时电流专项。该风险保持“未验证、延期”，不会被普通串口、
-  回归或性能结果隐式关闭。
+- 用户当时决定暂不处理蜂鸣器瞬时电流专项；后续确认该问题属于业务固件，不是 ESP MCP
+  工具链缺陷，因此不再作为工具链风险或发布门禁。普通串口、回归或性能结果仍不构成
+  蜂鸣器电气证据。
 
 ### 2026-07-30 - 增加无蜂鸣器 UART 验收目标并关闭构建隐式清理缺口
 
 - 现有 `esp_idf_key_led_buzzer` 在启动时无条件初始化 LEDC 并绑定 GPIO25，GPIO34 读低
-  还会触发五组蜂鸣器脉冲，因此不能用于本轮“暂不处理蜂鸣器”的验收。新增
+  还会触发五组蜂鸣器脉冲，因此不能用于主动排除业务固件蜂鸣器路径的工具链验收。新增
   `examples/esp_idf_uart_smoke`，只打印 READY 和每秒递增 HEARTBEAT；合同锁定唯一
   `main.c`、精确 component CMake、九项 defaults，并扫描全部应用源码。
 - 首次主机构建 run `build_20260730_152205_0508e89d` 成功；BIN 为 176,896 字节，
@@ -1262,8 +1301,9 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `120 passed in 60.59s`，test 显式加载当前 main
   `582 passed, 4 skipped in 297.08s`；独立复审 P0=0、P1=0。新后端实际增量构建返回
   `target_plan=build`、`fullclean_planned=false`、`set_target_planned=false`、
-  `target_verified=true`。完整 4 MiB 备份、烧录、串口心跳和恢复 MicroPython 尚未执行，
-  等待精确授权；蜂鸣器、GPIO25 和 PWM 继续排除。
+  `target_verified=true`。该阶段完整 4 MiB 备份、烧录、串口心跳和恢复 MicroPython
+  尚未执行；后续已在精确授权下完成，见“确定性 UART-only 实板封口”。业务固件的
+  蜂鸣器、GPIO25 和 PWM 路径继续主动排除，不是工具链未完成项。
 
 ### 2026-07-30 - 修复 Monitor 启动与停止竞态中的空错误对象
 
@@ -1288,12 +1328,12 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   的 Windows/Linux、Python 3.10/3.12 共 8 个 job 全部成功。
 - 个人 Marketplace 源已用一次 cachebuster 更新为
   `0.1.0+codex.20260730084223`，plugin validator、源目录 `120 passed in 57.90s`
-  和直接 MCP 枚举 `48 tools / 12 resources / 12 prompts` 通过；未修改安装缓存，
-  等待用户重启后核对活动版本。
+  和直接 MCP 枚举 `48 tools / 12 resources / 12 prompts` 通过；未修改安装缓存。
+  用户随后重启 Codex，当前任务已从该版本路径加载 ESP skill 和 MCP tools。
 
 ### 2026-07-30 - 回同步 Monitor 高频持久化完成条件
 
-- 最终文档 main run
+- 当时的文档提交 main run
   [30528050703](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30528050703)
   的 Ubuntu/Python 3.10 在 `test_monitor_high_frequency_output_is_bounded_and_accounted`
   失败：`bytes_received=262144` 时 `persisted_bytes=258048`，正好少一条 4096 字节记录；
@@ -1308,6 +1348,47 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   `unpersisted_bytes=0`，再显式 stop 并复核最终计数。不会把磁盘 I/O 放进 status 锁，
   也不靠增加固定 sleep 掩盖竞态。修复后独立进程 `30/30`，main 全量
   `120 passed in 57.79s`；本步骤未访问 COM3。
+
+### 2026-07-30 - 完成确定性 UART-only 实板封口
+
+- 第一次授权闭环的实时构建与哈希检查中，`idf.py flash` 增量重编 ESP-IDF 的
+  `esp_app_desc.c`；
+  `CONFIG_APP_COMPILE_TIME_DATE=y` 把 `__DATE__` / `__TIME__` 写入应用描述，
+  使已审查 app SHA-256 从 `AA9E9AFA...09A9` 漂移为
+  `C0B4DE4F...1745`。该次没有继续 UART 验收，而是立即使用当次新鲜 4 MiB
+  备份恢复 MicroPython。该漂移摘要来自当时实时工具输出，未写入 SQLite/JSONL
+  completion payload，不能冒充持久化审计字段。
+- `sdkconfig.defaults` 现设置 `CONFIG_APP_COMPILE_TIME_DATE=n`。普通增量构建
+  `build_20260730_192625_8ef67c38` 与
+  `build_20260730_192812_b9042a6e` 均成功并保持
+  `target_plan=build`、不计划 fullclean/set-target；第二次构建后的最终烧录前复核
+  确立了以下输入：
+  bootloader 26,720 字节
+  `1BFB7F309DB6C232FB20AF613B3A2E0E0570C615DD41DEADFF213F6C5015ABE8`，
+  partition 3,072 字节
+  `7F00B6C042A89B15B0CAC534F82ED988CAF29278FF5700B0C511EB1B5BB7C820`，
+  app 176,816 字节
+  `4017628FA6BDFD2453C6518299F60D0ACF2A15BD3C43D466DE7CA8EF365D8CA2`。
+- 第二次闭环先以 `backup_flash_20260730_193625_9ba0d34b` 读取完整
+  4,194,304 字节，备份 SHA-256 为
+  `F28649C0194A67C951E5DFCB8BC690B526ABD1CFDA50D94BE2027F5DCA66CE89`。
+  `flash_20260730_193819_dfa2a884` 只写目标区段，没有调用整片擦除工具。
+- `reset_20260730_193902_3172efe8` 捕获 READY 和 HEARTBEAT `0,1`；
+  `serial_capture_20260730_193904_5fdcba4c` 以 115200 连续捕获 7 秒，
+  原始日志 476 字节、SHA-256
+  `C0411F143FDF459800DCB06C335ADA57FABBF285EC4C6B09E248DE672F9ED50C`，
+  包含连续 HEARTBEAT `2..8`，且没有结构化错误。
+- `restore_flash_20260730_193928_f67fad17` 随后从地址 0 写回完整 4 MiB；
+  MicroPython Raw REPL 与 mpremote 文件访问恢复，但没有执行恢复后的完整 4 MiB
+  read-back。经再次列目录和精确删除确认，四个临时验收文件已逐个删除；本次会话
+  最终实时工具返回只列出 `/boot.py`，而 SQLite/JSONL 摘要只持久化了四次删除终态和
+  最终列目录命令成功，没有持久化该目录 stdout。
+- KEY1 两态只读查询也已封口：松开 run
+  `gpio_status_20260730_191534_37959ed8` 得到 GPIO34=`1`，按住 run
+  `gpio_status_20260730_191640_87385e23` 得到 GPIO34=`0`，两次均未改变模式。
+- 这些证据证明 KEY1 active-low 两态和 UART-only 有序输出，不证明按键去抖、长期
+  稳定性、物理 GPIO 波形或蜂鸣器供电问题。reset 工具仍保留
+  `reset_confirmed=false`、`output_causality_confirmed=false` 的严格边界。
 
 ## 协作约定
 
@@ -1343,6 +1424,7 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - `docs/12-development-status.md`
 - `docs/13-taskbook-capability-architecture.md`
 - `docs/14-bug-fix-notes.md`
+- `docs/15-release-readiness.md`
 - `docs/adr/0001-feature-branch-workflow.md`
 - `docs/adr/0002-serial-monitor-architecture.md`
 - `docs/adr/0003-sqlite-log-authority.md`
