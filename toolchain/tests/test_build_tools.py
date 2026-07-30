@@ -2,7 +2,7 @@ from esp_mcp_toolchain.tools import build_tools
 
 
 def test_project_build_calls_espidf_backend(monkeypatch):
-    def fake_run_idf_build(project_dir, target: str):
+    def fake_run_idf_build(project_dir, target: str, confirm_target_change: bool):
         return {"ok": True, "stdout": "built", "stderr": "", "message": str(project_dir)}
 
     monkeypatch.setattr(build_tools, "run_idf_build", fake_run_idf_build)

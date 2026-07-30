@@ -6,8 +6,42 @@ from ..paths import safe_project_path
 from .log_tools import logged_task
 
 
-@logged_task(task_type="build", payload_args=("project_dir", "backend", "target", "log_name"))
-def esp_project_build(project_dir: str = ".", backend: str = "espidf", target: str = "esp32", log_name: str = "build_default") -> dict:
+@logged_task(
+    task_type="build",
+    payload_args=("project_dir", "backend", "target", "log_name", "confirm_target_change"),
+    result_payload_keys=(
+        "sdkconfig_state",
+        "configured_target_before",
+        "cmake_cache_state",
+        "cmake_cache_target_before",
+        "target_plan",
+        "confirmation_required",
+        "target_change_confirmed",
+        "fullclean_planned",
+        "set_target_planned",
+        "sdkconfig_rename_planned",
+        "sdkconfig_old_exists_before",
+        "sdkconfig_old_overwrite_risk",
+        "destructive_command_requested",
+        "build_path_safety_checked",
+        "build_path_safe",
+        "resolved_build_dir",
+        "build_path_check_error",
+        "command_started",
+        "command_completed",
+        "side_effects_partial_possible",
+        "configured_target_after",
+        "cmake_cache_target_after",
+        "target_verified",
+    ),
+)
+def esp_project_build(
+    project_dir: str = ".",
+    backend: str = "espidf",
+    target: str = "esp32",
+    log_name: str = "build_default",
+    confirm_target_change: bool = False,
+) -> dict:
     if backend != "espidf":
         return execution_error(
             "unsupported_backend",
@@ -22,7 +56,11 @@ def esp_project_build(project_dir: str = ".", backend: str = "espidf", target: s
     if not path.exists():
         return execution_error("project_dir_missing", f"Project directory does not exist: {path}", tool="esp_project_build")
 
-    result = run_idf_build(path, target=target)
+    result = run_idf_build(
+        path,
+        target=target,
+        confirm_target_change=confirm_target_change,
+    )
     result.update(
         {
             "tool": "esp_project_build",
@@ -31,6 +69,7 @@ def esp_project_build(project_dir: str = ".", backend: str = "espidf", target: s
             "implemented": True,
             "backend": backend,
             "target": target,
+            "confirm_target_change": confirm_target_change,
             "project_dir": str(path),
             "log_name": log_name,
         }

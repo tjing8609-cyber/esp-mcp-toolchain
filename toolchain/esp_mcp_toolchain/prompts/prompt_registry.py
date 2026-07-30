@@ -98,11 +98,11 @@ PROMPT_DEFINITIONS = {
     "build_flash_monitor": {
         "description": "构建固件，经明确确认后烧录并独立监控。",
         "text": _workflow(
-            goal="构建 ESP 工程；仅在用户明确批准后烧录，并单独启动串口监控验收。",
-            prechecks="调用 project_context_select/project_context_status 选择项目上下文、读取 hardwork 和工程路径、核对端口；先完成 esp_project_build，确认产物与返回码。",
-            tool_order="esp_project_build → 展示产物/风险并等待明确授权 → esp_flash_firmware(confirm=True) → esp_serial_monitor_start/read/stop 或 esp_serial_capture。",
+            goal="构建 ESP 工程；仅在用户明确确认后烧录，并单独启动串口监控验收。",
+            prechecks="调用 project_context_select/project_context_status 选择项目上下文、读取 hardwork 和工程路径、核对端口；先以 confirm_target_change=False 调用 esp_project_build；若报告 target_change_confirmation_required，必须展示 sdkconfig、sdkconfig.old、build 路径和 fullclean 风险，并为目标切换单独取得明确授权。",
+            tool_order="esp_project_build(confirm_target_change=False) → 若目标切换被阻断：展示风险、单独授权后再调用 esp_project_build(confirm_target_change=True) → 核对构建产物 → 再为烧录单独取得授权 → esp_flash_firmware(confirm=True) → esp_serial_monitor_start/read/stop 或 esp_serial_capture。",
             success_evidence="构建返回码和产物存在；烧录成功需工具返回；运行成功需独立串口证据。monitor_after_flash 未实现时不得声称自动监控已完成。",
-            safety_boundary="烧录是高风险动作。没有本轮明确确认时 confirm 必须保持 False；不得顺带 erase、restore、full clean 或删除文件。",
+            safety_boundary="目标切换与烧录是两次不同授权：前者只允许 confirm_target_change=True 执行已展示的 sdkconfig/fullclean 计划，后者才允许 flash 的 confirm=True。普通 build 不得隐式 set-target/fullclean；build 路径含 symlink/junction/reparse 或越出项目时必须拒绝，不得顺带 erase、restore 或删除文件。",
             failure_handling="端口忙/消失时停止并重新验证；构建失败先修复。不得用清理掩盖路径/环境问题，尤其不删除未知 build 目录。",
             final_report="分别报告构建、授权、烧录、监控四段状态，列出产物、端口、run_id、日志和未完成项。",
         ),

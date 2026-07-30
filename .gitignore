@@ -36,6 +36,10 @@ examples/esp_idf_key_led_buzzer/sdkconfig
 examples/esp_idf_key_led_buzzer/sdkconfig.old
 examples/esp_idf_key_led_buzzer/dependencies.lock
 examples/esp_idf_key_led_buzzer/managed_components/
+examples/esp_idf_uart_smoke/sdkconfig
+examples/esp_idf_uart_smoke/sdkconfig.old
+examples/esp_idf_uart_smoke/dependencies.lock
+examples/esp_idf_uart_smoke/managed_components/
 
 *.log
 .DS_Store

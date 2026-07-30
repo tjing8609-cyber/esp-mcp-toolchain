@@ -22,7 +22,7 @@ def test_build_skips_set_target_when_sdkconfig_matches(tmp_path, monkeypatch):
     (project / "sdkconfig").write_text('CONFIG_IDF_TARGET="esp32"\n', encoding="utf-8")
     captured = {}
 
-    def fake_run(command, project_dir, actual_idf_path, timeout_s):
+    def fake_run(command, project_dir, actual_idf_path, timeout_s, **kwargs):
         captured["command"] = command
         assert project_dir == project
         assert actual_idf_path == idf_path
@@ -37,13 +37,13 @@ def test_build_skips_set_target_when_sdkconfig_matches(tmp_path, monkeypatch):
     assert "set-target" not in captured["command"]
 
 
-def test_build_sets_target_when_sdkconfig_is_missing(tmp_path, monkeypatch):
+def test_build_sets_target_without_fullclean_when_sdkconfig_is_missing(tmp_path, monkeypatch):
     _prepare_idf(tmp_path, monkeypatch)
     project = tmp_path / "project"
     project.mkdir()
     captured = {}
 
-    def fake_run(command, project_dir, idf_path, timeout_s):
+    def fake_run(command, project_dir, idf_path, timeout_s, **kwargs):
         captured["command"] = command
         return {"ok": True, "returncode": 0, "stdout": "", "stderr": ""}
 
@@ -52,7 +52,8 @@ def test_build_sets_target_when_sdkconfig_is_missing(tmp_path, monkeypatch):
     result = espidf_backend.run_idf_build(project, target="esp32")
 
     assert result["ok"] is True
-    assert captured["command"][-3:] == ["set-target", "esp32", "build"]
+    assert captured["command"][-3:] == ["-D", "IDF_TARGET=esp32", "build"]
+    assert "set-target" not in captured["command"]
 
 
 def test_timeout_terminates_process_tree(tmp_path, monkeypatch):

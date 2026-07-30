@@ -13,6 +13,9 @@
 - Monitor 使用正式状态机、不可变项目绑定、单调递增 `seq`、`after_seq` 游标、有界环形缓冲和分块原始字节日志。
 - 新增跨进程串口锁、进程所有权与端口身份记录、只针对已结束进程的陈旧锁恢复，以及 MCP Server 退出清理。
 - 新增 Windows / Linux、Python 3.10 / 3.12 的 GitHub Actions 全量测试矩阵。
+- 新增 `examples/esp_idf_uart_smoke`：只输出 UART0 READY 和每秒递增 HEARTBEAT，不编译
+  额外应用源文件，也不引用 GPIO、LEDC、PWM、RMT、DAC 或蜂鸣器接口；用于在蜂鸣器专项
+  延期时独立验收 ESP-IDF 构建和串口链。
 
 - 新增 SQLite schema v2 与 runs/events 仓储，包含 project-scoped 复合键、外键、JSON 对象约束、规范 UUID、事务 sequence 和结构化查询索引。
 - 新增 v1 数据库重建迁移、legacy JSONL 稳定快照与可重复导入，以及 `docs/adr/0003-sqlite-log-authority.md`。
@@ -48,6 +51,13 @@
 
 ### Changed
 
+- `esp_project_build` 新增默认关闭的 `confirm_target_change`。后端把构建分成
+  `build`、`define_target_build`、`fullclean_build`、
+  `fullclean_define_target_build` 和 `set_target_build` 五种计划；后三种在未明确确认时
+  不启动子进程。首次目标配置使用 `-D IDF_TARGET=... build`，不再隐式调用
+  `set-target`。全部五种计划都在读取 CMake target cache 前检查 project/build 路径，
+  并在启动 `idf.py` 前再次检查；symlink、junction、reparse、越界 build 目录及链接或
+  非普通文件形式的 `CMakeCache.txt` 均拒绝。
 - ESP-IDF key/LED/buzzer 示例新增受版本控制的 4 MiB、DIO、40 MHz `sdkconfig.defaults`，继续使用 single-app 分区；现有本地 `sdkconfig` 的应用边界已在示例 README 明确说明。
 - 新增受版本控制的 MicroPython 分层回归 manifest 与 safe/runtime、GPIO34 只读、GPIO32 LED 状态、独立 negative 四个脚本；`esp_regression_test` 现在把不含 stdout 的逐项摘要写入 SQLite，并保守报告 Raw REPL 复位边界。
 - `esp_performance_profile` 的最多 50 个工具生成样本、时间/堆变化汇总和 `sampling_profiler` 状态现在写入 SQLite completion 事件；异常文本限制为 256 字符，结构化 marker 限制为 128 KiB，主机在统计前验证并规范化固定字段；stdout、原始 marker 和内联 code 仍不落库。
@@ -102,6 +112,12 @@
 
 ### Fixed
 
+- 修复普通 `esp_project_build` 在 `sdkconfig` 缺失或 target 不匹配时自动执行
+  `set-target`、从而绕过 full clean 显式确认的问题。新预检同时检查 sdkconfig、
+  `build/CMakeCache.txt` 和既有 `sdkconfig.old`；结果区分 planned、command started、
+  command completed、partial possible 和 postflight verified，并把关键安全字段写入
+  SQLite completion。复审发现的普通 build 路径门禁漏覆盖也已关闭，超时不再误报
+  `command_completed=true`。
 - 修复 `esp_exec_code` 和 `esp_run_file` 已生成 MicroPython `error_report`、却未把它
   原子投影到 schema-v3 `errors` 的 producer 漏项。两项工具现在只启用
   `structured_error`，不同时登记较宽泛的 `result_error`；成功执行不产生 error，
@@ -221,6 +237,19 @@
 
 ### Validation
 
+- UART-only 初始合同在实现前为预期 `4 failed in 2.95s`，首轮实现为
+  `4 passed in 0.62s`；复审收紧唯一源文件、可执行语句、冲突配置和生成文件忽略合同后
+  为 `5 passed in 0.28s`。
+- target/fullclean 安全合同在旧实现上先得到预期 `6 failed, 6 passed`，第二轮缓存、
+  覆盖和失败证据合同为预期 `8 failed, 3 passed`；修复后 UART、构建后端、工具日志和
+  MCP 架构合并定向门禁为 `39 passed in 2.30s`，main 全量为
+  `120 passed in 60.59s`，test 显式加载当前 main 为
+  `582 passed, 4 skipped in 297.08s`。最终独立复审为 P0=0、P1=0。
+- ESP-IDF 5.2.1 实际增量构建返回 `target_plan=build`、
+  `confirmation_required=false`、`fullclean_planned=false`、
+  `set_target_planned=false`、`target_verified=true`。BIN 为 176,896 字节，SHA-256 为
+  `AA9E9AFA7036D2F78B183A4834835EBEDDD859AB3914D3509F9C00FD0AD409A9`；构建未访问
+  COM3，也未擦除、烧录、删除或驱动 GPIO25/PWM。
 - v3-C3 五项首轮合同在旧实现上为预期 `5 failed in 0.87s`；查询前 payload/最新事件窗口
   两项复审合同另为预期 `2 failed`。完成后 C3 专项 `7 passed in 1.09s`、相关 C1/C2/
   错误解析回归 `49 passed in 5.63s`、main 全量 `120 passed in 48.77s`、test 显式加载
