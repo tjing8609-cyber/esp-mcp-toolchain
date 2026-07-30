@@ -99,30 +99,35 @@ MicroPython 自动错误检测是在现有 exec、capture、Monitor 和 error pa
   子进程失败写成已完成清理。全部五种 plan 在读取 cache 前和 spawn 前检查 build 路径；
   该阶段定向 `39 passed in 2.30s`、main 全量 `120 passed in 60.59s`、test 显式加载
   当前 main `582 passed, 4 skipped in 297.08s`，独立复审 P0=0、P1=0。
-- `v0.1.0` 源码冻结前的最终本地门禁为 UART-only 专项 `5 passed in 0.30s`、main
-  `120 passed in 61.67s`、test 跨工作树
-  `583 passed, 4 skipped, 0 failed in 332.84s`。确定性修复已形成 main
-  `d93f848`、test 合同 `ff373c4` 和第一次 main 合入 test 的 `89e0b58`；final
-  branch-local 全量、推送后的新 Actions、tag 和 Release 仍待完成。
+- `v0.1.0` 本地子门禁为 UART-only 专项 `5 passed in 0.30s`、main
+  `120 passed in 61.67s`、test 文档修订前跨工作树预检
+  `587 collected, 583 passed, 4 skipped, 0 failed in 332.84s`。首轮版本元数据检查点为
+  `main@e63fc15`，文档状态修订前 test 检查点为 `test@636ca0f`；清除
+  `ESP_MCP_SOURCE_ROOT` / `PYTHONPATH` 后从该 test HEAD 自身运行 branch-local，
+  Python 3.12.13 下结果为
+  `587 collected, 583 passed, 4 skipped, 0 failed in 263.85s (0:04:23)`。该结果不冒充
+  最终发布 SHA；文档合入后的新 test HEAD 仍会复跑，精确结果进入外部发布证据。
 
-## v0.1.0 发布流程
+## v0.1.0 发布证据边界
 
-当前正式发布目标是首个 GitHub 版本 `v0.1.0`；“源码冻结”不表示 tag 或 Release
-已经存在。当前步骤如下：
+首个 GitHub 版本目标是 `v0.1.0`。仓库内容记录本地冻结证据，不预称外部 Actions、tag
+或 Release 状态：
 
 1. 既有功能提交、双分支 Actions、Marketplace
    `0.1.0+codex.20260730084223` 和用户重启验收均已完成；这些是历史插件证据，不是
    本次 GitHub 发布的新 Actions。
 2. KEY1 两态、板端临时文件删除和当前确定性 UART-only 严格实板闭环均已完成；
    它们不再是发布待办。
-3. `CONFIG_APP_COMPILE_TIME_DATE=n` 和对应 test 合同已经分步提交，第一次 main 合入
-   test 已完成；本次版本元数据文档仍待单独提交并同步。
-4. test 分支 final branch-local 全量、main/test 推送后的新 Actions、`v0.1.0` tag
-   和正式 Release 仍待完成。
+3. `CONFIG_APP_COMPILE_TIME_DATE=n`、对应 test 合同和版本元数据已形成首轮检查点
+   `main@e63fc15`，并形成文档状态修订前 test 检查点 `test@636ca0f`；其 branch-local
+   检查已记录，但不是最终发布 SHA，文档合入后的新 test HEAD 仍会复跑。
+4. tag 内容无法自证其后创建的 GitHub Release。精确发布证据以
+   [v0.1.0 tag/Release 页面](https://github.com/tjing8609-cyber/esp-mcp-toolchain/releases/tag/v0.1.0)
+   和对应 GitHub Actions 为准，本文件不预填这些外部操作的完成状态。
 5. 本次是 GitHub-only 发布；Marketplace 更新、cachebuster、安装缓存写入和插件重启
    验收均不适用。
 6. 用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；本项目
    不再安排该专项，也不将其作为发布门禁。Release Notes 可记录此范围归属，但普通回归、
    UART 或性能结果仍不得扩展为蜂鸣器电气证据。
-7. 只有 `docs/15-release-readiness.md` 的剩余门禁全部满足后，才创建 tag 和
-   Release；正式说明草案见 `docs/16-release-notes-v0.1.0.md`。
+7. `docs/15-release-readiness.md` 是 tag 前冻结检查记录；
+   `docs/16-release-notes-v0.1.0.md` 是可直接用于正式 GitHub Release 的说明。

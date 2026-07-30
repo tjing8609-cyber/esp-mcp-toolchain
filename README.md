@@ -28,11 +28,13 @@ project-scoped SQLite schema v3 为权威来源，JSONL 保留为审计镜像和
 - 当前 Codex 任务已从个人 Marketplace 安装版本
   `0.1.0+codex.20260730084223` 加载 ESP skill 和 MCP tools。
 
-本源码快照现冻结为首个 GitHub 版本 `v0.1.0`；这里的“冻结”不表示 tag 或 Release
-已经存在。确定性 UART 修复已形成 main 提交 `d93f848`、test 合同提交 `ff373c4`，
-并通过第一次 main 合入 test 的合并提交 `89e0b58`。只有 final branch-local 全量门禁
-通过，main/test 推送后的新 GitHub Actions 矩阵全部成功，才创建 `v0.1.0` tag 和正式
-Release。
+首轮版本元数据检查点为 `main@e63fc15`，文档状态修订前 test 检查点为
+`test@636ca0f`；后者已完成文档状态修订前 branch-local 检查，但不是最终发布 SHA。
+这些文档合入新的 test HEAD 后仍会复跑相同门禁，精确结果进入 GitHub Release/Actions
+外部证据。仓库中的 tag 内容无法自证其后创建的 GitHub Release，也不预先宣告远端
+Actions、tag 或 Release 状态；精确发布证据以
+[v0.1.0 tag/Release 页面](https://github.com/tjing8609-cyber/esp-mcp-toolchain/releases/tag/v0.1.0)
+及其对应 GitHub Actions 为准。
 
 本次是 GitHub-only 发布，Marketplace 更新、cachebuster 和插件重启验收均不适用。
 上面的 `0.1.0+codex.20260730084223` 只是既有已安装插件背景，不代表本源码快照已经
@@ -302,7 +304,7 @@ MicroPython 方向：
 - memory_items / memory_audit 表。
 - 日志导出和检索增强。
 
-当前状态：SQLite 已在本地主线成为 runs/events/raw/errors 的正式状态与查询源，JSONL 保留为审计镜像。schema v3-A、v3-B2/B3、v3-B4.1-B4.4 与 v3-C1-C3 均已完成源码、软件门禁和发布；当前任务加载的 Marketplace 安装版本为 `0.1.0+codex.20260730084223`。2026-07-29 已先备份并在临时副本演练，再将正式项目数据库显式升级到 v3：111 runs、224 events 不变，历史协调器新增 5 raw、1 error、5 claim，第二次回放 5 项全部幂等。2026-07-30 重启后的受控 exec 又确认该 run 的 `esp_logs_get.errors` 恰好返回一条且解析来源仅为 `sqlite_errors`。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现；当前未提交的确定性构建修复尚未进入该安装版本。
+当前状态：SQLite 已在本地主线成为 runs/events/raw/errors 的正式状态与查询源，JSONL 保留为审计镜像。schema v3-A、v3-B2/B3、v3-B4.1-B4.4 与 v3-C1-C3 均已完成源码、软件门禁和发布；当前任务加载的 Marketplace 安装版本为 `0.1.0+codex.20260730084223`。2026-07-29 已先备份并在临时副本演练，再将正式项目数据库显式升级到 v3：111 runs、224 events 不变，历史协调器新增 5 raw、1 error、5 claim，第二次回放 5 项全部幂等。2026-07-30 重启后的受控 exec 又确认该 run 的 `esp_logs_get.errors` 恰好返回一条且解析来源仅为 `sqlite_errors`。hardwork 和 memory 的当前运行时仓储仍使用原有文件实现；GitHub `v0.1.0` 的确定性构建修复和版本元数据已形成首轮检查点 `main@e63fc15`，并形成文档状态修订前 test 检查点 `test@636ca0f`；两者都不冒充最终发布 SHA。上述 Marketplace 安装版只是既有插件背景，不作为该 GitHub 源码快照的发布证据。
 
 ## 当前进度
 
@@ -338,7 +340,7 @@ MicroPython 方向：
 - `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。2026-07-30 本轮收尾已把个人 Marketplace 源更新为 `0.1.0+codex.20260730084223`；validator、源目录 `120 passed in 57.90s` 和源码直接枚举均确认 `48 tools / 12 resources / 12 prompts`。用户重启后，当前 Codex 任务已从该版本安装路径加载 ESP skill 和 MCP tools；这证明活动插件版本已切换，但不替代本次 GitHub-only `v0.1.0` 的 branch-local、Actions、tag 或 Release 门禁。
+- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。2026-07-30 本轮收尾已把个人 Marketplace 源更新为 `0.1.0+codex.20260730084223`；validator、源目录 `120 passed in 57.90s` 和源码直接枚举均确认 `48 tools / 12 resources / 12 prompts`。用户重启后，当前 Codex 任务已从该版本安装路径加载 ESP skill 和 MCP tools；这证明活动插件版本已切换，但不替代本次 GitHub-only `v0.1.0` 的 tag/Release 页面及对应 GitHub Actions 证据。
 - 初始测试集。
 - 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；本地门禁可从 `index-test` 显式加载 `index` 的主线源码。GitHub Actions 只检出被推送的单个分支，因此推送 test 前必须把固定、已验证的 main 合入 test，不能用本地跨工作树绿灯代替 test 分支自身的远端合同。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
@@ -381,11 +383,15 @@ v3-C3 DB-first 错误解析：旧实现先得到预期 5 failed，查询前上�
 合并 `main@41e44fc` 后的 test 自身源码门禁：C3 专项 7 passed in 2.67s；全量 557 passed, 4 skipped in 250.85s。该结果只证明本地软件与临时数据库合同通过，不代表正式 schema-v2 数据库已升级、Marketplace 已发布或实板功能已验收
 UART-only 示例：旧 main 初始 4 failed；首轮 4 passed；复审收紧后 5 passed
 ESP-IDF target/fullclean 门禁：旧实现首轮 6 failed, 6 passed，二轮 8 failed, 3 passed；最终 UART/构建/日志/MCP 定向 39 passed in 2.30s
-v0.1.0 源码冻结前最终本地门禁：UART-only 专项 5 passed in 0.30s；main
-120 passed in 61.67s；test 显式加载本轮 main 工作树源码，
-583 passed, 4 skipped, 0 failed in 332.84s。该轮覆盖
-`CONFIG_APP_COMPILE_TIME_DATE=n`、UART-only 示例说明和对应 test 合同；发布文档另以
-diff、证据一致性和 `git diff --check` 复核
+v0.1.0 本地门禁：UART-only 专项 5 passed in 0.30s；main
+120 passed in 61.67s；test 文档修订前跨工作树预检为 587 collected、583 passed、4 skipped、
+0 failed in 332.84s。文档状态修订前 branch-local 检查点在 `test@636ca0f`、
+Python 3.12.13 下从 `index-test` 自身加载，清除 `ESP_MCP_SOURCE_ROOT` / `PYTHONPATH`
+后执行 `python -m pytest`，结果为 587 collected、583 passed、4 skipped、0 failed in
+263.85s（0:04:23）。这些文档合入新的 test HEAD 后仍会复跑；精确结果进入 GitHub
+Release/Actions 外部证据。上述本地检查覆盖 `CONFIG_APP_COMPILE_TIME_DATE=n`、
+UART-only 示例说明和对应 test 合同；发布文档另以 diff、证据一致性和
+`git diff --check` 复核
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：2026-07-30 已把当前 ESP-IDF 4 MiB 完整备份为 SHA-256 `5ACF1DB30021D3B1C1A83264E586007A7F36AB2C5B604522612E2E6C164E2365`；擦除 run `erase_flash_20260730_120550_7455b13f` 和 MicroPython v1.28.0 恢复 run `restore_flash_20260730_120609_a5476af6` 成功，写入哈希已校验；hard reset 捕获 v1.28.0 banner 与 `>>>`。相对下载 run `file_download_20260730_120738_d3d58548` 将 21 字节载荷落在 workspace，源/目标 SHA-256 同为 `2DDF47ADFD6E81358CE6B00AA1EF332AF66AE718BD3AE2CAAC452218958CD163`
@@ -400,7 +406,7 @@ backup→flash→READY/HEARTBEAT→restore 和板端临时文件删除均已完�
 掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；本项目不再安排该专项，也不把它作为
 发布门禁。本轮 UART 证据只证明应用未主动配置 GPIO25/PWM，不扩展为启动、复位或其他
 电气行为的证明
-历史远端与插件：C2/C3 的 [main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226) 与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633) 共 8 个 job 成功；Monitor 测试同步修复后的 [test run 30446579852](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30446579852)、[main run 30447473492](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30447473492) 和最终 [test run 30448083294](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30448083294) 均成功。当时 Marketplace/安装缓存 `0.1.0+codex.20260730053724` 和正式 schema-v3 数据库已验收；这些历史结果不覆盖本地 `v0.1.0`，仍需本次精确推送后的新 Actions。
+历史远端与插件：C2/C3 的 [main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226) 与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633) 共 8 个 job 成功；Monitor 测试同步修复后的 [test run 30446579852](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30446579852)、[main run 30447473492](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30447473492) 和最终 [test run 30448083294](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30448083294) 均成功。当时 Marketplace/安装缓存 `0.1.0+codex.20260730053724` 和正式 schema-v3 数据库已验收；这些链接只记录历史快照。`v0.1.0` 的精确发布状态由其 tag/Release 页面和对应 GitHub Actions 外部证据确定，仓库快照不自行预称完成。
 ```
 开发日志（同一天按提交时间分开）：
 

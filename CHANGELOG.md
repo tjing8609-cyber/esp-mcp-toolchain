@@ -20,8 +20,8 @@
   工具链构建/串口验收与业务固件的 GPIO25/蜂鸣器行为。
 - 新增 `docs/15-release-readiness.md`，集中记录 `v0.1.0` 实板 run/哈希、
   正式发布验证清单、业务固件范围和不得扩大声明的证据边界。
-- 新增 `docs/16-release-notes-v0.1.0.md`，冻结首个 GitHub 版本的发布说明及
-  final branch-local、新 Actions、tag/Release 的剩余门禁。
+- 新增 `docs/16-release-notes-v0.1.0.md`，提供可直接用于首个 GitHub 版本的正式
+  Release Notes 内容。
 
 - 新增 SQLite schema v2 与 runs/events 仓储，包含 project-scoped 复合键、外键、JSON 对象约束、规范 UUID、事务 sequence 和结构化查询索引。
 - 新增 v1 数据库重建迁移、legacy JSONL 稳定快照与可重复导入，以及 `docs/adr/0003-sqlite-log-authority.md`。
@@ -258,12 +258,16 @@
 
 ### Validation
 
-- 当前未提交候选的最终本地门禁为 UART-only 专项 `5 passed in 0.30s`、main
-  `120 passed in 61.67s`、test 跨工作树
-  `583 passed, 4 skipped, 0 failed in 332.84s`，覆盖
-  `CONFIG_APP_COMPILE_TIME_DATE=n`、UART-only 示例说明和对应 test 合同。发布文档另以
-  diff、证据一致性和 `git diff --check` 复核；4 项 skip 均为 Windows 普通文件
-  symlink 测试夹具权限边界。
+- `v0.1.0` 本地子门禁为 UART-only 专项 `5 passed in 0.30s`、main
+  `120 passed in 61.67s`、test 文档修订前跨工作树预检
+  `587 collected, 583 passed, 4 skipped, 0 failed in 332.84s`。首轮版本元数据检查点为
+  `main@e63fc15`，文档状态修订前 test 检查点为 `test@636ca0f`；该 test HEAD 在清除
+  `ESP_MCP_SOURCE_ROOT` / `PYTHONPATH` 后从 `index-test` 自身执行 branch-local
+  `python -m pytest`，Python 3.12.13 下结果为
+  `587 collected, 583 passed, 4 skipped, 0 failed in 263.85s (0:04:23)`。该结果只是
+  文档状态修订前检查点，不是最终发布 SHA；文档合入后的新 test HEAD 仍会复跑，精确
+  结果进入 GitHub Release/Actions 外部证据。发布文档另以 diff、证据一致性和
+  `git diff --check` 复核；4 项 skip 均为 Windows 普通文件 symlink 测试夹具权限边界。
 - KEY1 两态只读实板结果为松开 GPIO34=`1`、按住 GPIO34=`0`，两次均未改变模式。
   第二次 UART-only 闭环使用 4,194,304 字节新鲜备份，SHA-256
   `F28649C0194A67C951E5DFCB8BC690B526ABD1CFDA50D94BE2027F5DCA66CE89`；
@@ -275,7 +279,10 @@
   `C0411F143FDF459800DCB06C335ADA57FABBF285EC4C6B09E248DE672F9ED50C`，
   没有结构化错误。四个临时验收文件随后按精确路径删除；本次会话最终实时工具返回只
   列出 `/boot.py`，而持久审计摘要没有保存该目录 stdout。
-- 以下 GitHub Actions 与 Marketplace 结果属于此前已提交快照，不覆盖当前未提交候选。
+- 以下 GitHub Actions 与 Marketplace 结果属于此前已提交快照，只作为历史证据。
+  tag 内容无法自证其后创建的 GitHub Release；`v0.1.0` 的精确发布证据以
+  [tag/Release 页面](https://github.com/tjing8609-cyber/esp-mcp-toolchain/releases/tag/v0.1.0)
+  及其对应 GitHub Actions 为准，本文件不预称这些外部操作已经完成。
 - GitHub main run `30525807125` 的 Ubuntu/Python 3.10 job 首次暴露 Monitor 启停竞态：
   `1 failed, 119 passed`；其余三个 main job 成功，且本轮提交未修改 Monitor 源码，
   因此不是 UART/target 变更回归。确定性合同在旧实现上为预期 `1 failed`，修复后与

@@ -15,12 +15,12 @@
   backup→flash→READY/HEARTBEAT→restore、MicroPython/mpremote 恢复，以及四个临时
   验收文件的精确删除。用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP
   工具链缺陷；该项不再专项处理，不是工具链未完成项，也不阻塞发布。
-- 当前正式发布目标为首个 GitHub 版本 `v0.1.0`。确定性构建修复已形成 main 提交
-  `d93f848`，对应 test 合同已形成提交 `ff373c4`，第一次 main 合入 test 已形成
-  合并提交 `89e0b58`；本次版本元数据文档仍待单独提交并同步。
-- 剩余发布门禁是 test 分支 final branch-local 全量、main/test 推送后的新 Actions
-  矩阵，以及最后创建 tag/Release。此次为 GitHub-only 发布，Marketplace 更新、
-  cachebuster 和插件重启验收不适用。
+- 首个 GitHub 版本目标为 `v0.1.0`。首轮版本元数据检查点为 `main@e63fc15`，文档状态
+  修订前 test 检查点为 `test@636ca0f`；后者的 branch-local 检查已经通过，但不是最终
+  发布 SHA。文档合入新的 test HEAD 后仍会复跑，精确结果进入外部发布证据。
+- 此次为 GitHub-only 发布，Marketplace 更新、cachebuster 和插件重启验收不适用。
+  仓库快照不预称远端 Actions、tag 或 Release 已完成；精确状态以 `v0.1.0`
+  tag/Release 页面及对应 GitHub Actions 外部证据为准。
 
 ## 本轮已完成实现
 
@@ -167,16 +167,20 @@
 
 ## 本地验证
 
-- 测试工作树通过 `ESP_MCP_SOURCE_ROOT` 显式加载实现工作树源码。
-- `v0.1.0` 源码冻结前的最终本地门禁为 UART-only 专项 `5 passed in 0.30s`、main
-  `120 passed in 61.67s`、test 跨工作树
-  `583 passed, 4 skipped, 0 failed in 332.84s`，Python 3.12.13、pytest 9.1.1；
-  覆盖 `CONFIG_APP_COMPILE_TIME_DATE=n`、UART-only 示例说明和 test 合同。发布文档另以
-  diff、证据一致性和 `git diff --check` 复核。4 项 skip 是 Windows 普通文件 symlink
-  测试夹具权限边界，不是功能失败。
-- 当前本地 `main@d93f848` / `test@89e0b58` 均领先远端；远端
-  `main@1e09789` / `test@8ba27b5` 仍只证明上一提交，尚无覆盖本版本的新 Actions。
-  test 跨工作树全量已经完成，但 final branch-local 全量仍待执行。
+- `v0.1.0` 的本地子门禁为 UART-only 专项 `5 passed in 0.30s`、main
+  `120 passed in 61.67s`、test 文档修订前跨工作树预检
+  `587 collected, 583 passed, 4 skipped, 0 failed in 332.84s`。
+- 首轮版本元数据检查点为 `main@e63fc15`，文档状态修订前 test 检查点为
+  `test@636ca0f`。在该 test HEAD 中清除 `ESP_MCP_SOURCE_ROOT` / `PYTHONPATH`，从
+  `index-test` 自身执行 `python -m pytest`；Python 3.12.13 下的文档状态修订前
+  branch-local 检查点为
+  `587 collected, 583 passed, 4 skipped, 0 failed in 263.85s (0:04:23)`。
+  4 项 skip 是 Windows 普通文件 symlink 测试夹具权限边界，不是功能失败。
+- 该 branch-local 结果不冒充最终发布 SHA。文档状态修订合入新的 test HEAD 后仍会复跑，
+  精确结果进入 GitHub Release/Actions 外部证据。
+- 发布文档另以 diff、证据一致性和 `git diff --check` 复核。tag 内容无法自证其后
+  创建的 GitHub Release；精确发布证据以 `v0.1.0` tag/Release 页面及对应
+  GitHub Actions 为准，本文件不预称外部操作状态。
 - B4.4 仓储基础红灯 `5 failed, 11 passed in 1.94s`；实现后专项
   `16 passed in 1.93s`，迁移/raw/error/历史对账合并
   `84 passed in 7.84s`，main 全量 `120 passed in 47.30s`。
@@ -439,20 +443,22 @@
   重启验收均不适用。
 - B4.4/C1-C3 的正式数据库验收此前已完成；本次新版只追加 exec structured-error
   正式投影复验。本轮仍不会修改仓库内用户自有的 plugin manifest 差异。
-- 确定性 UART 行为候选已分步提交到 main/test，并完成第一次 main 合入 test；当前
-  版本元数据文档仍待提交和同步。远端尚未收到这些提交，没有覆盖它们的新 Actions，
-  `v0.1.0` tag 和 Release 也尚未创建。
+- 确定性 UART 行为候选和版本元数据均已提交；首轮版本元数据检查点为
+  `main@e63fc15`，文档状态修订前 test 检查点为 `test@636ca0f`。后者的 branch-local
+  结果只是文档状态修订前检查点，不是最终发布 SHA。
 
-## v0.1.0 后续发布流程
+## v0.1.0 发布证据边界
 
 1. KEY1 两态、临时文件删除和 UART-only 严格实板闭环已经完成，不再列为待办。
-2. main/test 行为候选分步提交和第一次 main 合入 test 已完成；本次版本元数据文档仍需
-   单独提交并同步到 test。
-3. 在 test 分支清除跨工作树源码覆盖后运行 final branch-local 全量门禁。
-4. 推送 main/test，并等待新的 Windows/Linux、Python 3.10/3.12 Actions 全部成功。
-5. 上述门禁全部成功后再创建 `v0.1.0` tag 和正式 Release。
-6. 本次是 GitHub-only 发布；Marketplace 更新、cachebuster 和插件重启验收不适用。
-7. 用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；无需
+2. 首轮版本元数据检查点 `main@e63fc15`、文档状态修订前 test 检查点
+   `test@636ca0f` 和对应 branch-local 结果均已记录；文档合入后的新 test HEAD 仍会
+   复跑，本地检查点不替代 GitHub Actions 或最终发布 SHA。
+3. Actions、tag 和 Release 是仓库快照之外的发布操作，本文件不预填其完成状态。tag
+   内容无法自证其后创建的 GitHub Release；精确证据以
+   [v0.1.0 tag/Release 页面](https://github.com/tjing8609-cyber/esp-mcp-toolchain/releases/tag/v0.1.0)
+   和对应 GitHub Actions 为准。
+4. 本次是 GitHub-only 发布；Marketplace 更新、cachebuster 和插件重启验收不适用。
+5. 用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；无需
    后续工具链动作，也不是可选待办或发布阻塞。现有 UART 结果仍不写成蜂鸣器电气验证。
-8. 详细发布验证记录见 `docs/15-release-readiness.md`，正式说明草案见
+6. tag 前冻结检查记录见 `docs/15-release-readiness.md`，正式 Release Notes 见
    `docs/16-release-notes-v0.1.0.md`。
