@@ -9,14 +9,18 @@
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
 - 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测、SQLite v3
   正式日志链、12 套任务书能力和 48/12/12 MCP 面均已完成。当前 Codex 任务已从
-  Marketplace 安装版本 `0.1.0+codex.20260730084223` 加载 ESP skill 和 MCP tools。
+  Marketplace 安装版本 `0.1.0+codex.20260730084223` 加载 ESP skill 和 MCP tools；
+  该安装版只是既有插件验收背景，不是 `v0.1.0` GitHub 发布证据。
 - 2026-07-30 已完成非蜂鸣器实板封口：KEY1 松开/按住两态、UART-only
   backup→flash→READY/HEARTBEAT→restore、MicroPython/mpremote 恢复，以及四个临时
   验收文件的精确删除。用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP
   工具链缺陷；该项不再专项处理，不是工具链未完成项，也不阻塞发布。
-- 当前工作树新增确定性构建修复 `CONFIG_APP_COMPILE_TIME_DATE=n`、对应 test 合同和
-  发布文档；这些变更尚未形成正式 main/test 提交，也没有新的远端 Actions 或
-  Marketplace 包，因此项目状态是“发布候选，等待正式发布”。
+- 当前正式发布目标为首个 GitHub 版本 `v0.1.0`。确定性构建修复已形成 main 提交
+  `d93f848`，对应 test 合同已形成提交 `ff373c4`，第一次 main 合入 test 已形成
+  合并提交 `89e0b58`；本次版本元数据文档仍待单独提交并同步。
+- 剩余发布门禁是 test 分支 final branch-local 全量、main/test 推送后的新 Actions
+  矩阵，以及最后创建 tag/Release。此次为 GitHub-only 发布，Marketplace 更新、
+  cachebuster 和插件重启验收不适用。
 
 ## 本轮已完成实现
 
@@ -164,14 +168,15 @@
 ## 本地验证
 
 - 测试工作树通过 `ESP_MCP_SOURCE_ROOT` 显式加载实现工作树源码。
-- 当前未提交候选的最终本地门禁为 UART-only 专项 `5 passed in 0.30s`、main
+- `v0.1.0` 源码冻结前的最终本地门禁为 UART-only 专项 `5 passed in 0.30s`、main
   `120 passed in 61.67s`、test 跨工作树
   `583 passed, 4 skipped, 0 failed in 332.84s`，Python 3.12.13、pytest 9.1.1；
   覆盖 `CONFIG_APP_COMPILE_TIME_DATE=n`、UART-only 示例说明和 test 合同。发布文档另以
   diff、证据一致性和 `git diff --check` 复核。4 项 skip 是 Windows 普通文件 symlink
   测试夹具权限边界，不是功能失败。
-- 当前远端 `main@1e09789` / `test@8ba27b5` 仍只证明上一提交；本候选最终本地全量
-  已完成，但必须推送新提交后，才能用新的 Actions 作为正式发布证据。
+- 当前本地 `main@d93f848` / `test@89e0b58` 均领先远端；远端
+  `main@1e09789` / `test@8ba27b5` 仍只证明上一提交，尚无覆盖本版本的新 Actions。
+  test 跨工作树全量已经完成，但 final branch-local 全量仍待执行。
 - B4.4 仓储基础红灯 `5 failed, 11 passed in 1.94s`；实现后专项
   `16 passed in 1.93s`，迁移/raw/error/历史对账合并
   `84 passed in 7.84s`，main 全量 `120 passed in 47.30s`。
@@ -422,29 +427,32 @@
   但未回同步 main。现只回同步该测试合同；独立进程 `30/30`、main 全量
   `120 passed in 57.79s`，没有修改产品持久化时序。
 
-## 插件发布状态
+## v0.1.0 发布状态
 
 - 当前仓库的既有本地 plugin manifest 差异不属于本次提交，文件摘要保持不变。
   个人 Marketplace 源已用一次 cachebuster 更新为
   `0.1.0+codex.20260730084223`；用户重启后，当前 Codex 任务已从该版本路径
-  加载 ESP skill 和 MCP tools。安装缓存没有被直接修改。
+  加载 ESP skill 和 MCP tools。安装缓存没有被直接修改；这只是既有插件状态。
 - 新 Marketplace 源通过 plugin validator、发布测试 `120 passed in 57.90s` 和
-  `48 tools / 12 resources / 12 prompts` 直接枚举；活动版本切换已确认，但当前
-  未提交确定性构建修复只有在本候选同时发布为 Codex 插件时，才需要新包、一次
-  cachebuster 和再次重启验收。
+  `48 tools / 12 resources / 12 prompts` 直接枚举；活动版本切换已确认，但
+  `v0.1.0` 明确采用 GitHub-only 发布，因此 Marketplace 新包、cachebuster 和再次
+  重启验收均不适用。
 - B4.4/C1-C3 的正式数据库验收此前已完成；本次新版只追加 exec structured-error
   正式投影复验。本轮仍不会修改仓库内用户自有的 plugin manifest 差异。
-- 既有 UART-only 示例、构建门禁和 Monitor 竞态修复已提交、合入 test、完成双分支
-  推送和 Marketplace 源同步；当前工作树的编译时间戳修复和最终封口文档仍属于新的
-  `[Unreleased]` 候选。
+- 确定性 UART 行为候选已分步提交到 main/test，并完成第一次 main 合入 test；当前
+  版本元数据文档仍待提交和同步。远端尚未收到这些提交，没有覆盖它们的新 Actions，
+  `v0.1.0` tag 和 Release 也尚未创建。
 
-## 项目封口后的可选或需授权事项
+## v0.1.0 后续发布流程
 
 1. KEY1 两态、临时文件删除和 UART-only 严格实板闭环已经完成，不再列为待办。
-2. 当前候选最终本地 main/test 全量已完成；正式发布仍需精确提交、双分支新 Actions，
-   以及版本号、Release Notes 和 Git tag。
-3. 仅发布 GitHub 仓库时无需更新 Marketplace；若同时发布 Codex 插件，还需同步个人
-   Marketplace 源、使用一次 cachebuster，并由用户重启验收。
-4. 用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；无需
+2. main/test 行为候选分步提交和第一次 main 合入 test 已完成；本次版本元数据文档仍需
+   单独提交并同步到 test。
+3. 在 test 分支清除跨工作树源码覆盖后运行 final branch-local 全量门禁。
+4. 推送 main/test，并等待新的 Windows/Linux、Python 3.10/3.12 Actions 全部成功。
+5. 上述门禁全部成功后再创建 `v0.1.0` tag 和正式 Release。
+6. 本次是 GitHub-only 发布；Marketplace 更新、cachebuster 和插件重启验收不适用。
+7. 用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；无需
    后续工具链动作，也不是可选待办或发布阻塞。现有 UART 结果仍不写成蜂鸣器电气验证。
-5. 详细发布清单和禁止扩大声明的边界见 `docs/15-release-readiness.md`。
+8. 详细发布验证记录见 `docs/15-release-readiness.md`，正式说明草案见
+   `docs/16-release-notes-v0.1.0.md`。

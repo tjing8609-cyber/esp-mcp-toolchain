@@ -69,8 +69,8 @@ MicroPython 自动错误检测是在现有 exec、capture、Monitor 和 error pa
 - 相对路径修复前 15 个合同在旧 main 上全部失败；提交前 main 为 `119 passed in 17.64s`，test 显式加载 main 的完整门禁为 `243 passed in 31.50s`。
 - 源码与 Marketplace 源均已核对为 `48 tools / 12 resources / 12 prompts`；
   用户重启后，当前 Codex 任务已从
-  `0.1.0+codex.20260730084223` 安装路径加载 ESP skill 和 MCP tools。当前未提交
-  确定性构建修复只有在本候选同时发布为 Codex 插件时，才需要进入下一版包并再次验收。
+  `0.1.0+codex.20260730084223` 安装路径加载 ESP skill 和 MCP tools。该版本只是
+  既有插件验收背景；`v0.1.0` 采用 GitHub-only 发布，Marketplace 更新不适用。
 - 新硬件工具通过 fake serial、raw REPL 模拟和临时 SQLite/日志目录测试；测试不会访问真实开发板。
 - 2026-07-30 已再次完成当前 4 MiB 备份、真实擦除、MicroPython v1.28.0 恢复，并用
   全新 21 字节载荷完成相对上传、读回和下载；目标实际落在 workspace，插件缓存无同名
@@ -99,26 +99,30 @@ MicroPython 自动错误检测是在现有 exec、capture、Monitor 和 error pa
   子进程失败写成已完成清理。全部五种 plan 在读取 cache 前和 spawn 前检查 build 路径；
   该阶段定向 `39 passed in 2.30s`、main 全量 `120 passed in 60.59s`、test 显式加载
   当前 main `582 passed, 4 skipped in 297.08s`，独立复审 P0=0、P1=0。
-- 当前未提交候选的最终本地门禁为 UART-only 专项 `5 passed in 0.30s`、main
+- `v0.1.0` 源码冻结前的最终本地门禁为 UART-only 专项 `5 passed in 0.30s`、main
   `120 passed in 61.67s`、test 跨工作树
-  `583 passed, 4 skipped, 0 failed in 332.84s`。远端绿灯仍必须来自候选提交后的
-  新 Actions。
+  `583 passed, 4 skipped, 0 failed in 332.84s`。确定性修复已形成 main
+  `d93f848`、test 合同 `ff373c4` 和第一次 main 合入 test 的 `89e0b58`；final
+  branch-local 全量、推送后的新 Actions、tag 和 Release 仍待完成。
 
-## 发布封口
+## v0.1.0 发布流程
 
-已完成的发布步骤与封口后的可选事项如下：
+当前正式发布目标是首个 GitHub 版本 `v0.1.0`；“源码冻结”不表示 tag 或 Release
+已经存在。当前步骤如下：
 
 1. 既有功能提交、双分支 Actions、Marketplace
-   `0.1.0+codex.20260730084223` 和用户重启验收均已完成。
+   `0.1.0+codex.20260730084223` 和用户重启验收均已完成；这些是历史插件证据，不是
+   本次 GitHub 发布的新 Actions。
 2. KEY1 两态、板端临时文件删除和当前确定性 UART-only 严格实板闭环均已完成；
    它们不再是发布待办。
-3. 当前工作树新增 `CONFIG_APP_COMPILE_TIME_DATE=n`、对应 test 合同和最终文档；
-   最终本地全量已完成，内容仍处于 `[Unreleased]`，必须精确提交并取得新 Actions。
-4. 仅发布 GitHub 仓库时无需更新 Marketplace。若同时发布 Codex 插件，才更新个人
-   Marketplace 源并使用一次 cachebuster，不直接改安装缓存；用户重启后再核对版本和
-   48/12/12。
-5. 用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；本项目
+3. `CONFIG_APP_COMPILE_TIME_DATE=n` 和对应 test 合同已经分步提交，第一次 main 合入
+   test 已完成；本次版本元数据文档仍待单独提交并同步。
+4. test 分支 final branch-local 全量、main/test 推送后的新 Actions、`v0.1.0` tag
+   和正式 Release 仍待完成。
+5. 本次是 GitHub-only 发布；Marketplace 更新、cachebuster、安装缓存写入和插件重启
+   验收均不适用。
+6. 用户已确认蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；本项目
    不再安排该专项，也不将其作为发布门禁。Release Notes 可记录此范围归属，但普通回归、
    UART 或性能结果仍不得扩展为蜂鸣器电气证据。
-6. 版本号、Git tag 和正式 Release 由用户在
-   `docs/15-release-readiness.md` 清单全部满足后决定。
+7. 只有 `docs/15-release-readiness.md` 的剩余门禁全部满足后，才创建 tag 和
+   Release；正式说明草案见 `docs/16-release-notes-v0.1.0.md`。

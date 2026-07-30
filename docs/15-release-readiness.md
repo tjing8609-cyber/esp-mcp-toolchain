@@ -1,10 +1,10 @@
-# 正式发布前状态与检查表
+# v0.1.0 正式发布验证记录
 
 更新时间：2026-07-30（Asia/Shanghai）
 
 ## 结论
 
-任务书范围内的通用 ESP MCP 工具链已经形成发布候选：
+任务书范围内的通用 ESP MCP 工具链源码已冻结为首个 GitHub 版本 `v0.1.0`：
 
 - 6 项基础能力、6 项提高能力；
 - 12 套公开 prompts；
@@ -17,17 +17,22 @@
 - 无蜂鸣器 UART-only ESP-IDF 构建、烧录、监控、从地址 0 写回完整 4 MiB 备份，
   以及 MicroPython/mpremote 恢复复核闭环。
 
-当前状态是“待正式发布”，不是“已经发布”。本文件区分已经确认的能力、仍需执行的
-发布动作和明确排除的业务固件范围。
+当前状态是“源码已冻结、发布门禁尚未全部完成”，不是“tag/Release 已存在”。本次是
+GitHub-only 发布，Marketplace 更新、cachebuster 和插件重启验收不适用。本文件区分
+已经确认的能力、仍需执行的发布动作和明确排除的业务固件范围。
 
-## 当前候选构成
+## v0.1.0 构成
 
-实现工作树为 `index/main`，测试工作树为 `index-test/test`。本轮候选包含：
+实现工作树为 `index/main`，测试工作树为 `index-test/test`。本版本包含：
 
 1. `examples/esp_idf_uart_smoke/sdkconfig.defaults` 禁用编译日期/时间元数据。
 2. UART-only 示例说明补充产物漂移根因、修复和烧录前哈希门。
 3. test 分支增加 `CONFIG_APP_COMPILE_TIME_DATE=n` 与说明合同。
 4. README、CHANGELOG、开发状态、路线图、能力矩阵、Bug 学习记录和本发布清单。
+
+确定性 UART 行为候选已形成 main 提交 `d93f848`，test 合同已形成提交
+`ff373c4`，第一次 main 合入 test 已形成合并提交 `89e0b58`。本次 `v0.1.0`
+版本元数据文档仍需单独提交并同步到 test。
 
 仓库内 `.codex-plugin/plugin.json` 的现有差异属于用户自有改动，不在本候选范围，
 不得暂存、覆盖或随发布提交。
@@ -57,8 +62,10 @@ python -m pytest
 另以 diff、证据一致性和 `git diff --check` 复核；pytest 结果不被扩写为对全部文字
 陈述的自动验证。
 
-远端 `main@1e09789` 与 `test@8ba27b5` 的既有 Actions 已通过，但它们不包含当前未提交
-候选。只有候选精确提交并推送后的新 Actions 才能作为正式发布门禁。
+本地 `main@d93f848` 与 `test@89e0b58` 已包含行为候选并领先远端；当前远端
+`main@1e09789` 与 `test@8ba27b5` 的既有 Actions 不包含本版本。上述 test 结果是
+跨工作树门禁，清除 `ESP_MCP_SOURCE_ROOT` 后的 final branch-local 全量仍待执行。
+只有精确推送后的新 Actions 才能作为正式发布门禁。
 
 ## 实板封口证据
 
@@ -130,26 +137,29 @@ python -m pytest
 ## 业务固件范围说明
 
 按用户确认，蜂鸣器瞬时电流/掉电属于业务固件问题，不是 ESP MCP 工具链缺陷；本项目
-不再安排蜂鸣器专项，该项不阻塞提交、Actions、Marketplace、标签或 Release。UART-only
+不再安排蜂鸣器专项，该项不阻塞提交、Actions、标签或 Release。UART-only
 源码和本轮工具调用没有主动配置 GPIO25、LEDC、PWM 或蜂鸣器，但这只能说明工具链验收
 范围，不能扩展为 Boot ROM、复位线路、板级电气瞬态或蜂鸣器供电行为的验证。
 
-## 正式发布前必须完成
+## v0.1.0 发布检查表
 
 - [x] 精确复核 main/test diff，继续排除 `.codex-plugin/plugin.json` 用户差异。
 - [x] 运行最终 UART-only 专项、main 全量和 test 跨工作树全量测试。
-- [ ] 分步提交 main 文档/实现和 test 合同；提交正文写明 Cause/Fix/Validation/Scope。
-- [ ] 推送前把已固定的 main 合入 test，清除跨工作树源码覆盖后，在 test 分支自身运行
-  全量门禁；当前 test 工作树尚未同步 main 的新 defaults/README，不能直接作为远端
-  test 候选推送。
+- [x] 分步提交 main 行为候选和 test 合同；提交正文记录
+  Cause/Fix/Validation/Scope。
+- [x] 完成第一次 main 合入 test，合并提交为 `89e0b58`。
+- [ ] 提交本次 `v0.1.0` 版本元数据文档并同步到 test。
+- [ ] 清除跨工作树源码覆盖后，在 test 分支自身运行 final branch-local 全量门禁。
 - [ ] 推送 main/test，并等待新的 Windows/Linux、Python 3.10/3.12 Actions 全部成功。
-- [ ] 若仅发布 GitHub 仓库，记录 Marketplace 不适用；若发布 Codex 插件，则更新个人
-  Marketplace 源并使用一次 cachebuster，不得直接改安装缓存。
-- [ ] 若发布 Codex 插件，用户重启 Codex 后核对活动插件版本和
-  `48 tools / 12 resources / 12 prompts`；仓库单独发布时不适用。
-- [ ] 冻结版本号、发布说明和 Git tag；在此之前保持 `[Unreleased]`。
+- [x] 确认本次为 GitHub-only 发布；Marketplace 更新、cachebuster、安装缓存写入和
+  插件重启验收均不适用。
+- [x] 冻结版本号 `v0.1.0` 并形成
+  `docs/16-release-notes-v0.1.0.md` 发布说明草案。
+- [ ] 新 Actions 全部成功后创建 `v0.1.0` tag 和正式 Release。
 - [x] 已记录蜂鸣器问题的业务固件范围、非工具链缺陷和非发布门禁结论，同时保留 UART
   证据不得扩展为 GPIO/蜂鸣器电气验证的边界。
+
+在 final branch-local、推送和新 Actions 完成前，不得把发布说明草案写成远端已发布。
 
 ## 发布时不得声称
 
@@ -158,4 +168,4 @@ python -m pytest
   MicroPython/mpremote 复核，没有第二次完整 4 MiB read-back。
 - 不得把首次 host build 的 176,896 字节 `AA9E9AFA...09A9` 写成本次实板烧录镜像；
   本次验收的是 176,816 字节 `4017628F...8CA2`。
-- 不得把当前远端绿灯写成覆盖尚未提交的候选。
+- 不得把当前远端绿灯写成覆盖尚未推送的 `v0.1.0`。
