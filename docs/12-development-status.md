@@ -7,7 +7,10 @@
 - 实现工作树：`index` / `main`。
 - 测试工作树：`index-test` / `test`。
 - 当前目标：完成任务书 6 项基础能力和 6 项提高能力，并形成 12 套 prompts + 48 个小工具的插件架构。
-- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3、B4.1-B4.4 与 v3-C1-C3 已完成源码、本地/远端软件门禁和 Marketplace 发布。当前安装插件为 `0.1.0+codex.20260729114414`；正式项目数据库已在 v2 备份和临时副本演练后显式升级到 v3，并完成首次历史补投影与第二次幂等回放。2026-07-30 已继续完成活动程序停止、受控异常解析、GPIO34、回归、性能与 soft reset 实板验收；验收发现的 exec/run-file 正式错误漏投影已在仓库源码修复，尚待新版 Marketplace 重载后的正式数据库复验。
+- 当前状态：启动器、串口生命周期、reset、Raw REPL/程序停止/错误检测和 12 套任务书能力已完成软件实现。SQLite v3-B2/B3、B4.1-B4.4 与 v3-C1-C3 已完成源码、本地/远端软件门禁和 Marketplace 发布。当前安装插件为 `0.1.0+codex.20260730053724`；正式项目数据库已在 v2 备份和临时副本演练后显式升级到 v3，并完成首次历史补投影与第二次幂等回放。2026-07-30 已继续完成活动程序停止、受控异常解析、GPIO34、回归、性能与 soft reset 实板验收；exec/run-file 正式错误漏投影已修复并发布，重启后的受控 exec 已确认该 run 的 `esp_logs_get.errors` 恰好返回一条且解析来源为 `sqlite_errors`。
+- 本轮新增的 UART-only 示例和 `esp_project_build` target/fullclean 门禁已完成源码、定向合同
+  与 ESP-IDF 5.2.1 主机构建；它们尚未提交、推送或同步到 Marketplace，因此不能把当前
+  安装版本写成已包含本轮变化。
 
 ## 本轮已完成实现
 
@@ -309,7 +312,12 @@
   即时 `error_report` 和 `esp_error_parse_log` 结构均正确。正式 errors 为空暴露
   producer 漏项；`esp_exec_code` / `esp_run_file` 现只声明 `structured_error`
   completion artifact。旧实现红灯为 `2 failed, 1 passed`，修复后专项通过，独立审查
-  P0=0、P1=0；安装插件仍是旧版本，不能提前把正式 `sqlite_errors` 复验记为通过。
+  P0=0、P1=0。
+- Marketplace/安装缓存更新到 `0.1.0+codex.20260730053724` 后，受控 run
+  `exec_code_20260730_150437_0d9c65aa` 直接复验 producer。authoritative schema-v3
+  `errors` 恰好返回一条 `micropython_traceback / ValueError / <stdin>:1`，error ID 为
+  `5d63306a-a820-5282-9728-f95bee726015`；`esp_error_parse_log.scan_sources` 只有
+  `sqlite_errors`，计数为 1。COM3 调用后仍可用且未占用。
 - GPIO34 严格查询 run `gpio_status_20260730_125804_b64cdc22` 返回有效电平 `0`、
   `gpio_read_only=true`、`mode_changed=false`、`failed_count=0`；没有同步人工按键观察，
   不能断言实体 KEY1 当时被按下。正向回归 run
@@ -327,26 +335,45 @@
 - 本批实板操作未访问 GPIO25、蜂鸣器、PWM 或 GPIO32 stateful 用例，未发生 COM3
   断连；因此不能据此确认或排除蜂鸣器瞬时电流掉电。板端三个回归脚本与既有 21 字节
   载荷仍保留，未执行删除。
-- 本轮最终完整软件门禁为 main `120 passed in 60.53s`、test 显式加载 main
-  `559 passed, 4 skipped in 296.00s`；4 项 skip 是 Windows 普通文件 symlink 权限边界。
-- `build_flash_monitor` 只支持 ESP-IDF build→flash→monitor 链，本次 Raw BIN 恢复不能作为其通过证据；若执行需另行授权，恢复 MicroPython 还需再次授权。
+- 本轮最终完整软件门禁为 main `120 passed in 60.59s`、test 显式加载 main
+  `582 passed, 4 skipped in 297.08s`；4 项 skip 是 Windows 普通文件 symlink 权限边界。
+- 新增 `examples/esp_idf_uart_smoke`，因为原 `esp_idf_key_led_buzzer` 启动即初始化
+  LEDC/GPIO25，不能满足无蜂鸣器边界。首次 host build run
+  `build_20260730_152205_0508e89d` 成功；BIN 为 176,896 字节，SHA-256 为
+  `AA9E9AFA7036D2F78B183A4834835EBEDDD859AB3914D3509F9C00FD0AD409A9`，flash args
+  为 DIO / 40 MHz / 4 MiB，地址 `0x1000`、`0x10000`、`0x8000`。构建没有访问 COM3。
+- 首次 build 的 `set-target` 触发了 fullclean 依赖，但当时没有 build 目录，ESP-IDF
+  明确报告 `Nothing to clean`。后端现使用五种 target plan；三种需要 fullclean 或
+  sdkconfig 替换的计划在 `confirm_target_change=false` 时零子进程，且记录
+  `sdkconfig.old` 覆盖风险、partial possible 和 postflight target verified。实际增量构建
+  返回 `target_plan=build`、两项 planned 均为 false、`target_verified=true`。
+- 复审发现首轮路径门禁只覆盖 destructive plan，普通 build 仍可能经 build
+  junction/symlink 写到项目外。现已在读取 target cache 前和启动 `idf.py` 前对全部五种
+  plan 做两次检查，同时拒绝链接或非普通文件形式的 `CMakeCache.txt`。新增普通 build
+  与首次 define-target 零 spawn 合同；定向 `39 passed in 2.30s`，最终独立复审
+  P0=0、P1=0。
+- `build_flash_monitor` 的 host build 已完成；完整 4 MiB backup→flash→monitor 心跳→
+  restore MicroPython 尚未执行，仍需精确授权。此前 Raw BIN 恢复不能冒充该链通过。
 
 ## 插件发布状态
 
 - 当前仓库的既有本地 plugin manifest 差异不属于本次提交；个人 Marketplace 源和
-  当前会话加载的安装缓存均为 `0.1.0+codex.20260729114414`。
+  当前会话加载的安装缓存均为 `0.1.0+codex.20260730053724`。
 - Marketplace 源通过 plugin validator、发布测试 `120 passed` 和
   `48 tools / 12 resources / 12 prompts` 直接枚举；用户重启后已再次核对缓存版本、
   48 个活动工具、12 resources、12 prompts 和正确项目上下文。
-- B4.4/C1-C3 的正式数据库验收已使用该安装插件完成；本轮仍不会修改仓库内用户自有的
-  plugin manifest 差异。
+- B4.4/C1-C3 的正式数据库验收此前已完成；本次新版只追加 exec structured-error
+  正式投影复验。本轮仍不会修改仓库内用户自有的 plugin manifest 差异。
+- UART-only 示例和构建门禁仍只在工作树中；完成提交、双分支推送和 Marketplace 源同步
+  前，当前安装缓存继续代表旧版本，不作为本轮实现证据。
 
-## 待完成
+## 项目封口后的可选或需授权事项
 
-1. 将 exec/run-file `structured_error` 修复同步到个人 Marketplace；用户重启后重新执行
-   受控异常，确认正式 `errors` 恰有一条且 `esp_error_parse_log.scan_sources` 使用
-   `sqlite_errors`，不再依赖兼容 event。
-2. 如需把 GPIO34 与实体 KEY1 active-low 行为升级为板测证据，需用户分别在松开和按下
+1. 如需把 GPIO34 与实体 KEY1 active-low 行为升级为板测证据，需用户分别在松开和按下
    状态触发两次查询；单次 0/1 不足以证明实体动作。
-3. 临时板端三个回归脚本、`/mcp_acceptance_payload.txt` 的删除，以及擦除和新的
-   烧录/恢复仍按精确动作单独确认。
+2. 临时板端三个回归脚本和 `/mcp_acceptance_payload.txt` 的删除仍按精确路径与
+   `confirm=true` 单独确认。
+3. UART-only host build 已完成；严格实板闭环仍需当前 4 MiB 备份、flash、至少三条连续
+   HEARTBEAT 的 monitor 证据及整片恢复 MicroPython。各高风险动作保持精确确认。
+4. 蜂鸣器瞬时电流专项按用户决定延期。现有结果不能确认或排除该问题，也不会把它写成
+   本项目已验证能力。

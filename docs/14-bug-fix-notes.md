@@ -1590,8 +1590,9 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   源逐字节一致，SHA-256 均为
   `2DDF47ADFD6E81358CE6B00AA1EF332AF66AE718BD3AE2CAAC452218958CD163`，版本化插件缓存
   中同名文件数为 0。
-- 备份、擦除、恢复、reset 和下载终态均从 authoritative schema-v3 SQLite 读回。板端
-  临时文件未删除，程序停止、错误解析、GPIO、回归、性能和软复位仍需后续独立验收。
+- 备份、擦除、恢复、reset 和下载终态均从 authoritative schema-v3 SQLite 读回。该时点
+  板端临时文件未删除；后续程序停止、错误解析、GPIO34 查询、回归、性能和软复位已分别
+  完成验收。
 
 ## 2026-07-30：exec/run-file 已解析 Traceback，但正式 SQLite errors 为空
 
@@ -1642,6 +1643,127 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 本切片只正式投影可解析的 MicroPython Traceback。`mpremote_timeout`、
   `raw_repl_enter_failed` 等没有 `error_report` 的顶层操作错误仍不进入 errors；如要扩展
   必须单独设计 `result_error` 的优先级和去重合同。
-- 当前安装插件仍为 `0.1.0+codex.20260729114414`。源码软件门禁不能替代新版 Marketplace
-  重载后的实板验证；后续应执行新的受控异常，并要求
-  `esp_logs_get.errors` 恰有一条、`esp_error_parse_log` 来源为 `sqlite_errors`。
+- 源码软件门禁不能替代新版 Marketplace 重载后的实板验证；最终复验结果见下一节。
+
+### 新版插件实板复验
+
+- 个人 Marketplace 源通过 `plugin-creator` validator 更新为
+  `0.1.0+codex.20260730053724`；用户重启后，当前任务实际加载的技能和安装缓存均为
+  该版本。
+- COM3 受控 run `exec_code_20260730_150437_0d9c65aa` 执行
+  `ValueError("ESP_MCP_SQLITE_PROJECTION_FINAL")`。即时结果收到完整 Raw REPL ACK、
+  stdout EOT、stderr EOT 和提示符，并生成
+  `micropython_traceback / ValueError / <stdin>:1`。
+- 该 run 的 `esp_logs_get.errors` 从 authoritative schema-v3 SQLite 返回恰好一条正式
+  error，ID 为
+  `5d63306a-a820-5282-9728-f95bee726015`；`esp_error_parse_log.scan_sources`
+  只有 `{kind: sqlite_errors, count: 1}`，没有回退到兼容 event。
+- 工具因主动抛出的异常返回 `ok=false` 是预期业务结果。调用后 COM3
+  `available=true`、`busy=false`；本次没有刷写、擦除、删除、GPIO 或板端文件修改，
+  也未调用 reset 工具或显式发送复位命令；`physical_reset_excluded=false`，串口控制线
+  效应未独立排除。
+- 该实板调用直接覆盖 exec producer；mpremote run-file 与 Raw REPL 嵌套 run-file
+  的单条正式投影由前述软件合同覆盖。蜂鸣器瞬时电流专项按用户决定延期，不能由本结果
+  推断。
+
+## 2026-07-30：无蜂鸣器验收若复用 key/LED/buzzer 示例会在启动阶段访问 GPIO25
+
+### 症状
+
+- 用户决定暂不处理蜂鸣器瞬时电流专项，但原计划中的 ESP-IDF 实板闭环仍指向
+  `examples/esp_idf_key_led_buzzer`。
+- 只承诺“不按 KEY1”仍不足以建立无蜂鸣器边界。
+
+### 根因
+
+- 该示例在 `app_main()` 启动时无条件初始化 LEDC、绑定 GPIO25，再把占空比设为 0；
+  因此即使没有蜂鸣声，应用也已经访问 GPIO25/PWM。
+- GPIO34 若在启动或运行时读到低电平，示例会进入五次蜂鸣器脉冲。软件无法保证人工
+  不按键、抖动或输入状态不会触发该分支。
+
+### 修复
+
+- 新增 `examples/esp_idf_uart_smoke`，只包含 `ESP_LOGI`、FreeRTOS delay、启动 READY
+  和每秒递增 HEARTBEAT。
+- 合同要求应用 component 只编译唯一 `main.c`，拒绝额外 components/source；扫描全部
+  应用源码并拒绝 GPIO、LEDC、PWM、MCPWM、RMT、DAC 和直接寄存器接口。
+- `sdkconfig.defaults` 精确固定 ESP32、DIO、40 MHz、4 MiB、single-app、UART0 115200
+  和 INFO 日志；生成的 sdkconfig/dependencies/managed components 由 Git 忽略。
+
+### 验证和边界
+
+- 初始四项合同在旧 main 上为预期 `4 failed in 2.95s`，首轮实现为
+  `4 passed in 0.62s`；独立复审收紧后五项为 `5 passed in 0.28s`。
+- host build run `build_20260730_152205_0508e89d` 成功；BIN 176,896 字节，SHA-256
+  `AA9E9AFA7036D2F78B183A4834835EBEDDD859AB3914D3509F9C00FD0AD409A9`，flash args
+  为 DIO / 40 MHz / 4 MiB，地址为 `0x1000`、`0x10000`、`0x8000`。
+- 源码静态边界不能证明 ROM bootloader、复位瞬间或板级上拉下拉的 GPIO25 电气波形；
+  这需要示波器。当前结果也没有烧录或监控 UART-only 固件。
+- 本步骤未访问 COM3，未驱动 GPIO25/PWM，未擦除、烧录、删除或恢复；蜂鸣器专项继续
+  标记为延期。
+
+## 2026-07-30：普通 build 隐式执行 set-target，绕过 full clean 确认门
+
+### 症状
+
+- `run_idf_build()` 在生成的 sdkconfig 不存在或目标不匹配时，直接拼接
+  `idf.py set-target <target> build`。
+- `esp_project_build` 没有对应确认参数，看起来只是普通主机构建，却可能删除既有构建
+  产物并替换配置。
+
+### 根因
+
+- ESP-IDF 5.2.1 官方动作表声明 `set-target` 依赖 `fullclean`；`fullclean` 会递归删除
+  build 目录内容。
+- 同一官方 CMake 入口会在 set-target 时把 sdkconfig 重命名为 `sdkconfig.old`；若
+  `sdkconfig.old` 已存在，默认 rename 存在覆盖风险。
+- 旧后端只读取 sdkconfig，没有检查 `build/CMakeCache.txt` 的 IDF_TARGET，也没有区分
+  “计划执行”“子进程已启动”“可能部分完成”和“目标事后验证通过”。
+- 首轮修复又只给三种 destructive plan 加路径检查，错误假设普通 `build` 和
+  `define_target_build` 不会产生破坏性路径影响；实际上它们同样会向 build 目录写入，
+  junction/symlink 指向项目外时仍可能越界。
+
+### 修复
+
+- 将预检固定为五种计划：
+  - `build`：sdkconfig 与 cache 均匹配；
+  - `define_target_build`：首次使用 `-D IDF_TARGET=... build`，不 fullclean；
+  - `fullclean_build`：sdkconfig 匹配但 cache 冲突；
+  - `fullclean_define_target_build`：sdkconfig 缺失但 cache 冲突；
+  - `set_target_build`：既有 sdkconfig 目标冲突或缺字段。
+- 后三种 destructive plan 在 `confirm_target_change=false` 时于启动 idf.py 前返回
+  `target_change_confirmation_required`。确认后，纯 cache 冲突只 fullclean，不调用
+  set-target；只有 sdkconfig 确需替换时才调用 set-target。
+- 子进程环境显式绑定请求的 IDF_TARGET，不修改全局环境。预检记录 sdkconfig.old 是否
+  已存在及覆盖风险。
+- 结果分别记录 plan、confirmation、planned、command started/completed、
+  `side_effects_partial_possible` 和 postflight sdkconfig/cache target；确认后的命令即使
+  返回 0，只要两处目标未核对一致也 fail closed。
+- 路径检查前移到读取 target cache 之前并覆盖全部五种 plan，且在启动 `idf.py` 前再次
+  检查 resolved build 路径。build 目录的 symlink/junction/reparse/越界，以及链接或
+  非普通文件形式的 `CMakeCache.txt` 均拒绝并保持零 spawn。
+- timeout 返回 `command_completed=false`；结果不再提供会把计划或子进程启动误解为
+  具体 `set-target`/`fullclean` 已执行的 invoked 字段。
+- `build_flash_monitor` 明确分成首次安全 build、目标变更单独授权并重新 build、核对
+  产物、烧录单独授权、flash 与独立 monitor，两个确认不能互相代替。
+- 关键安全字段加入 `logged_task.result_payload_keys`，写入当前 build run 的 SQLite
+  completion；工具数保持 48，MCP schema 只新增默认 false 的参数。
+
+### 测试和边界
+
+- 第一轮合同在旧实现上为预期 `6 failed, 6 passed`；缓存冲突、sdkconfig.old、失败和
+  postflight 合同追加后为预期 `8 failed, 3 passed`。
+- 修复后 UART、后端、工具日志和 MCP 架构定向门禁为 `39 passed in 2.30s`，覆盖五种
+  plan、未确认零 spawn、普通 build/首次 define-target 的 reparse 零 spawn、启动前
+  二次路径检查、非普通 CMake cache、timeout、精确命令、CRLF/missing cache target、
+  spawn/nonzero/postflight 失败、SQLite 安全字段、MCP 默认值和 48 tools。
+- main 全量为 `120 passed in 60.59s`；test 显式加载当前 main 为
+  `582 passed, 4 skipped in 297.08s`。最终独立复审为 P0=0、P1=0。
+- 新后端对已配置 UART-only 工程的实际增量构建返回 `target_plan=build`、
+  `confirmation_required=false`、`fullclean_planned=false`、
+  `set_target_planned=false`、`target_verified=true`，且 BIN 哈希保持不变。
+- 首次旧实现构建虽触发 set-target 的 fullclean dependency，但当时没有 build 目录，
+  ESP-IDF 明确输出 `Nothing to clean`；这只证明该次没有既有产物可删，不代表旧通用路径
+  安全。
+- destructive 三种确认路径只通过临时目录和模拟子进程验证，本轮没有实际执行
+  fullclean、set-target、烧录、擦除、恢复、文件删除或 COM3 操作。

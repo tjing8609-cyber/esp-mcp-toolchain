@@ -37,7 +37,7 @@ def test_build_skips_set_target_when_sdkconfig_matches(tmp_path, monkeypatch):
     assert "set-target" not in captured["command"]
 
 
-def test_build_without_sdkconfig_uses_cache_target_without_set_target(tmp_path, monkeypatch):
+def test_build_sets_target_without_fullclean_when_sdkconfig_is_missing(tmp_path, monkeypatch):
     _prepare_idf(tmp_path, monkeypatch)
     project = tmp_path / "project"
     project.mkdir()

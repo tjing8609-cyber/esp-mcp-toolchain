@@ -23,8 +23,8 @@
 | 基础 | 微控制器复位 | `microcontroller_reset` | `esp_reset`、串口采集工具 | soft reset 已完成本轮实板验收 | 本轮同一调用捕获 `MPY: soft reboot`、MicroPython banner 与 `>>>`；公共字段仍保留 `reset_confirmed=false`、`output_causality_confirmed=false`。 |
 | 基础 | 串口监控 | `serial_monitor` | `esp_serial_capture`、4 个后台 Monitor 工具 | 已实现 | 支持游标、原始字节持久化、状态机、停止清理和断连报告；UART 不能替代物理外设观察。 |
 | 基础 | 运行日志检索 | `runtime_log_search` | `esp_logs_latest/get/query` | 已实现 | SQLite runs/events 是正式查询源，JSONL 只是审计镜像。 |
-| 基础 | MicroPython 错误报告 | `debug_error` | `esp_error_parse_text/log`、exec/capture/Monitor | 实板解析通过；正式 error 投影修复待重载复验 | 受控 `ValueError` 的即时报告与兼容 event 解析正确；实板发现 exec/run-file 未 opt-in `structured_error`，源码与合同已修复。新版插件重载前不能把正式 `sqlite_errors` 来源记为通过。 |
-| 提高 | 固件自动烧录 | `build_flash_monitor` | `esp_project_build`、`esp_flash_firmware` | 已实现 | 烧录必须有本轮明确授权并保持 `confirm=True` 门；烧录后监控需单独启动。 |
+| 基础 | MicroPython 错误报告 | `debug_error` | `esp_error_parse_text/log`、exec/capture/Monitor | 已发布并通过正式 error 实板复验 | 新版插件的受控 `ValueError` run 中，`esp_logs_get.errors` 从 authoritative schema-v3 SQLite 恰好返回一条，error ID 为 `5d63306a-a820-5282-9728-f95bee726015`；`esp_error_parse_log` 只使用 `sqlite_errors`，历史兼容来源仍保留用于旧日志。 |
+| 提高 | 固件自动烧录 | `build_flash_monitor` | `esp_project_build`、`esp_flash_firmware` | 已实现；UART-only host build 已通过，当前版本实板链待授权 | 普通 build 不得隐式 set-target/fullclean；全部五种 plan 在读取 cache 前和启动前检查 build 路径。target/cache 冲突需 `confirm_target_change=True` 的独立明确授权；烧录仍需 `confirm=True`，烧录后监控需单独启动。 |
 | 提高 | 远程文件管理 | `remote_file_management` | `esp_file_list/read/upload/download/delete` | 上传/读取/列表/下载已发布并通过实板复验；删除待确认 | 面向 MicroPython；主机下载目标遵守 workspace 边界且不覆盖已有文件，板端删除必须明确路径和 `confirm=True`。 |
 | 提高 | GPIO 状态在线查询 | `gpio_status_query` | `esp_gpio_status` | GPIO34 实板查询通过 | 只读明确 pins，不调用 `Pin.IN`、`Pin.OUT` 或 `init` 改模式；本轮返回有效电平 0，但没有同步人工按键观察，不能证明实体 KEY1 动作。进入 raw REPL 会中断当前程序。 |
 | 提高 | 硬件信息自动采集 | `review_hardware_context` | `esp_hardware_info` | 已实现 | passive 只接受当前已枚举串口，并合并 host USB descriptor 与 reviewed mapping。可选 MicroPython runtime 模式需要 `allow_program_interrupt=true`；证据不扩大为“物理复位已排除”。 |
@@ -68,7 +68,7 @@ MicroPython 自动错误检测是在现有 exec、capture、Monitor 和 error pa
   `scripts/run_mcp_server.py` 定位专用环境，定位失败时不会静默运行全局 Python。
 - 相对路径修复前 15 个合同在旧 main 上全部失败；提交前 main 为 `119 passed in 17.64s`，test 显式加载 main 的完整门禁为 `243 passed in 31.50s`。
 - 源码与已安装插件均已核对为 `48 tools / 12 resources / 12 prompts`；当前 Marketplace
-  与运行缓存均为包含路径修复的 `0.1.0+codex.20260729114414`。
+  与运行缓存均为 `0.1.0+codex.20260730053724`。
 - 新硬件工具通过 fake serial、raw REPL 模拟和临时 SQLite/日志目录测试；测试不会访问真实开发板。
 - 2026-07-30 已再次完成当前 4 MiB 备份、真实擦除、MicroPython v1.28.0 恢复，并用
   全新 21 字节载荷完成相对上传、读回和下载；目标实际落在 workspace，插件缓存无同名
@@ -76,15 +76,30 @@ MicroPython 自动错误检测是在现有 exec、capture、Monitor 和 error pa
   插桩和 soft reset 均完成实板调用与 SQLite run 复核。
 - 实板异常 run 暴露 exec/run-file 的结构化报告只写 complete event、没有进入正式
   `errors`。源码已为两项增加 `structured_error` completion artifact；旧实现红灯为
-  `2 failed, 1 passed`，修复后相关合同与独立审查通过。当前安装缓存尚未包含这次修复，
-  因此正式 `sqlite_errors` 来源仍待重启后实板复验。
+  `2 failed, 1 passed`，修复后相关合同与独立审查通过。新版插件重启后的
+  `exec_code_20260730_150437_0d9c65aa` 已确认正式 error 恰好一条，解析来源仅为
+  `sqlite_errors`。
+- 无蜂鸣器闭环使用独立 `esp_idf_uart_smoke`，不复用启动即绑定 GPIO25/LEDC 的
+  key/LED/buzzer 示例。host build 已生成 176,896 字节 BIN，SHA-256 为
+  `AA9E9AFA7036D2F78B183A4834835EBEDDD859AB3914D3509F9C00FD0AD409A9`；本步骤未访问
+  COM3。软件合同锁定唯一应用源、READY/HEARTBEAT 和九项 board defaults。
+- `esp_project_build` 的 target 预检现形成五种 plan；三种 destructive plan 在未确认时
+  不启动 idf.py。SQLite completion 保留 plan、confirmed、command started、
+  command completed、partial possible 和 target verified，不能把 planned、timeout 或
+  子进程失败写成已完成清理。全部五种 plan 在读取 cache 前和 spawn 前检查 build 路径；
+  本轮定向 `39 passed in 2.30s`、main 全量 `120 passed in 60.59s`、test 显式加载
+  当前 main `582 passed, 4 skipped in 297.08s`，独立复审 P0=0、P1=0。
 
-## 发布边界
+## 发布封口
 
-当前路径修复和剩余实板验收依次通过：
+已完成的发布步骤与封口后的可选事项如下：
 
-1. 提交 main 实现/文档和 test 合同，合并后运行完整 test 门禁。
-2. 原子推送 main/test 并通过 GitHub Actions 四平台矩阵。
-3. 通过 `plugin-creator` validator，只更新个人 Marketplace 源和一次 cachebuster，不直接改安装缓存。
+1. 提交 main 实现/文档和 test 合同，合并后运行完整 test 门禁；已完成。
+2. 分别推送 main/test 并通过 GitHub Actions 四平台矩阵；已完成。
+3. 通过 `plugin-creator` validator，只更新个人 Marketplace 源和一次 cachebuster，不直接改安装缓存；已完成。
 4. 用户重启后核对 48/12/12，并用新输出名验证相对下载落在所选 workspace；已完成。
-5. 在明确授权边界下完成其余 MicroPython 能力；板端删除和 ESP-IDF 烧录保持单独确认。
+5. KEY1 两态属于增强实体证据；板端删除和当前版本 ESP-IDF 完整链属于需单独授权的
+   高风险验收，均不阻断本次开发封口。蜂鸣器瞬时电流专项按用户决定延期，不与普通
+   回归或性能验收合并。
+6. 本轮 UART-only 示例和构建门禁在提交、双分支推送及个人 Marketplace 源同步前仍是
+   工作树候选；旧版本 `0.1.0+codex.20260730053724` 的已完成发布记录不能当作本轮发布。
