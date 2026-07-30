@@ -1543,3 +1543,52 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   `esp_error_parse_log` 对历史断连 run 只使用正式 `sqlite_errors`，未回退到兼容来源。
 - 本步骤没有访问 COM3、运行板端程序、删除文件、擦除或烧录；正式数据库写入只包含
   已演练的 schema 升级、历史证据补投影及 marker。
+
+## 2026-07-30：未先识别当前固件导致把 ESP-IDF 的 Raw REPL 超时当作 MicroPython 可达性问题
+
+### 症状
+
+- COM3 正常枚举、可打开且无 Monitor 占用，但 `esp_file_list` 的 Raw REPL 后端超时；
+  mpremote 同样报告 `could not enter raw repl`。
+- 3 秒被动串口捕获为 0 字节；`esp_program_stop` 发送两次 Ctrl-C 后也没有
+  `KeyboardInterrupt` 或 `>>>`。所有调用均完成串口清理。
+- 人工重启后现象不变，因此不能继续把原因归为某一个 Raw REPL 后端。
+
+### 根因
+
+- 授权的 hard reset 捕获到 ESP-IDF 5.2.1 启动信息、项目名
+  `esp_idf_key_led_buzzer` 和 `ready`，而不是 MicroPython banner。
+- SQLite 历史 run `flash_20260727_200755_94df480d` 进一步证明：2026-07-27 恢复
+  MicroPython 后，又在 20:07 向 COM3 烧入了 ESP-IDF 示例。Raw REPL 与 mpremote 失败
+  符合当前固件类型，不是相对路径修复失效。
+- 仅凭串口静默和 REPL 超时也不能判定蜂鸣器电流导致掉电；本轮失败探测没有驱动蜂鸣器，
+  COM3 始终保持枚举。hard reset 后应用完整启动，只证明该次启动期间供电可用。
+
+### 修复
+
+- 实板文件验收增加固件身份门槛：先从 hard reset/启动 banner 识别实际运行时，再选择
+  MicroPython Raw REPL 或 ESP-IDF 工具，不能从历史恢复记录推断当前固件。
+- 经用户明确授权，先备份当前完整 4 MiB flash，再整片擦除并恢复已核验的
+  `ESP32_GENERIC-20260406-v1.28.0.bin`。擦除前备份和恢复输入均独立复算 SHA-256。
+- MicroPython banner 与 `>>>` 出现后才重新进入文件验收；使用全新载荷，避免把擦除前
+  板端文件当作当前结果。
+
+### 验证和边界
+
+- 当前 ESP-IDF 备份 run `backup_flash_20260730_120347_28c4eab3` 读满 4,194,304 字节；
+  工具与本地独立 SHA-256 均为
+  `5ACF1DB30021D3B1C1A83264E586007A7F36AB2C5B604522612E2E6C164E2365`。
+- `erase_flash_20260730_120550_7455b13f` 成功；恢复 run
+  `restore_flash_20260730_120609_a5476af6` 从 `0x1000` 写入 1,760,192 字节，输入及登记
+  SHA-256 为 `CD7820D02C35D34DD403B44263129C6A511B350AEA8446C229890753FE240784`，
+  esptool 完成写入哈希校验。
+- reset run `reset_20260730_120644_74c13588` 捕获 MicroPython v1.28.0 banner 与 `>>>`；
+  reset 工具仍按合同保留 `reset_confirmed=false` 和 `output_causality_confirmed=false`，
+  本节只把原始输出作为强关联启动证据，不放宽公共字段含义。
+- 21 字节载荷 `MCP_FILE_TRANSFER_OK\n` 上传和板端读回成功。下载 run
+  `file_download_20260730_120738_d3d58548` 返回 workspace 内规范绝对路径；实际目标与
+  源逐字节一致，SHA-256 均为
+  `2DDF47ADFD6E81358CE6B00AA1EF332AF66AE718BD3AE2CAAC452218958CD163`，版本化插件缓存
+  中同名文件数为 0。
+- 备份、擦除、恢复、reset 和下载终态均从 authoritative schema-v3 SQLite 读回。板端
+  临时文件未删除，程序停止、错误解析、GPIO、回归、性能和软复位仍需后续独立验收。

@@ -313,6 +313,10 @@ MicroPython 方向：
 - 历史修复记录（2026-07-13）：后台串口 Monitor 针对 CH9102 稀疏输出改为非阻塞读取、先查询 `in_waiting`、单次最多 1024 字节并有界休眠；当时回归和真实按键门禁通过。
 - 历史发布记录（2026-07-20）：SQLite 日志闭环曾接通本地主线、GitHub 和个人 marketplace 源。48/12/12 候选的 P0 与 `erase_flash` P1 均已分别取得 main/test 共 8 个远端成功 job；`0.1.0+codex.20260726165544` 安装缓存已完成重载和工具面核对。
 - 2026-07-27 经明确授权完成 `COM3` 4 MiB 备份、整片擦除和官方 MicroPython v1.28.0 BIN 恢复；随后完成启动 banner、运行时硬件信息、20 条串口标记和三个验收文件的上传/读取/列表。相对下载误写安装缓存后立即暂停实板验收，未把远程文件管理及其余未执行能力记为通过。
+- 2026-07-30 先由 hard reset 启动证据确认板上已在 2026-07-27 后续步骤切换为 ESP-IDF，
+  因而 Raw REPL 超时不是路径修复回归。经明确授权备份当前 4 MiB、擦除并恢复
+  MicroPython v1.28.0 后，使用新载荷完成相对上传、板端读回和相对下载；下载实际落在
+  所选 workspace，版本化插件缓存中没有同名文件。
 
 最近一次本地验证：
 
@@ -339,11 +343,11 @@ v3-C3 DB-first 错误解析：旧实现先得到预期 5 failed，查询前上�
 当前软件全量：main 120 passed in 48.77s；test 工作树显式加载当前 main 源码 557 passed, 4 skipped in 250.00s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
-真实硬件：4 MiB 备份 SHA-256 为 `23F1A7424286FED0BA59A1E6883DB4195CDF344F696B628C314892B24585B6B9`；擦除 run `erase_flash_20260727_131837_f672becc` 成功；MicroPython v1.28.0 恢复 run `restore_flash_20260727_131918_88af58ec` 完成并通过写入哈希校验；启动 banner 和 runtime 探测成功；Monitor 收到 20 条有序标记且停止清理无丢失
+真实硬件：2026-07-30 已把当前 ESP-IDF 4 MiB 完整备份为 SHA-256 `5ACF1DB30021D3B1C1A83264E586007A7F36AB2C5B604522612E2E6C164E2365`；擦除 run `erase_flash_20260730_120550_7455b13f` 和 MicroPython v1.28.0 恢复 run `restore_flash_20260730_120609_a5476af6` 成功，写入哈希已校验；hard reset 捕获 v1.28.0 banner 与 `>>>`。相对下载 run `file_download_20260730_120738_d3d58548` 将 21 字节载荷落在 workspace，源/目标 SHA-256 同为 `2DDF47ADFD6E81358CE6B00AA1EF332AF66AE718BD3AE2CAAC452218958CD163`
 历史样本只读验证：正式项目 22 个 v1 Monitor manifest 为 14 个 `resolved`、8 个 `no_artifacts`、0 个错误；4 个固定 capture 为 1 个 native `resolved`、3 个 legacy `ineligible`，全部是旧 writer 的 `serial_capture_legacy_text`。两次检查均未连接正式 SQLite，项目 189 个文件的路径、长度、mtime 和 SHA-256 前后无差异
 当前 SQLite 边界：B4.4 与 C1-C3 已完成源码、临时数据库、本地/远端软件门禁、Marketplace 发布及正式项目验收。正式库为 schema v3；升级前 v2 备份 SHA-256 为 `5D5F75E12C54EF6137CFD2BA991A949FF2574304E96BC67A97B961649AA8711D`。首次补投影得到 5 raw、1 error、5 claim，第二次回放零新增；运行插件已返回 authoritative schema-v3 raw/error。此步骤没有访问 COM3 或操作板卡
 跳过边界：Windows 本地 4 项 skip 来自普通文件 symlink 创建权限（Flash 1、capture 1、Monitor 2）；目录 junction 与合成 fd/reparse 拒绝合同已执行。本轮新远端矩阵的 8 个 job 全部成功；本地 Windows skip 不能被写成远端平台也跳过
-未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位、临时板端文件删除及日志闭环仍需按明确步骤继续；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
+未完成硬件门禁：程序停止、错误解析、GPIO34 只读、板上回归、性能分析、软复位和临时板端文件删除仍需按明确步骤继续，并为每项补齐日志闭环；`build_flash_monitor` 只支持 ESP-IDF，不能用本次 Raw BIN 恢复冒充通过
 远端与插件：C2/C3 的 [main run 30437244226](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437244226) 与 [test run 30437262633](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30437262633) 共 8 个 job 成功；Monitor 测试同步修复后的 [test run 30446579852](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30446579852)、[main run 30447473492](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30447473492) 和最终 [test run 30448083294](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30448083294) 均成功。Marketplace/安装缓存新版本和正式 schema-v3 数据库均已验收
 ```
 开发日志（同一天按提交时间分开）：
@@ -1082,6 +1086,38 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
 - 提交前重新执行完整本地门禁：main 为 `120 passed in 56.80s`；`index-test` 显式加载
   main 源码为 `557 passed, 4 skipped in 271.45s`。4 项 skip 仍是 Windows 普通文件
   symlink 权限边界，不涉及本次 SQLite 正式数据验收。
+
+### 2026-07-30 12:08 - 恢复 MicroPython 并完成相对下载实板复验
+
+- 人工重启后，Raw REPL 与 mpremote 均无法进入 REPL，3 秒被动捕获为 0 字节，两次 Ctrl-C
+  也未观察到 `>>>`。授权的 hard reset 随后捕获完整 ESP-IDF 5.2.1 启动输出和
+  `esp_idf_key_led_buzzer: ready`；历史 run `flash_20260727_200755_94df480d` 证明
+  MicroPython 恢复后又烧入了该 ESP-IDF 示例。此前超时是固件类型不匹配，不是文件路径
+  修复回归，也不能单凭这些证据判定蜂鸣器引起瞬时掉电。
+- 在新的明确授权下，先读取当前 flash 的完整 4,194,304 字节到
+  `esp-idf-key-led-buzzer-pre-micropython-20260730-120342-4MiB.bin`。工具与独立文件核验
+  SHA-256 均为 `5ACF1DB30021D3B1C1A83264E586007A7F36AB2C5B604522612E2E6C164E2365`；
+  备份 run 为 `backup_flash_20260730_120347_28c4eab3`。
+- `erase_flash_20260730_120550_7455b13f` 在 11.2 秒完成整片擦除；
+  `restore_flash_20260730_120609_a5476af6` 从 `0x1000` 写入 1,760,192 字节的
+  `ESP32_GENERIC-20260406-v1.28.0.bin`，输入与工具登记 SHA-256 均为
+  `CD7820D02C35D34DD403B44263129C6A511B350AEA8446C229890753FE240784`，esptool 报告
+  `Hash of data verified`。
+- hard reset run `reset_20260730_120644_74c13588` 捕获
+  `MicroPython v1.28.0 on 2026-04-06` 与 `>>>`。新文件系统仅有 `boot.py`，未复用
+  擦除前的板端载荷。
+- 新建 21 字节 `MCP_FILE_TRANSFER_OK\n`，SHA-256 为
+  `2DDF47ADFD6E81358CE6B00AA1EF332AF66AE718BD3AE2CAAC452218958CD163`。相对本地路径上传
+  返回 workspace 内规范绝对路径；板端 `/mcp_acceptance_payload.txt` 读回 21 字节且
+  未截断。相对下载 run `file_download_20260730_120738_d3d58548` 实际落在
+  `index/data/artifacts/exports/mcp_acceptance_20260730/downloaded_payload.txt`，源/目标
+  逐字节和 SHA-256 一致，个人插件版本化缓存中同名文件数为 0。
+- 备份、擦除、恢复、reset 和下载 run 均由运行插件从 authoritative schema-v3 SQLite
+  读回成功终态。COM3 最终 `busy=false`；备份和验收载荷均被 `.gitignore` 排除，板端
+  临时文件仍保留，未获得删除确认；用户自有 plugin manifest 差异未纳入。
+- 文档提交前重新执行完整本地门禁：main 为 `120 passed in 54.85s`；`index-test` 显式
+  加载 main 源码为 `557 passed, 4 skipped in 245.46s`。4 项 skip 仍来自 Windows
+  普通文件 symlink 权限，不涉及实板操作或本次相对路径验收。
 
 ## 协作约定
 

@@ -4,13 +4,13 @@
 
 1. Python CLI：串口枚举、选择、固定时长捕获和日志读取。已完成基础闭环。
 2. MCP Server：使用官方 MCP Python SDK、`FastMCP` 和 stdio transport 暴露 tools、resources 和 prompts。已完成。
-3. ESP 开发闭环：构建、备份、烧录、恢复、复位、文件操作和错误解析。串口、reset、Raw REPL 和错误检测已完成本轮软件加固；`erase_flash` 的受管进程树清理、显式前后复位参数和失败契约已通过本地及远端门禁。2026-07-27 已按明确授权完成 `COM3` 4 MiB 备份、真实整片擦除和 MicroPython v1.28.0 恢复。
+3. ESP 开发闭环：构建、备份、烧录、恢复、复位、文件操作和错误解析。串口、reset、Raw REPL 和错误检测已完成本轮软件加固；`erase_flash` 的受管进程树清理、显式前后复位参数和失败契约已通过本地及远端门禁。2026-07-30 已再次按明确授权备份当前 4 MiB、整片擦除并恢复 MicroPython v1.28.0，相对上传/下载实板复验通过。
 4. hardwork 上下文：附件归档、资料索引、硬件审查门禁和映射增量回写。已完成基础闭环。
 5. 项目 memory：写入、读取、检索、更新和删除。已完成基础闭环。
 6. 后台串口 Monitor：状态机、不可变项目绑定、游标读取、有界缓冲、分块落盘、跨进程串口锁和退出清理。软件测试、四平台 CI、插件缓存验证和历史真实 ESP 串口验收已完成。
 7. SQLite schema 与仓储层：SQLite 已成为 runs/events 正式查询源；project-scoped schema、v1/JSONL 迁移、事务序号、UUID 幂等和 run 生命周期已完成并发布。
 8. 日志查询增强：`run_id`、phase、level、tool、source、时间和 sequence 过滤已接通；后续导出和聚合属于非阻断增强。
-9. 任务书 12 项能力：6 项基础和 6 项提高均已有正式工具或闭环实现；公开提示词重组为 12 套，工具面为 48 tools / 12 resources / 12 prompts。独立 Conda 启动器已绑定 `esp-mcp-toolchain` 环境，其中 `mpremote 1.28.0` 已验证。Marketplace 与当前安装缓存均为 `0.1.0+codex.20260729114414`，重启后的 48/12/12 工具面和项目上下文调用已核对；正式项目 SQLite 已显式升级到 v3 并完成历史补投影。实板验收已确认 runtime、串口 Monitor 和文件上传/读取/列表；相对下载误写插件缓存后暂停。
+9. 任务书 12 项能力：6 项基础和 6 项提高均已有正式工具或闭环实现；公开提示词重组为 12 套，工具面为 48 tools / 12 resources / 12 prompts。独立 Conda 启动器已绑定 `esp-mcp-toolchain` 环境，其中 `mpremote 1.28.0` 已验证。Marketplace 与当前安装缓存均为 `0.1.0+codex.20260729114414`，重启后的 48/12/12 工具面和项目上下文调用已核对；正式项目 SQLite 已显式升级到 v3 并完成历史补投影。实板验收已确认 runtime、串口 Monitor、文件上传/读取/列表及 workspace 相对下载。
 10. 项目数据迁移体系：工程路径重绑定、项目合并、导出、导入和完整性校验。与数据库 schema 迁移是两类任务，继续排在本轮任务书能力发布之后。
 
 v3-B4.1、B4.2 与 B4.3 已完成双分支远端门禁。v3-B4.3 历史固定 capture
@@ -50,7 +50,7 @@ Monitor run lease、两次 resolver、跨 run raw 所有权预检和独立原子
 
 1. Marketplace 同步、用户重启、正式项目 v2→v3 升级和历史补投影均已完成；v2
    备份、正式 schema-v3 完整性、5 条 raw 文件摘要、1 条 error 和第二次幂等回放已核对。
-2. 下一步继续相对下载：必须使用 workspace 内的显式本地目标并核对实际落盘路径，禁止
-   再把相对路径解析到版本化安装缓存。
-3. 随后继续剩余 MicroPython 实板验收；删除、ESP-IDF 烧录或恢复
-   MicroPython 均按具体动作单独确认。
+2. 相对下载已用新输出名完成实板复验：21 字节源/目标逐字节及 SHA-256 一致，实际路径
+   位于 workspace，版本化安装缓存同名文件数为 0。
+3. 下一步继续程序停止、错误解析、GPIO34 只读、板上回归、性能和软复位验收。
+4. 临时板端文件删除、ESP-IDF 烧录或再次恢复 MicroPython 均按具体动作单独确认。
