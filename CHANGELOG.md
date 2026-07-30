@@ -1,8 +1,10 @@
 # Changelog
 
-本文件记录用户可见的项目变化。版本发布后再把 `[Unreleased]` 内容归入对应版本。
+本文件记录用户可见的项目变化。未发布变化保留在 `[Unreleased]`，冻结版本按日期归入对应版本。
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-07-30
 
 ### Added
 
@@ -16,8 +18,10 @@
 - 新增 `examples/esp_idf_uart_smoke`：只输出 UART0 READY 和每秒递增 HEARTBEAT，不编译
   额外应用源文件，也不引用 GPIO、LEDC、PWM、RMT、DAC 或蜂鸣器接口；用于隔离 ESP MCP
   工具链构建/串口验收与业务固件的 GPIO25/蜂鸣器行为。
-- 新增 `docs/15-release-readiness.md`，集中记录当前发布候选、实板 run/哈希、
-  正式发布前清单、业务固件范围和不得扩大声明的证据边界。
+- 新增 `docs/15-release-readiness.md`，集中记录 `v0.1.0` 实板 run/哈希、
+  正式发布验证清单、业务固件范围和不得扩大声明的证据边界。
+- 新增 `docs/16-release-notes-v0.1.0.md`，冻结首个 GitHub 版本的发布说明及
+  final branch-local、新 Actions、tag/Release 的剩余门禁。
 
 - 新增 SQLite schema v2 与 runs/events 仓储，包含 project-scoped 复合键、外键、JSON 对象约束、规范 UUID、事务 sequence 和结构化查询索引。
 - 新增 v1 数据库重建迁移、legacy JSONL 稳定快照与可重复导入，以及 `docs/adr/0003-sqlite-log-authority.md`。
