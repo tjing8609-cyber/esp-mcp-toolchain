@@ -85,6 +85,14 @@
   GPIO34 严格只读查询、两项正向回归、独立 negative、7 次无硬件副作用性能插桩和
   soft reset 均取得项目级 run 与 SQLite completion 证据。该批测试未访问 GPIO25、
   蜂鸣器或 PWM，也没有发生串口断连，不能用于判断蜂鸣器瞬时电流问题。
+- 个人 Marketplace 和安装缓存更新到 `0.1.0+codex.20260730053724` 后，
+  `exec_code_20260730_150437_0d9c65aa` 在 COM3 上再次执行受控 `ValueError`。
+  该 run 的 `esp_logs_get.errors` 从 authoritative schema-v3 SQLite 恰好返回一条
+  `micropython_traceback`，
+  `esp_error_parse_log` 只使用 `sqlite_errors`，不再依赖兼容 event；调用结束后
+  COM3 仍可用且未占用。本次没有刷写、擦除、删除、GPIO 或板端文件修改，也未调用
+  reset 工具或显式发送复位命令；`physical_reset_excluded=false`，串口控制线效应未独立排除。
+  蜂鸣器瞬时电流专项按用户决定延期，不属于本轮完成声明。
 - 同步工具统一使用 start/prepare/complete/finish run 生命周期；后台 Monitor 在启动时固定完整 `LogScope`，并由 worker 写入原项目终态。
 - 跨工作树门禁由 `index-test` 明确加载 `index` 源码，并校验实际导入来源，避免测试工作树误测自身旧实现。
 - GitHub Actions 只检出被推送的单个分支；test 推送前必须合入固定、已验证的 main，不能把本地 `ESP_MCP_SOURCE_ROOT` 跨工作树覆盖当作远端分支同步。

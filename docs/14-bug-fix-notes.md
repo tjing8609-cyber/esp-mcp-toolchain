@@ -1590,8 +1590,9 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   源逐字节一致，SHA-256 均为
   `2DDF47ADFD6E81358CE6B00AA1EF332AF66AE718BD3AE2CAAC452218958CD163`，版本化插件缓存
   中同名文件数为 0。
-- 备份、擦除、恢复、reset 和下载终态均从 authoritative schema-v3 SQLite 读回。板端
-  临时文件未删除，程序停止、错误解析、GPIO、回归、性能和软复位仍需后续独立验收。
+- 备份、擦除、恢复、reset 和下载终态均从 authoritative schema-v3 SQLite 读回。该时点
+  板端临时文件未删除；后续程序停止、错误解析、GPIO34 查询、回归、性能和软复位已分别
+  完成验收。
 
 ## 2026-07-30：exec/run-file 已解析 Traceback，但正式 SQLite errors 为空
 
@@ -1642,6 +1643,25 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 本切片只正式投影可解析的 MicroPython Traceback。`mpremote_timeout`、
   `raw_repl_enter_failed` 等没有 `error_report` 的顶层操作错误仍不进入 errors；如要扩展
   必须单独设计 `result_error` 的优先级和去重合同。
-- 当前安装插件仍为 `0.1.0+codex.20260729114414`。源码软件门禁不能替代新版 Marketplace
-  重载后的实板验证；后续应执行新的受控异常，并要求
-  `esp_logs_get.errors` 恰有一条、`esp_error_parse_log` 来源为 `sqlite_errors`。
+- 源码软件门禁不能替代新版 Marketplace 重载后的实板验证；最终复验结果见下一节。
+
+### 新版插件实板复验
+
+- 个人 Marketplace 源通过 `plugin-creator` validator 更新为
+  `0.1.0+codex.20260730053724`；用户重启后，当前任务实际加载的技能和安装缓存均为
+  该版本。
+- COM3 受控 run `exec_code_20260730_150437_0d9c65aa` 执行
+  `ValueError("ESP_MCP_SQLITE_PROJECTION_FINAL")`。即时结果收到完整 Raw REPL ACK、
+  stdout EOT、stderr EOT 和提示符，并生成
+  `micropython_traceback / ValueError / <stdin>:1`。
+- 该 run 的 `esp_logs_get.errors` 从 authoritative schema-v3 SQLite 返回恰好一条正式
+  error，ID 为
+  `5d63306a-a820-5282-9728-f95bee726015`；`esp_error_parse_log.scan_sources`
+  只有 `{kind: sqlite_errors, count: 1}`，没有回退到兼容 event。
+- 工具因主动抛出的异常返回 `ok=false` 是预期业务结果。调用后 COM3
+  `available=true`、`busy=false`；本次没有刷写、擦除、删除、GPIO 或板端文件修改，
+  也未调用 reset 工具或显式发送复位命令；`physical_reset_excluded=false`，串口控制线
+  效应未独立排除。
+- 该实板调用直接覆盖 exec producer；mpremote run-file 与 Raw REPL 嵌套 run-file
+  的单条正式投影由前述软件合同覆盖。蜂鸣器瞬时电流专项按用户决定延期，不能由本结果
+  推断。
