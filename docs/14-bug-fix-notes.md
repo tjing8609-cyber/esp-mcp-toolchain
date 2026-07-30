@@ -1805,7 +1805,45 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
 - 修复合入 test 后标准全量为 `583 passed, 4 skipped in 314.90s`；main run
   `30526826689` 与 test run `30526826402` 的 8 个 Windows/Linux、Python 3.10/3.12
   job 全部成功。个人 Marketplace 源版
-  `0.1.0+codex.20260730084223` 通过 validator、`120 passed in 59.16s` 和
+  `0.1.0+codex.20260730084223` 通过 validator、`120 passed in 57.90s` 和
   `48 tools / 12 resources / 12 prompts` 直接枚举；安装态等待用户重启确认。
 - 本步骤只使用 fake serial、临时日志/SQLite 和 GitHub 日志；未访问 COM3、复位、烧录、
   擦除、删除、GPIO25、PWM 或蜂鸣器。
+
+## 2026-07-30：main 未回同步 Monitor 高频持久化完成合同
+
+### 症状
+
+- 文档提交后的 main run `30528050703` 只有 Ubuntu/Python 3.10 失败：
+  `test_monitor_high_frequency_output_is_bounded_and_accounted` 在
+  `bytes_received=262144` 时读取到 `persisted_bytes=258048`，差一条 4096 字节记录；
+  该 job 为 `1 failed, 119 passed`。
+- 同一 main run 的另外三个 job 成功；test run `30528050497` 四个 job 全部成功。
+
+### 根因
+
+- `_consume()` 在串口读取后先增加 `bytes_received`，再逐条调用
+  `SerialLogStore.append()`。status 可以在两步之间读取，因此 received 短暂领先
+  persisted 是公开计数的合法实时状态，不等于最终漏写。
+- 旧 main 测试只等待 received 达标便跳出，随后立即要求 persisted 相等，把前一个计数
+  错当成后一个操作的完成屏障。
+- test 分支提交 `366f288` 已在 2026-07-27 修正同一问题，但分支专属测试改动没有回同步
+  main；因此 test 的四平台矩阵稳定，而 main 仍携带旧完成条件。
+
+### 修复
+
+- 把 test 既有合同精确回同步 main：只有 received 与 persisted 同时达到 262144 才结束
+  等待；同时要求 `unpersisted_bytes=0`。
+- 显式 stop 后再次核对最终 persisted 和 unpersisted，使用 worker join、store close 和
+  force flush 形成真正终态边界。
+- 不修改生产计数顺序，也不把磁盘 append 放进 status condition 锁；否则会让状态查询被
+  磁盘 I/O 阻塞。没有用固定延时或简单重跑掩盖问题。
+
+### 验证和边界
+
+- 修复后的单项以独立 pytest 进程执行 `30/30`；main 全量
+  `120 passed in 57.79s`。
+- 远端失败正好少一条最大记录，结合 test 分支四平台成功和 stop 后终态合同，证据支持
+  “测试同步错误”，不支持“产品已确认丢数据”。
+- 本步骤只使用 fake serial、临时日志和 GitHub 日志；未访问 COM3、复位、烧录、擦除、
+  删除、GPIO25、PWM 或蜂鸣器。

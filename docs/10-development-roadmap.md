@@ -61,3 +61,7 @@ Monitor run lease、两次 resolver、跨 run raw 所有权预检和独立原子
 6. Monitor 空错误竞态已用确定性合同修复；合入 test 后本地 `583 passed, 4 skipped`，
    main/test 新一轮 8 个远端 job 全部成功。个人 Marketplace 源新版通过 validator、
    `120 passed` 和 `48/12/12` 枚举，活动版本仍需用户重启确认。
+7. 后续 main 文档 run 暴露高频计数测试的旧完成条件仍未从 test 回同步：实时
+   `bytes_received` 可短暂领先 `persisted_bytes` 一条 4096 字节记录。现已复用 test
+   的既有双计数等待和 stop 终态复核，不改变生产锁；独立进程 `30/30`、main
+   `120 passed`。

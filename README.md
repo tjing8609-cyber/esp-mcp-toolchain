@@ -306,7 +306,7 @@ MicroPython 方向：
 - `.mcp.json` 使用 Codex 插件标准的 `mcpServers` 结构，并通过 `scripts/run_mcp_server.py` 把实际服务固定到独立 Conda 环境。
 - MCP resources 增加 `esp://tools/directory` 和 `esp://tools/registry`，用于让 Codex 读取 tools 目录和注册工具表。
 - 未实现工具的占位返回结构已统一为可调用成功态，包含 `tool_name`、`tools名称` 和 `implemented: false`；已实现工具返回 `implemented: true` 并包含后端、端口、路径或执行输出等结构化字段。
-- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。2026-07-30 本轮收尾已把个人 Marketplace 源更新为 `0.1.0+codex.20260730084223`；validator、源目录 `120 passed in 59.16s` 和源码直接枚举均确认 `48 tools / 12 resources / 12 prompts`。当前会话与安装缓存仍是已验证的上一版 `0.1.0+codex.20260730053724`，需用户重启后再确认加载新版，不能把源同步写成活动插件已更新。
+- 历史记录（2026-07-20）：SQLite 曾同步到个人 marketplace 源版本 `0.1.0+codex.20260720110129`，当时 validator、源目录 `99 passed` 和 MCP `43 tools / 12 resources / 4 prompts` 枚举通过。2026-07-30 本轮收尾已把个人 Marketplace 源更新为 `0.1.0+codex.20260730084223`；validator、源目录 `120 passed in 57.90s` 和源码直接枚举均确认 `48 tools / 12 resources / 12 prompts`。当前会话与安装缓存仍是已验证的上一版 `0.1.0+codex.20260730053724`，需用户重启后再确认加载新版，不能把源同步写成活动插件已更新。
 - 初始测试集。
 - 开发流程使用现有 `index` / `index-test` 双工作树：产品实现和文档提交到 `main`，`test` 分支的分支专属提交只维护测试文件和测试规则；本地门禁可从 `index-test` 显式加载 `index` 的主线源码。GitHub Actions 只检出被推送的单个分支，因此推送 test 前必须把固定、已验证的 main 合入 test，不能用本地跨工作树绿灯代替 test 分支自身的远端合同。当前测试入口为 `toolchain/tests/`。
 - `project_migrate_legacy_data` 的测试契约已覆盖只读预览、显式确认、相同文件跳过、不同文件冲突不覆盖、非法来源拒绝、审计记录、审计写入失败回滚和 MCP schema。
@@ -345,7 +345,7 @@ B4.4 项目协调器：入口缺失时 9 failed；首轮实现后 9 passed。复
 v3-C3 DB-first 错误解析：旧实现先得到预期 5 failed，查询前上界复审再得到预期 2 failed；修复后 C3 专项 7 passed in 1.09s，相关回归 49 passed in 5.63s
 UART-only 示例：旧 main 初始 4 failed；首轮 4 passed；复审收紧后 5 passed
 ESP-IDF target/fullclean 门禁：旧实现首轮 6 failed, 6 passed，二轮 8 failed, 3 passed；最终 UART/构建/日志/MCP 定向 39 passed in 2.30s
-当前软件全量：main 120 passed in 59.15s；合入修复后的 test 分支自身源码 583 passed, 4 skipped in 314.90s
+当前软件全量：main 120 passed in 57.79s；合入修复后的 test 分支自身源码 583 passed, 4 skipped in 314.90s
 MCP 源码枚举：48 tools / 12 resources / 12 prompts
 覆盖：独立 Conda 启动器、安全串口生命周期、reset 因果证据、严格 Raw REPL 完整帧、短写处理、程序停止证据、跨 chunk/custom exception、SQLite event/raw/error 原子事务、Monitor 终态 chunk 精确产物集、并发 lease/ABA、旧 stale UUID 兼容、历史终态 event 既有行补投影、v1/v2 历史 Monitor 纯文件解析、镜像/sidecar 深度核验与原始日志受限扫描、12 套提示词、GPIO/运行时中断确认、回归执行确认、性能重复执行确认、真实 FastMCP Schema、项目隔离，以及主机相对路径不依赖 MCP 当前目录的合同
 真实硬件：2026-07-30 已把当前 ESP-IDF 4 MiB 完整备份为 SHA-256 `5ACF1DB30021D3B1C1A83264E586007A7F36AB2C5B604522612E2E6C164E2365`；擦除 run `erase_flash_20260730_120550_7455b13f` 和 MicroPython v1.28.0 恢复 run `restore_flash_20260730_120609_a5476af6` 成功，写入哈希已校验；hard reset 捕获 v1.28.0 banner 与 `>>>`。相对下载 run `file_download_20260730_120738_d3d58548` 将 21 字节载荷落在 workspace，源/目标 SHA-256 同为 `2DDF47ADFD6E81358CE6B00AA1EF332AF66AE718BD3AE2CAAC452218958CD163`
@@ -1248,9 +1248,27 @@ MCP 源码枚举：48 tools / 12 resources / 12 prompts
   [30526826402](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30526826402)
   的 Windows/Linux、Python 3.10/3.12 共 8 个 job 全部成功。
 - 个人 Marketplace 源已用一次 cachebuster 更新为
-  `0.1.0+codex.20260730084223`，plugin validator、源目录 `120 passed in 59.16s`
+  `0.1.0+codex.20260730084223`，plugin validator、源目录 `120 passed in 57.90s`
   和直接 MCP 枚举 `48 tools / 12 resources / 12 prompts` 通过；未修改安装缓存，
   等待用户重启后核对活动版本。
+
+### 2026-07-30 - 回同步 Monitor 高频持久化完成条件
+
+- 最终文档 main run
+  [30528050703](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30528050703)
+  的 Ubuntu/Python 3.10 在 `test_monitor_high_frequency_output_is_bounded_and_accounted`
+  失败：`bytes_received=262144` 时 `persisted_bytes=258048`，正好少一条 4096 字节记录；
+  其余三个 main job 和 test run
+  [30528050497](https://github.com/tjing8609-cyber/esp-mcp-toolchain/actions/runs/30528050497)
+  的四个 job 均成功。
+- Monitor 先增加“已从串口读取”的 `bytes_received`，随后才调用
+  `SerialLogStore.append()`；实时 status 合法存在一条记录的短暂差值。旧 main 测试把
+  received 达标误当成 append 完成屏障，而 test 分支提交 `366f288` 已在 2026-07-27
+  修过这一合同但没有回同步 main。这不是已确认的数据丢失。
+- main 现复用既有合同：等待 received 与 persisted 同时达标，要求
+  `unpersisted_bytes=0`，再显式 stop 并复核最终计数。不会把磁盘 I/O 放进 status 锁，
+  也不靠增加固定 sleep 掩盖竞态。修复后独立进程 `30/30`，main 全量
+  `120 passed in 57.79s`；本步骤未访问 COM3。
 
 ## 协作约定
 
