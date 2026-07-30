@@ -118,6 +118,10 @@
   command completed、partial possible 和 postflight verified，并把关键安全字段写入
   SQLite completion。复审发现的普通 build 路径门禁漏覆盖也已关闭，超时不再误报
   `command_completed=true`。
+- 修复后台 Monitor 在 `STARTING → STOPPING → STOPPED` 竞争窗口中，公开 start 入口把
+  合法的 `last_error=null` 当作对象并链式调用 `.get()` 的问题。现在先按正式
+  `dict | None` 合同归一化；无错误对象时返回结构化
+  `serial_monitor_start_failed`，不再从启动线程抛出 `AttributeError`。
 - 修复 `esp_exec_code` 和 `esp_run_file` 已生成 MicroPython `error_report`、却未把它
   原子投影到 schema-v3 `errors` 的 producer 漏项。两项工具现在只启用
   `structured_error`，不同时登记较宽泛的 `result_error`；成功执行不产生 error，
@@ -237,6 +241,11 @@
 
 ### Validation
 
+- GitHub main run `30525807125` 的 Ubuntu/Python 3.10 job 首次暴露 Monitor 启停竞态：
+  `1 failed, 119 passed`；其余三个 main job 成功，且本轮提交未修改 Monitor 源码，
+  因此不是 UART/target 变更回归。确定性合同在旧实现上为预期 `1 failed`，修复后与
+  既有竞争合同合并为 `2 passed`，竞争合同独立进程 `30/30`，main 全量
+  `120 passed in 59.15s`。本步骤未访问 COM3。
 - UART-only 初始合同在实现前为预期 `4 failed in 2.95s`，首轮实现为
   `4 passed in 0.62s`；复审收紧唯一源文件、可执行语句、冲突配置和生成文件忽略合同后
   为 `5 passed in 0.28s`。
