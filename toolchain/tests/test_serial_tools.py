@@ -563,6 +563,40 @@ def test_monitor_waiting_read_returns_when_stopped():
     assert reads[0]["state"] == "STOPPED"
 
 
+def test_monitor_start_terminal_state_without_last_error_uses_fallback(monkeypatch):
+    terminal_status = {
+        "state": "STOPPED",
+        "last_error": None,
+        "worker_alive": False,
+        "cleanup_complete": True,
+    }
+
+    class TerminalSession:
+        def status(self):
+            return dict(terminal_status)
+
+        def request_stop(self, timeout_s):
+            assert timeout_s == 2.0
+            return dict(terminal_status)
+
+    monkeypatch.setattr(
+        SERIAL_MONITOR_MANAGER,
+        "start",
+        lambda binding, serial_mod: TerminalSession(),
+    )
+
+    result = serial_tools.esp_serial_monitor_start(
+        "COM_START_STOPPED",
+        session_name="starting-stopped",
+    )
+
+    assert result["ok"] is False
+    assert result["error_kind"] == "serial_monitor_start_failed"
+    assert result["message"] == "Serial monitor failed during startup."
+    assert result["monitor"]["state"] == "STOPPED"
+    assert result["monitor"]["last_error"] is None
+
+
 def test_monitor_stop_while_starting_is_bounded():
     gate = threading.Event()
     FakeSerial.open_gate = gate
