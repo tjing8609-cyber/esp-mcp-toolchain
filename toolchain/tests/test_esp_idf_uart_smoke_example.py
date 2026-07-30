@@ -121,6 +121,7 @@ def test_uart_smoke_defaults_are_reproducible_for_the_demo_board():
         "CONFIG_ESP_CONSOLE_UART_NUM=0",
         "CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200",
         "CONFIG_LOG_DEFAULT_LEVEL_INFO=y",
+        "CONFIG_APP_COMPILE_TIME_DATE=n",
     }
 
 
@@ -133,4 +134,6 @@ def test_uart_smoke_readme_states_the_no_gpio_evidence_boundary():
     assert "does not prove electrical pin levels" in normalized
     assert "GPIO25" in normalized
     assert "LEDC" in normalized
+    assert "CONFIG_APP_COMPILE_TIME_DATE=n" in normalized
+    assert "`__DATE__`/`__TIME__`" in readme
     assert "explicit authorization" in normalized
