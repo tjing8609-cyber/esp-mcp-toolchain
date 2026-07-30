@@ -358,19 +358,23 @@
   Monitor 启停竞态中命中 `STOPPED + last_error=null`，旧 start 入口链式 `.get()` 后
   抛 `AttributeError`。现已按 `dict | None` 合同规范化并提供结构化 fallback；确定性
   红灯 `1 failed`，修复后相关 `2 passed`、竞争用例独立 `30/30`、main 全量
-  `120 passed in 59.15s`。修复尚待重新合并 test 并推送 CI。
+  `120 passed in 59.15s`。修复合入 test 后标准全量为
+  `583 passed, 4 skipped in 314.90s`；main run `30526826689` 与 test run
+  `30526826402` 共 8 个矩阵 job 全部成功。
 
 ## 插件发布状态
 
-- 当前仓库的既有本地 plugin manifest 差异不属于本次提交；个人 Marketplace 源和
-  当前会话加载的安装缓存均为 `0.1.0+codex.20260730053724`。
-- Marketplace 源通过 plugin validator、发布测试 `120 passed` 和
-  `48 tools / 12 resources / 12 prompts` 直接枚举；用户重启后已再次核对缓存版本、
-  48 个活动工具、12 resources、12 prompts 和正确项目上下文。
+- 当前仓库的既有本地 plugin manifest 差异不属于本次提交，文件摘要保持不变。
+  个人 Marketplace 源已用一次 cachebuster 更新为
+  `0.1.0+codex.20260730084223`；当前会话加载的安装缓存仍为上一版
+  `0.1.0+codex.20260730053724`，没有直接修改。
+- 新 Marketplace 源通过 plugin validator、发布测试 `120 passed in 59.16s` 和
+  `48 tools / 12 resources / 12 prompts` 直接枚举；仍需用户重启后核对活动版本和
+  工具加载，源目录通过不能替代安装态验收。
 - B4.4/C1-C3 的正式数据库验收此前已完成；本次新版只追加 exec structured-error
   正式投影复验。本轮仍不会修改仓库内用户自有的 plugin manifest 差异。
-- UART-only 示例和构建门禁仍只在工作树中；完成提交、双分支推送和 Marketplace 源同步
-  前，当前安装缓存继续代表旧版本，不作为本轮实现证据。
+- UART-only 示例、构建门禁和 Monitor 竞态修复已提交、合入 test、完成双分支推送和
+  Marketplace 源同步；当前安装缓存继续代表旧版本，重启前不作为本轮活动实现证据。
 
 ## 项目封口后的可选或需授权事项
 

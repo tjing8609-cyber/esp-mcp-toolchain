@@ -246,6 +246,11 @@
   因此不是 UART/target 变更回归。确定性合同在旧实现上为预期 `1 failed`，修复后与
   既有竞争合同合并为 `2 passed`，竞争合同独立进程 `30/30`，main 全量
   `120 passed in 59.15s`。本步骤未访问 COM3。
+- 修复合入 test 后标准全量为 `583 passed, 4 skipped in 314.90s`；main run
+  `30526826689` 与 test run `30526826402` 共 8 个 Windows/Linux、Python 3.10/3.12
+  job 全部成功。个人 Marketplace 源以一次 cachebuster 更新为
+  `0.1.0+codex.20260730084223`，validator、源目录 `120 passed in 59.16s` 和
+  `48 tools / 12 resources / 12 prompts` 直接枚举通过；活动安装缓存等待重启确认。
 - UART-only 初始合同在实现前为预期 `4 failed in 2.95s`，首轮实现为
   `4 passed in 0.62s`；复审收紧唯一源文件、可执行语句、冲突配置和生成文件忽略合同后
   为 `5 passed in 0.28s`。
