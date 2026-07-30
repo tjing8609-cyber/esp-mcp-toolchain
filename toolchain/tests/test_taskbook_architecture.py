@@ -70,6 +70,9 @@ def test_new_board_tools_are_hardware_gated_and_have_structured_schemas():
     assert stop["timeout_ms"]["minimum"] == 100
     assert stop["timeout_ms"]["maximum"] == 30000
 
+    build = by_name["esp_project_build"].inputSchema["properties"]
+    assert build["confirm_target_change"]["default"] is False
+
 
 def test_static_registry_preserves_tool_bounds_for_directory_resources():
     specs = {entry["name"]: entry["inputSchema"] for entry in list_tool_specs()}

@@ -74,6 +74,10 @@ def test_high_risk_prompts_keep_confirmation_and_evidence_boundaries():
 
     assert "明确确认" in flash
     assert "confirm=True" in flash
+    assert "confirm_target_change=False" in flash
+    assert "confirm_target_change=True" in flash
+    assert "两次不同授权" in flash
+    assert flash.index("confirm_target_change=True") < flash.index("esp_flash_firmware(confirm=True)")
     assert "confirm=True" in files
     assert "Ctrl-D" in stop and "复位命令" in stop
     assert "physical_reset_excluded=False" in stop
