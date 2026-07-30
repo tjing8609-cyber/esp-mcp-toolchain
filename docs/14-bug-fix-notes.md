@@ -1802,5 +1802,10 @@ Marketplace 的 `.mcp.json` 使用 `"cwd": "."` 是合法配置；安装态下�
   合并为 `2 passed`。
 - 原并发合同以独立 pytest 进程连续复跑 `30/30`；main 全量
   `120 passed in 59.15s`。独立只读复审认可最小修复和确定性合同。
+- 修复合入 test 后标准全量为 `583 passed, 4 skipped in 314.90s`；main run
+  `30526826689` 与 test run `30526826402` 的 8 个 Windows/Linux、Python 3.10/3.12
+  job 全部成功。个人 Marketplace 源版
+  `0.1.0+codex.20260730084223` 通过 validator、`120 passed in 59.16s` 和
+  `48 tools / 12 resources / 12 prompts` 直接枚举；安装态等待用户重启确认。
 - 本步骤只使用 fake serial、临时日志/SQLite 和 GitHub 日志；未访问 COM3、复位、烧录、
   擦除、删除、GPIO25、PWM 或蜂鸣器。

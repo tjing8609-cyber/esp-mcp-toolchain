@@ -97,9 +97,12 @@ MicroPython 自动错误检测是在现有 exec、capture、Monitor 和 error pa
 1. 提交 main 实现/文档和 test 合同，合并后运行完整 test 门禁；已完成。
 2. 分别推送 main/test 并通过 GitHub Actions 四平台矩阵；已完成。
 3. 通过 `plugin-creator` validator，只更新个人 Marketplace 源和一次 cachebuster，不直接改安装缓存；已完成。
-4. 用户重启后核对 48/12/12，并用新输出名验证相对下载落在所选 workspace；已完成。
+4. 上一版用户重启后核对 48/12/12，并用新输出名验证相对下载落在所选 workspace；
+   已完成。本轮 Marketplace 源新版 `0.1.0+codex.20260730084223` 已通过 validator、
+   `120 passed` 和 48/12/12 直接枚举，活动安装态等待再次重启确认。
 5. KEY1 两态属于增强实体证据；板端删除和当前版本 ESP-IDF 完整链属于需单独授权的
    高风险验收，均不阻断本次开发封口。蜂鸣器瞬时电流专项按用户决定延期，不与普通
    回归或性能验收合并。
-6. 本轮 UART-only 示例和构建门禁在提交、双分支推送及个人 Marketplace 源同步前仍是
-   工作树候选；旧版本 `0.1.0+codex.20260730053724` 的已完成发布记录不能当作本轮发布。
+6. 本轮 UART-only 示例、构建门禁和 Monitor 竞态修复已提交、合并并推送；main/test
+   两个新 Actions run 共 8 个 job 全部成功，个人 Marketplace 源同步已完成。旧安装缓存
+   `0.1.0+codex.20260730053724` 仍不能当作本轮活动版本。
